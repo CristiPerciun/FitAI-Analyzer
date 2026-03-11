@@ -1,0 +1,39 @@
+name: Build iOS per iPhone
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout codice
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          cache: true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build iOS (senza firma - per Apple ID gratuito)
+        run: flutter build ios --release --no-codesign
+
+      - name: Crea file IPA
+        run: |
+          mkdir -p Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/
+          cd Payload
+          zip -r ../FitAI-Analyzer.ipa .
+          cd ..
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: FitAI-Analyzer-iOS
+          path: FitAI-Analyzer.ipa

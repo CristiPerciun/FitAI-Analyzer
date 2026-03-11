@@ -1,0 +1,47 @@
+---
+description: FitAI Analyzer - Architettura, state, DB, UI, sicurezza e deploy
+alwaysApply: true
+---
+
+# FitAI Analyzer - Project Rules
+
+**IMPORTANTE**: Prima di eseguire QUALSIASI prompt, con QUALSIASI tipo di agente (Chat, Composer, Agent, ecc.), verifica e rispetta queste regole. Sono vincolanti per ogni modifica al progetto.
+
+## Architettura Clean
+
+- **Layer separati**: UI/screens, providers/state, services, models, utils
+- **MVVM-like con Riverpod**: ViewModels → Notifier/StateNotifier, UI → ConsumerWidget/Consumer
+- Struttura: `lib/features/`, `lib/providers/`, `lib/services/`, `lib/models/`, `lib/utils/`, `lib/routes/`, `lib/theme/`
+
+## State Management (Riverpod)
+
+- **Solo Riverpod**: StateNotifier e NotifierProvider per stati complessi (dati utente, sync status, piani AI)
+- **Niente variabili globali**: dependency injection via Riverpod
+- Stream providers per listen real-time ai dati Firebase
+
+## Database
+
+- **Firebase**: Cloud Firestore per dati strutturati, Firebase Auth per login
+- Scalabile, real-time, integrazione con Riverpod (stream providers)
+- Offline: caching built-in di Firebase
+
+## UI Best Practices
+
+- **Material 3** theme
+- **Responsive**: MediaQuery per layout adattivi
+- **Animazioni**: implicit/explicit dove appropriato
+- **Error handling**: snackbars, loading indicators
+- **Grafici**: fl_chart
+- **Navigation**: go_router
+
+## Sicurezza e Performance
+
+- **Secure storage** per API keys
+- **async/await** con try-catch
+- **Debounce** per sync
+- **Minimal rebuild** con Riverpod (select, family)
+
+## Testing e Deploy
+
+- Setup base per unit tests
+- Deploy: Flutter build per Android/iOS

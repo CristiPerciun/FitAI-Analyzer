@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "100377539689",
+    "project_id": "fit-ai-analyzer",
+    "storage_bucket": "fit-ai-analyzer.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:100377539689:android:5d8aec00a5b231adafdef8",
+        "android_client_info": {
+          "package_name": "com.fitai.fitai_analyzer"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDlSd1ze6AGnAIZ1_naHcjD4G3IURKzltw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
