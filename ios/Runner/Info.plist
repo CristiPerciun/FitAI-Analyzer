@@ -45,7 +45,7 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
-	<!-- url_launcher: schemi supportati per apertura URL (OAuth Garmin/MFP) -->
+	<!-- url_launcher: schemi supportati per apertura URL (OAuth Garmin) -->
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>https</string>
@@ -53,7 +53,7 @@
 		<string>mailto</string>
 		<string>tel</string>
 	</array>
-	<!-- OAuth callback: aggiungi CFBundleURLTypes con il tuo URL scheme quando configuri Garmin/MFP -->
+	<!-- OAuth callback: aggiungi CFBundleURLTypes con il tuo URL scheme quando configuri Garmin -->
 	<!-- Esempio:
 	<key>CFBundleURLTypes</key>
 	<array>
@@ -67,5 +67,10 @@
 		</dict>
 	</array>
 	-->
+	<!-- Apple Health (HealthKit) - richiesto per health package -->
+	<key>NSHealthShareUsageDescription</key>
+	<string>FitAI Analyzer sincronizza i tuoi dati con Apple Health per fornirti insight su passi, calorie e attività.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>FitAI Analyzer sincronizza i tuoi dati con Apple Health per fornirti insight su passi, calorie e attività.</string>
 </dict>
 </plist>

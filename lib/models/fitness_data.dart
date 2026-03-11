@@ -3,14 +3,14 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'fitness_data.g.dart';
 
-/// Modello per dati fitness da Garmin/MFP.
+/// Modello per dati fitness da Garmin/Apple Health.
 /// Estendere con campi specifici per ogni fonte.
 @JsonSerializable()
 class FitnessData {
   @JsonKey(defaultValue: '')
   final String id;
   @JsonKey(defaultValue: 'unknown')
-  final String source; // 'garmin' | 'mfp'
+  final String source; // 'garmin' | 'health'
   @JsonKey(fromJson: _dateFromJson, toJson: _dateToJson)
   final DateTime date;
   final double? calories;

@@ -1,6 +1,11 @@
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
+import 'package:fitai_analyzer/providers/health_sync_status_notifier.dart';
+import 'package:fitai_analyzer/ui/auth/health_sync_status_card.dart';
+import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
+import 'package:fitai_analyzer/utils/demo_fitness_data.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 class AuthSelectionScreen extends ConsumerWidget {
   const AuthSelectionScreen({super.key});
@@ -8,6 +13,27 @@ class AuthSelectionScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authNotifierProvider);
+    final healthSyncStatus = ref.watch(healthSyncStatusProvider);
+    final showHealthSyncCard = authState.currentService == 'health' ||
+        healthSyncStatus.phase == HealthSyncPhase.error;
+
+    ref.listen(authNotifierProvider, (prev, next) {
+      if (next.error != null &&
+          next.error!.isNotEmpty &&
+          next.error != prev?.error &&
+          context.mounted) {
+        showErrorDialog(context, next.error!);
+      }
+    });
+
+    ref.listen(healthSyncStatusProvider, (prev, next) {
+      if (next.phase == HealthSyncPhase.error &&
+          next.error != null &&
+          prev?.phase != HealthSyncPhase.error &&
+          context.mounted) {
+        showErrorDialog(context, next.error!);
+      }
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -18,7 +44,6 @@ class AuthSelectionScreen extends ConsumerWidget {
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            // Titolo grande
             Text(
               'Connetti i tuoi dati',
               style: Theme.of(context).textTheme.headlineMedium,
@@ -28,13 +53,11 @@ class AuthSelectionScreen extends ConsumerWidget {
             Text(
               'Scegli la piattaforma per iniziare',
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: const Color(0xFF37474F).withOpacity(0.7),
+                    color: const Color(0xFF37474F).withValues(alpha: 0.7),
                   ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 40),
-
-            // Due CARD SCALABILI
             Expanded(
               child: LayoutBuilder(
                 builder: (context, constraints) {
@@ -55,20 +78,56 @@ class AuthSelectionScreen extends ConsumerWidget {
                           onTap: () => ref
                               .read(authNotifierProvider.notifier)
                               .startOAuth('garmin'),
-                          isLoading: authState.isLoading && authState.currentService == 'garmin',
+                          isLoading: authState.isLoading &&
+                              authState.currentService == 'garmin',
                         ),
                         const SizedBox(height: 24),
                         _buildServiceCard(
                           context: context,
-                          title: 'MyFitnessPal',
-                          subtitle: 'Calorie, macro, diario alimentare',
-                          icon: Icons.restaurant_outlined,
-                          color: const Color(0xFF37474F),
+                          title: 'Apple Health',
+                          subtitle:
+                              'Passi • Sonno • Calorie • Attività (da Salute iOS)',
+                          icon: Icons.favorite,
+                          color: const Color(0xFFE53935),
                           width: cardWidth,
-                          onTap: () => ref
-                              .read(authNotifierProvider.notifier)
-                              .startOAuth('myfitnesspal'),
-                          isLoading: authState.isLoading && authState.currentService == 'myfitnesspal',
+                          onTap: () async {
+                            await ref
+                                .read(authNotifierProvider.notifier)
+                                .startOAuth('health', onSuccess: () {
+                              if (context.mounted) {
+                                context.go(
+                                    kUseDemoData ? '/dashboard' : '/onboarding');
+                              }
+                            });
+                          },
+                          isLoading: authState.isLoading &&
+                              authState.currentService == 'health',
+                        ),
+                        if (showHealthSyncCard) ...[
+                          const SizedBox(height: 16),
+                          const HealthSyncStatusCard(),
+                        ],
+                        const SizedBox(height: 24),
+                        _buildServiceCard(
+                          context: context,
+                          title: 'Modalità demo',
+                          subtitle:
+                              'Simula Apple Health (sviluppo su Windows)',
+                          icon: Icons.science_outlined,
+                          color: const Color(0xFF6B7280),
+                          width: cardWidth,
+                          onTap: () async {
+                            await ref
+                                .read(authNotifierProvider.notifier)
+                                .startDemoHealth(onSuccess: () {
+                              if (context.mounted) {
+                                context.go(
+                                    kUseDemoData ? '/dashboard' : '/onboarding');
+                              }
+                            });
+                          },
+                          isLoading: authState.isLoading &&
+                              authState.currentService == 'demo',
                         ),
                       ],
                     ),
@@ -76,8 +135,6 @@ class AuthSelectionScreen extends ConsumerWidget {
                 },
               ),
             ),
-
-            // Footer minimal
             Text(
               'I tuoi dati restano privati e al sicuro',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -113,7 +170,7 @@ class AuthSelectionScreen extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.08),
+                    color: color.withValues(alpha: 0.08),
                     shape: BoxShape.circle,
                   ),
                   child: isLoading
@@ -122,11 +179,7 @@ class AuthSelectionScreen extends ConsumerWidget {
                           height: 48,
                           child: CircularProgressIndicator(strokeWidth: 3),
                         )
-                      : Icon(
-                          icon,
-                          size: 48,
-                          color: color,
-                        ),
+                      : Icon(icon, size: 48, color: color),
                 ),
                 const SizedBox(height: 20),
                 Text(

@@ -1,6 +1,8 @@
 import 'package:fitai_analyzer/models/fitness_data.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
+import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
+import 'package:fitai_analyzer/utils/demo_fitness_data.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,7 +14,22 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authNotifierProvider);
     final garminAsync = ref.watch(garminDataStreamProvider);
-    final mfpAsync = ref.watch(mfpDataStreamProvider);
+    final healthAsync = ref.watch(healthDataStreamProvider);
+
+    ref.listen(garminDataStreamProvider, (prev, next) {
+      next.whenOrNull(
+        error: (e, _) {
+          if (context.mounted) showErrorDialog(context, e.toString());
+        },
+      );
+    });
+    ref.listen(healthDataStreamProvider, (prev, next) {
+      next.whenOrNull(
+        error: (e, _) {
+          if (context.mounted) showErrorDialog(context, e.toString());
+        },
+      );
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -39,6 +56,29 @@ class DashboardScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (kUseDemoData)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.tertiaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.science, size: 20, color: Theme.of(context).colorScheme.onTertiaryContainer),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Dati simulati (Health Connect / Garmin / Apple Health)',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onTertiaryContainer,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             _WelcomeCard(userName: authState.user?.email ?? 'Utente'),
             const SizedBox(height: 24),
             garminAsync.when(
@@ -47,7 +87,7 @@ class DashboardScreen extends ConsumerWidget {
               error: (e, _) => _ErrorCard(message: e.toString()),
             ),
             const SizedBox(height: 16),
-            mfpAsync.when(
+            healthAsync.when(
               data: (data) => _CaloriesChartCard(data: data),
               loading: () => const _ChartSkeleton(),
               error: (e, _) => _ErrorCard(message: e.toString()),
@@ -75,7 +115,7 @@ class _WelcomeCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -125,7 +165,7 @@ class _StepsChartCard extends StatelessWidget {
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
         ),
       ),
       child: Column(
@@ -162,7 +202,7 @@ class _StepsChartCard extends StatelessWidget {
                             color: Theme.of(context)
                                 .colorScheme
                                 .primary
-                                .withOpacity(0.1),
+                                .withValues(alpha: 0.1),
                           ),
                         ),
                       ],
@@ -210,14 +250,14 @@ class _CaloriesChartCard extends StatelessWidget {
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Calorie (MFP)',
+            'Calorie (Apple Health)',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 16),
@@ -226,7 +266,7 @@ class _CaloriesChartCard extends StatelessWidget {
             child: barGroups.isEmpty
                 ? Center(
                     child: Text(
-                      'Nessun dato. Connetti MyFitnessPal per sincronizzare.',
+                      'Nessun dato. Connetti Apple Health per sincronizzare.',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   )

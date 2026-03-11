@@ -36,13 +36,13 @@ jobs:
           fi
           mkdir -p Payload
           cp -r "$RUNNER_APP" Payload/
-          cd Payload
-          zip -r ../FitAI-Analyzer.ipa .
-          cd ..
+          zip -r Payload.ipa Payload
+          echo "Struttura IPA (Payload/Runner.app):"
+          unzip -l Payload.ipa | head -20
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         if: success()
         with:
           name: FitAI-Analyzer-iOS
-          path: FitAI-Analyzer.ipa
+          path: Payload.ipa

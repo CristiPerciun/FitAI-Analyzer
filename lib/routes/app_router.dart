@@ -1,6 +1,8 @@
-import 'package:fitai_analyzer/features/auth/auth_selection_screen.dart';
-import 'package:fitai_analyzer/features/auth/login_screen.dart';
-import 'package:fitai_analyzer/features/dashboard/dashboard_screen.dart';
+import 'package:fitai_analyzer/ui/auth/auth_selection_screen.dart';
+import 'package:fitai_analyzer/ui/auth/login_screen.dart';
+import 'package:fitai_analyzer/ui/dashboard/dashboard_screen.dart';
+import 'package:fitai_analyzer/ui/onboarding/onboarding_details_screen.dart';
+import 'package:fitai_analyzer/ui/onboarding/onboarding_screen.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,7 +10,7 @@ import 'package:go_router/go_router.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final authRefresh = ValueNotifier(0);
-  ref.listen(authNotifierProvider, (_, __) => authRefresh.value++);
+  ref.listen(authNotifierProvider, (_, _) => authRefresh.value++);
 
   return GoRouter(
     refreshListenable: authRefresh,
@@ -32,6 +34,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/dashboard',
         builder: (context, state) => const DashboardScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding',
+        builder: (context, state) => const OnboardingScreen(),
+        routes: [
+          GoRoute(
+            path: 'details',
+            builder: (context, state) => const OnboardingDetailsScreen(),
+          ),
+        ],
       ),
     ],
   );
