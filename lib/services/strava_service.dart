@@ -102,6 +102,8 @@ class StravaActivity {
 class StravaService {
   static const String clientId = '210889';
   static const String clientSecret = '86f8945313e8f838bb08e074be926b2c09ab7a54';
+  /// Redirect URI per OAuth. In Strava (strava.com/settings/api) imposta
+  /// "Authorization Callback Domain" = myhealthsync
   static const String redirectUri = 'myhealthsync://strava/callback';
   static const String callbackScheme = 'myhealthsync';
 
@@ -159,7 +161,11 @@ class StravaService {
             defaultTargetPlatform == TargetPlatform.macOS ||
             defaultTargetPlatform == TargetPlatform.linux);
 
-    final String authUrlBase = 'https://www.strava.com/oauth/authorize?';
+    // Per mobile: Strava richiede oauth/mobile/authorize (non oauth/authorize)
+    // altrimenti può dare "redirect uri invalid" anche con Callback Domain corretto
+    final String authUrlBase = isMobile
+        ? 'https://www.strava.com/oauth/mobile/authorize?'
+        : 'https://www.strava.com/oauth/authorize?';
     final Map<String, String> params = {
       'client_id': clientId,
       'response_type': 'code',
@@ -171,7 +177,7 @@ class StravaService {
       params['redirect_uri'] = redirectUri;
 
       final authUrl = Uri.parse(authUrlBase).replace(queryParameters: params).toString();
-      debugPrint('Flutter su mobile → uso deep link: $redirectUri');
+      debugPrint('Flutter su mobile → oauth/mobile/authorize, redirect: $redirectUri');
 
       final result = await FlutterWebAuth2.authenticate(
         url: authUrl,

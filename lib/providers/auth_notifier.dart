@@ -5,6 +5,7 @@ import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/providers/strava_sync_status_notifier.dart';
 import 'package:fitai_analyzer/services/aggregation_service.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
+import 'package:fitai_analyzer/utils/strava_error_messages.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -57,9 +58,12 @@ class AuthNotifier extends Notifier<AuthState> {
         throw TimeoutException('Timeout connessione Strava (2 min)');
       });
     } catch (e) {
+      final userMsg = service == 'strava'
+          ? stravaErrorToUserMessage(e)
+          : e.toString();
       state = state.copyWith(
         isLoading: false,
-        error: e.toString(),
+        error: userMsg,
         currentService: null,
       );
       rethrow;
