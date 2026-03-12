@@ -1,7 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 
 /// Servizio per autenticazione Firebase.
-/// Estendere con Garmin/Health OAuth quando necessario.
+/// Estendere con Health OAuth quando necessario.
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 

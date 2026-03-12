@@ -1,11 +1,12 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
-import 'package:fitai_analyzer/providers/health_sync_status_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
-import 'package:fitai_analyzer/utils/api_constants.dart';
-import 'package:fitai_analyzer/utils/demo_fitness_data.dart';
+import 'package:fitai_analyzer/providers/strava_sync_status_notifier.dart';
+import 'package:fitai_analyzer/services/aggregation_service.dart';
+import 'package:fitai_analyzer/services/strava_service.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class AuthState {
   static const _omit = Object();
@@ -13,7 +14,7 @@ class AuthState {
   final User? user;
   final bool isLoading;
   final String? error;
-  final String? currentService; // 'garmin' | 'health' | 'demo'
+  final String? currentService; // 'strava' | ...
 
   AuthState({
     this.user,
@@ -43,215 +44,133 @@ class AuthNotifier extends Notifier<AuthState> {
   @override
   AuthState build() => AuthState();
 
-  /// Avvia OAuth o sync Health. Per Health, [isDemo] bypassa autenticazione
-  /// e simula la risposta (stessa UI, stesso flusso).
+  /// Avvia OAuth per il servizio specificato.
   Future<void> startOAuth(
     String service, {
-    bool isDemo = false,
     void Function()? onSuccess,
   }) async {
     state = state.copyWith(isLoading: true, currentService: service, error: null);
-    if (service != ApiConstants.healthServiceName) {
-      ref.read(healthSyncStatusProvider.notifier).reset();
-    }
 
     try {
-      if (FirebaseAuth.instance.currentUser == null) {
+      await _startOAuthImpl(service, onSuccess)
+          .timeout(const Duration(minutes: 2), onTimeout: () {
+        throw TimeoutException('Timeout connessione Strava (2 min)');
+      });
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: e.toString(),
+        currentService: null,
+      );
+      rethrow;
+    }
+  }
+
+  /// Esegue il flusso OAuth. Separato per il workaround Windows.
+  Future<void> _startOAuthImpl(
+    String service,
+    void Function()? onSuccess,
+  ) async {
+    if (FirebaseAuth.instance.currentUser == null) {
+      try {
+        await ref.read(authServiceProvider).signInAnonymously();
+        state = state.copyWith(user: FirebaseAuth.instance.currentUser);
+      } catch (e) {
+        throw StateError(
+          'Login anonimo Firebase fallito. Errore originale: $e\n'
+          'Verifica: google-services.json (Android), GoogleService-Info.plist (iOS), '
+          'progetto Firebase con Auth anonima abilitata.',
+        );
+      }
+    }
+
+    if (service == 'strava') {
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (uid == null) {
+          throw StateError('Utente non autenticato. Riprova.');
+        }
+
+        final statusNotifier = ref.read(stravaSyncStatusProvider.notifier);
+        statusNotifier.reset();
+
+        statusNotifier.setPhase(
+          StravaSyncPhase.connecting,
+          message: 'Connessione a Strava...',
+        );
+
+        List<StravaActivity> activities;
         try {
-          await ref.read(authServiceProvider).signInAnonymously();
+          await ref.read(stravaServiceProvider).authenticate();
+          activities = await ref.read(stravaServiceProvider).getRecentActivities(days: 30);
         } catch (e) {
-          throw StateError(
-            'Login anonimo Firebase fallito. Errore originale: $e\n'
-            'Verifica: google-services.json (Android), GoogleService-Info.plist (iOS), '
-            'progetto Firebase con Auth anonima abilitata.',
-          );
-        }
-      }
-
-      if (service == ApiConstants.healthServiceName) {
-        await _runHealthSyncWithPhases(onSuccess, isDemo: isDemo);
-        return;
-      }
-
-      if (service == 'garmin') {
-        final clientId = ApiConstants.garminClientId;
-        if (clientId.isEmpty || clientId.startsWith('INSERISCI_QUI')) {
-          throw StateError('Configura garminClientId in lib/utils/api_constants.dart');
-        }
-        final authUrl = await ref.read(garminServiceProvider).getAuthorizationUrl(
-              clientId: clientId,
-              redirectUri: ApiConstants.garminRedirectUri,
+          // Token senza activity:read_all? Riprova con nuova autorizzazione
+          final msg = e.toString();
+          if (msg.contains('permessi') ||
+              msg.contains('activity:read_permission') ||
+              msg.contains('activity:read_all')) {
+            statusNotifier.setPhase(
+              StravaSyncPhase.connecting,
+              message: 'Nuova autorizzazione Strava (permessi attività)...',
             );
-        final uri = Uri.parse(authUrl);
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-        } else {
-          throw StateError('Impossibile aprire: $authUrl');
+            await ref.read(stravaServiceProvider).authenticate();
+            activities = await ref.read(stravaServiceProvider).getRecentActivities(days: 30);
+          } else {
+            rethrow;
+          }
         }
-      } else {
-        throw ArgumentError('Servizio non supportato: $service');
+
+        statusNotifier.setPhase(
+          StravaSyncPhase.connecting,
+          message: 'Salvataggio su Firestore...',
+        );
+        await ref.read(stravaServiceProvider).saveToFirestore(uid, activities);
+
+        statusNotifier.setPhase(
+          StravaSyncPhase.completed,
+          message: 'Dati Strava salvati!',
+        );
+
+        // Aggiorna Livello 2 e 3 (rolling_10days + baseline)
+        try {
+          await ref.read(aggregationServiceProvider).updateRolling10DaysAndBaseline(uid);
+        } catch (_) {
+          // Non bloccare: aggregazione opzionale
+        }
+
+        state = state.copyWith(isLoading: false, currentService: null);
+        onSuccess?.call();
+        return;
+    } else {
+      throw ArgumentError('Servizio non supportato: $service');
+    }
+  }
+
+  /// Esegue [fn] sul platform thread (workaround firebase_auth Windows).
+  /// Deferisce di un frame per ridurre errori "non-platform thread".
+  Future<void> _runOnPlatformThread(Future<void> Function() fn) async {
+    final completer = Completer<void>();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await fn();
+        completer.complete();
+      } catch (e) {
+        completer.completeError(e);
       }
-
-      state = state.copyWith(isLoading: false, currentService: null);
-    } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        error: e.toString(),
-        currentService: null,
-      );
-      rethrow;
-    }
-  }
-
-  /// Esegue sync Health: reale su iOS, simulato con [isDemo] (bypass auth).
-  /// Stessa UI (HealthSyncStatusCard) per entrambi.
-  Future<void> _runHealthSyncWithPhases(
-    void Function()? onSuccess, {
-    bool isDemo = false,
-  }) async {
-    final statusNotifier = ref.read(healthSyncStatusProvider.notifier);
-    statusNotifier.reset();
-
-    try {
-      if (isDemo) {
-        await _runHealthSyncDemo(statusNotifier, onSuccess);
-      } else {
-        await _runHealthSyncReal(statusNotifier, onSuccess);
-      }
-    } catch (e) {
-      statusNotifier.setError(e.toString());
-      state = state.copyWith(
-        isLoading: false,
-        error: e.toString(),
-        currentService: null,
-      );
-      rethrow;
-    }
-  }
-
-  Future<void> _runHealthSyncReal(
-    HealthSyncStatusNotifier statusNotifier,
-    void Function()? onSuccess,
-  ) async {
-    statusNotifier.setPhase(
-      HealthSyncPhase.configuring,
-      message: 'Configurazione plugin Health...',
-    );
-    await ref.read(healthServiceProvider).configure();
-
-    statusNotifier.setPhase(
-      HealthSyncPhase.requestingPermissions,
-      message: 'Richiesta permessi a Apple Health...',
-    );
-    final granted = await ref.read(healthServiceProvider).requestPermissions();
-
-    statusNotifier.setPhase(
-      HealthSyncPhase.permissionsResult,
-      message: granted ? 'Permessi concessi' : 'Permessi negati',
-      rawResponse: {'granted': granted},
-    );
-    if (!granted) {
-      throw StateError(
-        'Autorizzazione Health non concessa. '
-        'Se la schermata Apple Health non è mai apparsa, l\'app potrebbe essere '
-        'installata con Sideloadly e Apple ID gratuito. HealthKit richiede un '
-        'account Apple Developer a pagamento (\$99/anno). '
-        'Compila da Xcode con il tuo Mac e account Developer per usare Apple Health.',
-      );
-    }
-
-    statusNotifier.setPhase(
-      HealthSyncPhase.fetchingData,
-      message: 'Chiamata a getHealthDataFromTypes...',
-    );
-    final (rawJson, processed) =
-        await ref.read(healthServiceProvider).fetchDataWithRaw();
-
-    statusNotifier.setPhase(
-      HealthSyncPhase.dataReceived,
-      message: 'Risposta ricevuta (${rawJson.length} punti raw)',
-      rawResponse: rawJson,
-    );
-
-    statusNotifier.setPhase(
-      HealthSyncPhase.savingToFirestore,
-      message: 'Salvataggio su Firestore...',
-    );
-    await ref.read(dataSyncNotifierProvider.notifier).saveHealthData(processed);
-
-    statusNotifier.setPhase(
-      HealthSyncPhase.complete,
-      message: 'Sync completato',
-    );
-    state = state.copyWith(isLoading: false, currentService: null);
-    onSuccess?.call();
-  }
-
-  /// Simula le stesse fasi di Health bypassando auth. Stessa UI.
-  Future<void> _runHealthSyncDemo(
-    HealthSyncStatusNotifier statusNotifier,
-    void Function()? onSuccess,
-  ) async {
-    const delay = Duration(milliseconds: 400);
-
-    statusNotifier.setPhase(
-      HealthSyncPhase.configuring,
-      message: 'Configurazione plugin Health (demo)...',
-    );
-    await Future.delayed(delay);
-
-    statusNotifier.setPhase(
-      HealthSyncPhase.requestingPermissions,
-      message: 'Richiesta permessi (bypass in demo)...',
-    );
-    await Future.delayed(delay);
-
-    statusNotifier.setPhase(
-      HealthSyncPhase.permissionsResult,
-      message: 'Permessi concessi (simulato)',
-      rawResponse: {'granted': true, 'demo': true},
-    );
-    await Future.delayed(delay);
-
-    statusNotifier.setPhase(
-      HealthSyncPhase.fetchingData,
-      message: 'Chiamata a getHealthDataFromTypes (demo)...',
-    );
-    await Future.delayed(delay);
-
-    final data = getDemoHealthData();
-    final rawJson = data.map((d) => d.toJson()).toList();
-
-    statusNotifier.setPhase(
-      HealthSyncPhase.dataReceived,
-      message: 'Risposta ricevuta (${rawJson.length} punti demo)',
-      rawResponse: rawJson,
-    );
-    await Future.delayed(delay);
-
-    statusNotifier.setPhase(
-      HealthSyncPhase.savingToFirestore,
-      message: 'Salvataggio su Firestore...',
-    );
-    await ref.read(dataSyncNotifierProvider.notifier).saveHealthData(data);
-
-    statusNotifier.setPhase(
-      HealthSyncPhase.complete,
-      message: 'Sync completato (demo)',
-    );
-    state = state.copyWith(isLoading: false, currentService: null);
-    onSuccess?.call();
+    });
+    return completer.future;
   }
 
   Future<void> signInAnonymously() async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      await ref.read(authServiceProvider).signInAnonymously();
-      state = state.copyWith(
-        user: FirebaseAuth.instance.currentUser,
-        isLoading: false,
-        error: null,
-      );
+      await _runOnPlatformThread(() async {
+        await ref.read(authServiceProvider).signInAnonymously();
+        state = state.copyWith(
+          user: FirebaseAuth.instance.currentUser,
+          isLoading: false,
+          error: null,
+        );
+      });
     } catch (e) {
       state = state.copyWith(
         error: e.toString(),
@@ -264,8 +183,10 @@ class AuthNotifier extends Notifier<AuthState> {
   Future<void> signOut() async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      await ref.read(authServiceProvider).signOut();
-      state = AuthState();
+      await _runOnPlatformThread(() async {
+        await ref.read(authServiceProvider).signOut();
+        state = AuthState();
+      });
     } catch (e) {
       state = state.copyWith(error: e.toString(), isLoading: false);
       rethrow;

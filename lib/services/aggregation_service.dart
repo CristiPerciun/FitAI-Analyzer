@@ -1,0 +1,400 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../models/baseline_profile_model.dart';
+import '../models/daily_log_model.dart';
+import '../models/rolling_10days_model.dart';
+
+final aggregationServiceProvider =
+    Provider<AggregationService>((ref) => AggregationService());
+
+class AggregationService {
+  static const int _baselineUpdateIntervalDays = 10;
+
+  /// Aggiorna Livello 2 (rolling_10days) e, se necessario, Livello 3 (baseline_profile).
+  Future<void> updateRolling10DaysAndBaseline(String uid) async {
+    final firestore = FirebaseFirestore.instance;
+    final dailyLogsRef = firestore
+        .collection('users')
+        .doc(uid)
+        .collection('daily_logs');
+
+    // 1. Leggi ultimi 10 daily_logs (ordinati per data desc)
+    final today = DateTime.now();
+    final tenDaysAgo = today.subtract(const Duration(days: 10));
+    final startDateStr = tenDaysAgo.toIso8601String().split('T')[0];
+    final endDateStr = today.toIso8601String().split('T')[0];
+
+    final snapshot = await dailyLogsRef
+        .where(FieldPath.documentId, isGreaterThanOrEqualTo: startDateStr)
+        .where(FieldPath.documentId, isLessThanOrEqualTo: endDateStr)
+        .orderBy(FieldPath.documentId, descending: true)
+        .limit(10)
+        .get();
+
+    final dailyLogs = snapshot.docs.map((d) {
+      final data = d.data();
+      return DailyLogModel.fromJson({
+        ...data,
+        'date': d.id,
+        'goal_today': data['goal_today'] ?? 'dimagrire',
+        'timestamp': data['timestamp'] ?? Timestamp.now(),
+      });
+    }).toList();
+
+    // Ordina per data crescente (dal più vecchio al più recente)
+    dailyLogs.sort((a, b) => a.date.compareTo(b.date));
+
+    // 2. Calcola aggregati
+    final rolling = _computeRolling10Days(dailyLogs);
+
+    // 3. Salva in rolling_10days/current
+    await firestore
+        .collection('users')
+        .doc(uid)
+        .collection('rolling_10days')
+        .doc('current')
+        .set(rolling.toJson());
+
+    // 4. Verifica se aggiornare baseline (ogni 10 giorni)
+    final baselineRef = firestore
+        .collection('users')
+        .doc(uid)
+        .collection('baseline_profile')
+        .doc('main');
+
+    final baselineDoc = await baselineRef.get();
+    DateTime? lastBaseline = baselineDoc.exists
+        ? (baselineDoc.data()?['last_baseline_update'] as Timestamp?)?.toDate()
+        : null;
+
+    final shouldUpdateBaseline = lastBaseline == null ||
+        today.difference(lastBaseline).inDays >= _baselineUpdateIntervalDays;
+
+    if (shouldUpdateBaseline) {
+      final baseline = await _computeBaselineProfile(
+        uid: uid,
+        firestore: firestore,
+        dailyLogs: dailyLogs,
+        rolling: rolling,
+      );
+      await baselineRef.set(baseline.toJson());
+    }
+  }
+
+  Rolling10DaysModel _computeRolling10Days(List<DailyLogModel> dailyLogs) {
+    double totalDistanceKm = 0;
+    int totalZone2Minutes = 0;
+    double sumHr = 0;
+    int hrCount = 0;
+    double? bestVo2FromPace;
+    final activitiesSummary = <Map<String, dynamic>>[];
+    final macroSums = <String, double>{'protein_g': 0, 'carbs_g': 0, 'fat_g': 0, 'calories': 0};
+    int macroDays = 0;
+
+    for (final log in dailyLogs) {
+      double dayDistance = 0;
+      int dayZone2Min = 0;
+      double? dayAvgHr;
+      double? dayMaxHr;
+
+      for (final act in log.stravaActivities) {
+        final distM = (act['distance'] as num?)?.toDouble() ?? 0;
+        final distKm = distM / 1000;
+        dayDistance += distKm;
+
+        final elapsedSec = (act['elapsed_time'] as num?)?.toInt() ??
+            (act['moving_time'] as num?)?.toInt() ??
+            0;
+        final elapsedMin = elapsedSec / 60;
+
+        final avgHr = (act['average_heartrate'] as num?)?.toDouble();
+        final maxHr = (act['max_heartrate'] as num?)?.toDouble();
+
+        if (avgHr != null) {
+          dayAvgHr ??= 0;
+          dayAvgHr = (dayAvgHr * (hrCount > 0 ? 1 : 0) + avgHr) / (hrCount + 1);
+          sumHr += avgHr;
+          hrCount++;
+        }
+        if (maxHr != null) dayMaxHr = dayMaxHr != null ? (dayMaxHr > maxHr ? dayMaxHr : maxHr) : maxHr;
+
+        // Zone 2 stimato: 60-70% max HR (Peter Attia). Se avg in range, conta minuti.
+        final maxForZone2 = maxHr ?? 180; // fallback
+        final zone2Low = maxForZone2 * 0.60;
+        final zone2High = maxForZone2 * 0.70;
+        if (avgHr != null && avgHr >= zone2Low && avgHr <= zone2High) {
+          dayZone2Min += elapsedMin.round();
+        } else if (avgHr != null && avgHr < zone2High) {
+          // Sotto zona 2: conta metà come "cardio leggero"
+          dayZone2Min += (elapsedMin * 0.5).round();
+        }
+      }
+
+      totalDistanceKm += dayDistance;
+      totalZone2Minutes += dayZone2Min;
+
+      // VO2max stimato da pace corsa (formula semplificata: pace 5 min/km ≈ 50 VO2)
+      for (final act in log.stravaActivities) {
+        final sport = (act['sport_type'] ?? act['type'] ?? '').toString().toLowerCase();
+        if (sport.contains('run') || sport == 'run') {
+          final distM = (act['distance'] as num?)?.toDouble() ?? 0;
+          final movingSec = (act['moving_time'] as num?)?.toInt() ?? 0;
+          if (distM > 0 && movingSec > 0) {
+            final paceMinPerKm = (movingSec / 60) / (distM / 1000);
+            // Formula semplificata: VO2 ≈ 2.8 + 3.5 * (1000/pace_sec_per_km)
+            final vo2 = 2.8 + (3.5 * 1000 / (paceMinPerKm * 60));
+            final current = bestVo2FromPace;
+            if (current == null || vo2 > current) {
+              bestVo2FromPace = vo2;
+            }
+          }
+        }
+      }
+
+      activitiesSummary.add({
+        'date': log.date,
+        'distance_km': dayDistance,
+        'zone2_minutes': dayZone2Min,
+        'total_burned_kcal': log.totalBurnedKcal,
+      });
+
+      // Macro da nutrition_gemini
+      final nut = log.nutritionGemini;
+      if (nut.isNotEmpty) {
+        macroDays++;
+        macroSums['protein_g'] = macroSums['protein_g']! +
+            ((nut['protein_g'] ?? nut['protein'] ?? 0) as num).toDouble();
+        macroSums['carbs_g'] = macroSums['carbs_g']! +
+            ((nut['carbs_g'] ?? nut['carbs'] ?? 0) as num).toDouble();
+        macroSums['fat_g'] = macroSums['fat_g']! +
+            ((nut['fat_g'] ?? nut['fat'] ?? 0) as num).toDouble();
+        macroSums['calories'] = macroSums['calories']! +
+            ((nut['total_calories'] ?? nut['calories'] ?? 0) as num).toDouble();
+      }
+    }
+
+    final avgHr = hrCount > 0 ? sumHr / hrCount : 0.0;
+    final estimatedVo2 = bestVo2FromPace ?? 35.0 + (totalDistanceKm / 10);
+
+    final macroAverages = <String, double>{};
+    if (macroDays > 0) {
+      for (final e in macroSums.entries) {
+        macroAverages[e.key] = e.value / macroDays;
+      }
+    }
+
+    return Rolling10DaysModel(
+      activitiesSummary: activitiesSummary,
+      totalDistanceKm: totalDistanceKm,
+      totalZone2Minutes: totalZone2Minutes,
+      avgHr: avgHr,
+      macroAverages: macroAverages,
+      estimatedVo2Max: estimatedVo2,
+      lastUpdated: DateTime.now(),
+    );
+  }
+
+  Future<BaselineProfileModel> _computeBaselineProfile({
+    required String uid,
+    required FirebaseFirestore firestore,
+    required List<DailyLogModel> dailyLogs,
+    required Rolling10DaysModel rolling,
+  }) async {
+    final year = DateTime.now().year;
+    final startOfYear = '$year-01-01';
+    final todayStr = DateTime.now().toIso8601String().split('T')[0];
+
+    final snapshot = await firestore
+        .collection('users')
+        .doc(uid)
+        .collection('daily_logs')
+        .where(FieldPath.documentId, isGreaterThanOrEqualTo: startOfYear)
+        .where(FieldPath.documentId, isLessThanOrEqualTo: todayStr)
+        .get();
+
+    final allLogs = snapshot.docs.map((d) {
+      final data = d.data();
+      return DailyLogModel.fromJson({
+        ...data,
+        'date': d.id,
+        'goal_today': data['goal_today'] ?? 'dimagrire',
+        'timestamp': data['timestamp'] ?? Timestamp.now(),
+      });
+    }).toList();
+    allLogs.sort((a, b) => a.date.compareTo(b.date));
+
+    // Goal: da daily_logs più frequente o default
+    String goal = 'dimagrire';
+    final goalCounts = <String, int>{};
+    for (final log in allLogs) {
+      final g = log.goalToday;
+      if (g.isNotEmpty) {
+        goalCounts[g] = (goalCounts[g] ?? 0) + 1;
+      }
+    }
+    if (goalCounts.isNotEmpty) {
+      goal = goalCounts.entries.reduce((a, b) => a.value > b.value ? a : b).key;
+    }
+
+    // Annual stats
+    double totalKm = 0;
+    int totalWorkouts = 0;
+    double weightSum = 0;
+    int weightCount = 0;
+    for (final log in allLogs) {
+      for (final act in log.stravaActivities) {
+        totalKm += ((act['distance'] as num?)?.toDouble() ?? 0) / 1000;
+        totalWorkouts++;
+      }
+      if (log.weightKg != null) {
+        weightSum += log.weightKg!;
+        weightCount++;
+      }
+    }
+
+    final annualStats = <String, dynamic>{
+      'total_km_$year': totalKm,
+      'total_workouts': totalWorkouts,
+      'avg_weight': weightCount > 0 ? weightSum / weightCount : null,
+    };
+
+    // Monthly trends (12 mesi)
+    final monthlyTrends = <Map<String, dynamic>>[];
+    for (var m = 1; m <= 12; m++) {
+      final monthStr = m.toString().padLeft(2, '0');
+      final monthLogs = allLogs.where((l) => l.date.startsWith('$year-$monthStr')).toList();
+      double mKm = 0;
+      int mWorkouts = 0;
+      for (final log in monthLogs) {
+        for (final act in log.stravaActivities) {
+          mKm += ((act['distance'] as num?)?.toDouble() ?? 0) / 1000;
+          mWorkouts++;
+        }
+      }
+      monthlyTrends.add({
+        'month': m,
+        'year': year,
+        'total_km': mKm,
+        'workouts': mWorkouts,
+      });
+    }
+
+    // Key metrics Attia (Outlive)
+    final zone2Weekly = (rolling.totalZone2Minutes / 10) * 7; // media settimanale
+    final keyMetricsAttia = <String, dynamic>{
+      'estimated_vo2': rolling.estimatedVo2Max,
+      'zone2_volume_weekly_avg': zone2Weekly.round(),
+      'strength_score': 75, // placeholder - da integrare con dati forza
+      'visceral_fat_estimate': 'basso', // placeholder - da composizione corporea
+      'hr_recovery_avg': 45, // placeholder - da dati HR
+    };
+
+    // Evolution notes (testo generato)
+    final evolutionNotes = _buildEvolutionNotes(
+      allLogs: allLogs,
+      annualStats: annualStats,
+      year: year,
+    );
+
+    // AI-ready summary (4000+ caratteri, riferimenti Attia)
+    final aiReadySummary = _buildAiReadySummary(
+      goal: goal,
+      annualStats: annualStats,
+      keyMetricsAttia: keyMetricsAttia,
+      monthlyTrends: monthlyTrends,
+      evolutionNotes: evolutionNotes,
+      rolling: rolling,
+    );
+
+    return BaselineProfileModel(
+      goal: goal,
+      annualStats: annualStats,
+      monthlyTrends: monthlyTrends,
+      keyMetricsAttia: keyMetricsAttia,
+      evolutionNotes: evolutionNotes,
+      aiReadySummary: aiReadySummary,
+      lastBaselineUpdate: DateTime.now(),
+      references: [
+        'Outlive - Peter Attia (Zone 2, longevità)',
+        'Università Stanford - VO2max e mortalità',
+        'ACSM - Linee guida esercizio cardiovascolare',
+      ],
+    );
+  }
+
+  String _buildEvolutionNotes({
+    required List<DailyLogModel> allLogs,
+    required Map<String, dynamic> annualStats,
+    required int year,
+  }) {
+    if (allLogs.isEmpty) return 'Nessun dato sufficiente per analisi evolutiva.';
+
+    final totalKm = (annualStats['total_km_$year'] as num?)?.toDouble() ?? 0;
+    final workouts = annualStats['total_workouts'] as int? ?? 0;
+    final avgWeight = annualStats['avg_weight'] as double?;
+
+    final firstDate = allLogs.first.date;
+    final lastDate = allLogs.last.date;
+
+    final sb = StringBuffer();
+    sb.write('Da $firstDate a $lastDate: ');
+    sb.write('$totalKm km totali, $workouts allenamenti. ');
+    if (avgWeight != null) {
+      sb.write('Peso medio: ${avgWeight.toStringAsFixed(1)} kg. ');
+    }
+    sb.write('Progressione tracciata per ottimizzare obiettivi di longevità.');
+
+    return sb.toString();
+  }
+
+  String _buildAiReadySummary({
+    required String goal,
+    required Map<String, dynamic> annualStats,
+    required Map<String, dynamic> keyMetricsAttia,
+    required List<Map<String, dynamic>> monthlyTrends,
+    required String evolutionNotes,
+    required Rolling10DaysModel rolling,
+  }) {
+    final year = DateTime.now().year;
+    final totalKm = (annualStats['total_km_$year'] as num?)?.toDouble() ?? 0;
+    final workouts = annualStats['total_workouts'] as int? ?? 0;
+    final vo2 = (keyMetricsAttia['estimated_vo2'] as num?)?.toDouble() ?? 0;
+    final zone2Weekly = (keyMetricsAttia['zone2_volume_weekly_avg'] as num?)?.toInt() ?? 0;
+
+    final sb = StringBuffer();
+    sb.writeln('=== PROFILO FITNESS AI-READY (FitAI Analyzer) ===');
+    sb.writeln();
+    sb.writeln('OBIETTIVO: $goal');
+    sb.writeln();
+    sb.writeln('--- STATISTICHE ANNUALI $year ---');
+    sb.writeln('Distanza totale: ${totalKm.toStringAsFixed(1)} km');
+    sb.writeln('Allenamenti totali: $workouts');
+    sb.writeln();
+    sb.writeln('--- METRICHE LONGEVITÀ (riferimenti Peter Attia, Outlive) ---');
+    sb.writeln('VO2max stimato: ${vo2.toStringAsFixed(1)} ml/kg/min');
+    sb.writeln('Volume Zone 2 settimanale medio: $zone2Weekly minuti');
+    sb.writeln('Zone 2 (60-70% max HR) è fondamentale per salute mitocondriale e longevità.');
+    sb.writeln();
+    sb.writeln('--- ULTIMI 10 GIORNI ---');
+    sb.writeln('Distanza: ${rolling.totalDistanceKm.toStringAsFixed(1)} km');
+    sb.writeln('Zone 2 totale: ${rolling.totalZone2Minutes} min');
+    sb.writeln('FC media: ${rolling.avgHr.toStringAsFixed(0)} bpm');
+    sb.writeln();
+    sb.writeln('--- TREND MENSILI ---');
+    for (final m in monthlyTrends) {
+      final km = (m['total_km'] as num?)?.toDouble() ?? 0;
+      final w = m['workouts'] as int? ?? 0;
+      sb.writeln('Mese ${m['month']}: $km km, $w allenamenti');
+    }
+    sb.writeln();
+    sb.writeln('--- EVOLUZIONE ---');
+    sb.writeln(evolutionNotes);
+    sb.writeln();
+    sb.writeln('--- RIFERIMENTI ---');
+    sb.writeln('Peter Attia, Outlive: Zone 2, VO2max, forza, composizione corporea.');
+    sb.writeln('Studi Stanford: correlazione VO2max e mortalità.');
+
+    return sb.toString();
+  }
+}

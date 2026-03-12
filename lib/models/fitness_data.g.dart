@@ -15,6 +15,14 @@ FitnessData _$FitnessDataFromJson(Map<String, dynamic> json) => FitnessData(
   distanceKm: (json['distanceKm'] as num?)?.toDouble(),
   activeMinutes: (json['activeMinutes'] as num?)?.toDouble(),
   raw: json['raw'] as Map<String, dynamic>?,
+  activityType: json['activityType'] as String?,
+  activityName: json['activityName'] as String?,
+  deviceName: json['deviceName'] as String?,
+  elevationGainM: (json['elevationGainM'] as num?)?.toDouble(),
+  avgHeartrate: (json['avgHeartrate'] as num?)?.toDouble(),
+  maxHeartrate: (json['maxHeartrate'] as num?)?.toDouble(),
+  avgSpeedKmh: (json['avgSpeedKmh'] as num?)?.toDouble(),
+  elapsedMinutes: (json['elapsedMinutes'] as num?)?.toDouble(),
 );
 
 Map<String, dynamic> _$FitnessDataToJson(FitnessData instance) =>
@@ -27,4 +35,12 @@ Map<String, dynamic> _$FitnessDataToJson(FitnessData instance) =>
       'distanceKm': instance.distanceKm,
       'activeMinutes': instance.activeMinutes,
       'raw': instance.raw,
+      'activityType': instance.activityType,
+      'activityName': instance.activityName,
+      'deviceName': instance.deviceName,
+      'elevationGainM': instance.elevationGainM,
+      'avgHeartrate': instance.avgHeartrate,
+      'maxHeartrate': instance.maxHeartrate,
+      'avgSpeedKmh': instance.avgSpeedKmh,
+      'elapsedMinutes': instance.elapsedMinutes,
     };

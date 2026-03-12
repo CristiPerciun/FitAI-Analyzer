@@ -1,28 +1,8 @@
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
-import 'package:fitai_analyzer/providers/health_sync_status_notifier.dart';
-import 'package:fitai_analyzer/ui/auth/health_sync_status_card.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
-import 'package:fitai_analyzer/utils/demo_fitness_data.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-
-/// Avvia il flusso Health (stessa UI per reale e demo).
-Future<void> _startHealthFlow(
-  WidgetRef ref,
-  BuildContext context, {
-  required bool isDemo,
-}) async {
-  await ref.read(authNotifierProvider.notifier).startOAuth(
-        'health',
-        isDemo: isDemo,
-        onSuccess: () {
-          if (context.mounted) {
-            context.go(kUseDemoData ? '/dashboard' : '/onboarding');
-          }
-        },
-      );
-}
 
 class AuthSelectionScreen extends ConsumerWidget {
   const AuthSelectionScreen({super.key});
@@ -30,23 +10,11 @@ class AuthSelectionScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authNotifierProvider);
-    final healthSyncStatus = ref.watch(healthSyncStatusProvider);
-    final showHealthSyncCard = authState.currentService == 'health' ||
-        healthSyncStatus.phase == HealthSyncPhase.error;
 
     ref.listen(authNotifierProvider, (prev, next) {
       if (next.error != null &&
           next.error!.isNotEmpty &&
           next.error != prev?.error &&
-          context.mounted) {
-        showErrorDialog(context, next.error!);
-      }
-    });
-
-    ref.listen(healthSyncStatusProvider, (prev, next) {
-      if (next.phase == HealthSyncPhase.error &&
-          next.error != null &&
-          prev?.phase != HealthSyncPhase.error &&
           context.mounted) {
         showErrorDialog(context, next.error!);
       }
@@ -87,46 +55,35 @@ class AuthSelectionScreen extends ConsumerWidget {
                       children: [
                         _buildServiceCard(
                           context: context,
-                          title: 'Garmin Connect',
-                          subtitle: 'Passi, sonno, allenamenti, HR',
-                          icon: Icons.watch_outlined,
-                          color: const Color(0xFF37474F),
+                          title: 'Alimentazione',
+                          subtitle: 'Registra i tuoi pasti (foto piatto con Gemini)',
+                          icon: Icons.restaurant,
+                          color: const Color(0xFF2E7D32),
+                          width: cardWidth,
+                          onTap: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Registrazione alimentazione - in arrivo'),
+                              ),
+                            );
+                          },
+                          isLoading: false,
+                        ),
+                        const SizedBox(height: 24),
+                        _buildServiceCard(
+                          context: context,
+                          title: 'Strava',
+                          subtitle: 'Allenamenti e attività',
+                          icon: Icons.directions_bike,
+                          color: const Color(0xFFFC4C02),
                           width: cardWidth,
                           onTap: () => ref
                               .read(authNotifierProvider.notifier)
-                              .startOAuth('garmin'),
+                              .startOAuth('strava', onSuccess: () {
+                            if (context.mounted) context.go('/dashboard');
+                          }),
                           isLoading: authState.isLoading &&
-                              authState.currentService == 'garmin',
-                        ),
-                        const SizedBox(height: 24),
-                        _buildServiceCard(
-                          context: context,
-                          title: 'Apple Health',
-                          subtitle:
-                              'Passi • Sonno • Calorie • Attività (da Salute iOS)',
-                          icon: Icons.favorite,
-                          color: const Color(0xFFE53935),
-                          width: cardWidth,
-                          onTap: () => _startHealthFlow(ref, context, isDemo: false),
-                          isLoading: authState.isLoading &&
-                              authState.currentService == 'health',
-                        ),
-                        if (showHealthSyncCard) ...[
-                          const SizedBox(height: 16),
-                          const HealthSyncStatusCard(),
-                        ],
-                        const SizedBox(height: 24),
-                        _buildServiceCard(
-                          context: context,
-                          title: 'Modalità demo',
-                          subtitle:
-                              'Simula Apple Health (stessa UI, bypass auth)',
-                          icon: Icons.science_outlined,
-                          color: const Color(0xFF6B7280),
-                          width: cardWidth,
-                          onTap: () => _startHealthFlow(ref, context, isDemo: true),
-                          isLoading: authState.isLoading &&
-                              authState.currentService == 'health',
+                              authState.currentService == 'strava',
                         ),
                       ],
                     ),

@@ -4,21 +4,6 @@ Guida rapida per compilare e installare l'app sul tuo iPhone (Apple ID gratuito)
 
 ---
 
-## Senza Apple ID? Usa la modalità demo
-
-Se **non hai ancora Apple ID** o non puoi collegare Garmin/MyFitnessPal:
-
-1. Avvia l'app (emulatore, web o dispositivo)
-2. Nella schermata iniziale scegli **"Modalità demo"**
-3. L'app usa dati simulati (passi, calorie) che imitano Health Connect / Garmin / Apple Health
-4. Puoi sviluppare e testare la dashboard senza OAuth né iPhone
-
-**Sviluppo su Windows**: la Modalità demo simula il flusso Apple Health (login + sync dati). Usala per sviluppare su Windows come se fossi su iPhone con Health.
-
-Per disattivare i dati demo e usare dati reali, imposta `kUseDemoData = false` in `lib/utils/demo_fitness_data.dart`.
-
----
-
 ## ✅ Passo 1 – Carica il progetto su GitHub (FATTO)
 
 Se devi rifarlo da zero:
@@ -50,6 +35,8 @@ git push -u origin main
 ## ✅ Passo 2 – GitHub Actions (GIÀ CONFIGURATO)
 
 Il workflow `.github/workflows/build-ios.yml` è già presente. Si avvia automaticamente ad ogni push su `main`.
+
+> **Prima di usare l'app su iPhone**: leggi `docs/IOS_SETUP.md` per Strava API, Firebase e troubleshooting.
 
 ---
 
