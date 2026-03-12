@@ -7,6 +7,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+/// Avvia il flusso Health (stessa UI per reale e demo).
+Future<void> _startHealthFlow(
+  WidgetRef ref,
+  BuildContext context, {
+  required bool isDemo,
+}) async {
+  await ref.read(authNotifierProvider.notifier).startOAuth(
+        'health',
+        isDemo: isDemo,
+        onSuccess: () {
+          if (context.mounted) {
+            context.go(kUseDemoData ? '/dashboard' : '/onboarding');
+          }
+        },
+      );
+}
+
 class AuthSelectionScreen extends ConsumerWidget {
   const AuthSelectionScreen({super.key});
 
@@ -90,16 +107,7 @@ class AuthSelectionScreen extends ConsumerWidget {
                           icon: Icons.favorite,
                           color: const Color(0xFFE53935),
                           width: cardWidth,
-                          onTap: () async {
-                            await ref
-                                .read(authNotifierProvider.notifier)
-                                .startOAuth('health', onSuccess: () {
-                              if (context.mounted) {
-                                context.go(
-                                    kUseDemoData ? '/dashboard' : '/onboarding');
-                              }
-                            });
-                          },
+                          onTap: () => _startHealthFlow(ref, context, isDemo: false),
                           isLoading: authState.isLoading &&
                               authState.currentService == 'health',
                         ),
@@ -112,22 +120,13 @@ class AuthSelectionScreen extends ConsumerWidget {
                           context: context,
                           title: 'Modalità demo',
                           subtitle:
-                              'Simula Apple Health (sviluppo su Windows)',
+                              'Simula Apple Health (stessa UI, bypass auth)',
                           icon: Icons.science_outlined,
                           color: const Color(0xFF6B7280),
                           width: cardWidth,
-                          onTap: () async {
-                            await ref
-                                .read(authNotifierProvider.notifier)
-                                .startDemoHealth(onSuccess: () {
-                              if (context.mounted) {
-                                context.go(
-                                    kUseDemoData ? '/dashboard' : '/onboarding');
-                              }
-                            });
-                          },
+                          onTap: () => _startHealthFlow(ref, context, isDemo: true),
                           isLoading: authState.isLoading &&
-                              authState.currentService == 'demo',
+                              authState.currentService == 'health',
                         ),
                       ],
                     ),

@@ -67,7 +67,16 @@ class DataSyncNotifier extends StateNotifier<DataSyncState> {
 
   Future<void> _saveHealthDataToFirestore(List<FitnessData> data) async {
     final uid = _userId;
-    if (uid != null && data.isNotEmpty) {
+    if (uid == null) {
+      throw StateError(
+        'Impossibile salvare: utente non autenticato. '
+        'Esegui signInAnonymously prima del sync.',
+      );
+    }
+    if (data.isEmpty) {
+      return; // Nessun dato da salvare, ok
+    }
+    try {
       final col = FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
@@ -75,6 +84,11 @@ class DataSyncNotifier extends StateNotifier<DataSyncState> {
       for (final d in data) {
         await col.add(d.toJson());
       }
+    } catch (e) {
+      throw StateError(
+        'Salvataggio Firestore fallito. Errore originale: $e\n'
+        'Verifica: connessione internet, regole Firestore, progetto Firebase configurato.',
+      );
     }
   }
 

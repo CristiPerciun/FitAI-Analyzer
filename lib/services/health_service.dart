@@ -19,12 +19,23 @@ class HealthService {
   ];
 
   /// Configura il plugin (da chiamare prima di requestPermissions/fetchData).
+  /// Se HealthKit non è disponibile (es. provisioning senza capability), lancia.
   Future<void> configure() async {
-    await _health.configure();
+    try {
+      await _health.configure();
+    } catch (e) {
+      throw StateError(
+        'HealthKit configure fallito. Errore originale: $e\n'
+        'Possibili cause: app installata con Sideloadly + Apple ID gratuito, '
+        'HealthKit non abilitato nel provisioning profile.',
+      );
+    }
   }
 
   /// Richiede autorizzazione per i tipi di dati health.
   /// Usa HealthDataAccess.READ per lettura sola (best practice Apple).
+  /// Se la schermata Health non appare, di solito significa che HealthKit
+  /// non è disponibile (es. app installata con Sideloadly + Apple ID gratuito).
   Future<bool> requestPermissions() async {
     if (!hp.isIOS) {
       // Android/Web: Health Connect richiede setup aggiuntivo, per ora ritorna false
@@ -34,8 +45,15 @@ class HealthService {
       await _health.configure();
       final permissions = List.filled(_types.length, HealthDataAccess.READ);
       return await _health.requestAuthorization(_types, permissions: permissions);
-    } catch (_) {
-      return false;
+    } catch (e) {
+      // Propaga l'errore reale invece di nasconderlo: aiuta a capire
+      // se HealthKit non è disponibile (es. provisioning senza capability)
+      throw StateError(
+        'HealthKit non disponibile. Errore: $e\n'
+        'Se la schermata Apple Health non è mai apparsa, l\'app potrebbe essere '
+        'installata con Apple ID gratuito (Sideloadly). HealthKit richiede un '
+        'account Apple Developer a pagamento (\$99/anno).',
+      );
     }
   }
 
@@ -48,6 +66,7 @@ class HealthService {
 
   /// Come fetchData ma restituisce anche la risposta raw da HealthKit (per debug).
   /// Ritorna (rawJson, processedData).
+  /// Se getHealthDataFromTypes fallisce, propaga l'errore reale.
   Future<(List<Map<String, dynamic>>, List<FitnessData>)> fetchDataWithRaw() async {
     if (!hp.isIOS) {
       return (<Map<String, dynamic>>[], <FitnessData>[]);
@@ -64,8 +83,11 @@ class HealthService {
       final rawJson = points.map((p) => p.toJson()).toList();
       final processed = _mapToFitnessData(points, start, now);
       return (rawJson, processed);
-    } catch (_) {
-      return (<Map<String, dynamic>>[], <FitnessData>[]);
+    } catch (e) {
+      throw StateError(
+        'Lettura dati HealthKit fallita. Errore originale: $e\n'
+        'Tipi richiesti: ${_types.map((t) => t.name).join(", ")}',
+      );
     }
   }
 

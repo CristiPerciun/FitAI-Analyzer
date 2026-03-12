@@ -88,9 +88,12 @@ class HealthSyncStatusCard extends ConsumerWidget {
                   color: Colors.red.shade100,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text(
-                  status.error ?? 'Errore',
-                  style: TextStyle(color: Colors.red.shade900, fontSize: 12),
+                constraints: const BoxConstraints(maxHeight: 300),
+                child: SingleChildScrollView(
+                  child: SelectableText(
+                    status.error ?? 'Errore',
+                    style: TextStyle(color: Colors.red.shade900, fontSize: 12),
+                  ),
                 ),
               ),
             ],
