@@ -45,6 +45,11 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Camera e galleria per analisi foto piatto -->
+	<key>NSCameraUsageDescription</key>
+	<string>Scatta foto del piatto per analizzare calorie e macronutrienti</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Seleziona una foto del piatto per analizzare calorie e macronutrienti</string>
 	<!-- url_launcher: schemi supportati per apertura URL -->
 	<key>LSApplicationQueriesSchemes</key>
 	<array>

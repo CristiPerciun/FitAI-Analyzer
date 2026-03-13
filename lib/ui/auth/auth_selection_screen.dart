@@ -61,11 +61,7 @@ class AuthSelectionScreen extends ConsumerWidget {
                           color: const Color(0xFF2E7D32),
                           width: cardWidth,
                           onTap: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Registrazione alimentazione - in arrivo'),
-                              ),
-                            );
+                            if (context.mounted) context.go('/alimentazione');
                           },
                           isLoading: false,
                         ),
