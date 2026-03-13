@@ -43,7 +43,12 @@ class AuthState {
 
 class AuthNotifier extends Notifier<AuthState> {
   @override
-  AuthState build() => AuthState();
+  AuthState build() {
+    // Idrata da Firebase: su iOS l'app può essere riavviata dal deep link Strava
+    // e lo stato Riverpod è perso, ma FirebaseAuth persiste
+    final user = FirebaseAuth.instance.currentUser;
+    return AuthState(user: user);
+  }
 
   /// Avvia OAuth per il servizio specificato.
   Future<void> startOAuth(
