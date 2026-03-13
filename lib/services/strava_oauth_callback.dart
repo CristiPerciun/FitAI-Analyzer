@@ -45,6 +45,8 @@ class StravaOAuthCallback {
       c?.completeError(Exception('Strava: $error'));
       return true;
     }
-    return false;
+    // URI Strava senza code né error (es. utente ha chiuso la pagina) → completa con errore
+    c?.completeError(Exception('Autorizzazione Strava annullata'));
+    return true;
   }
 }

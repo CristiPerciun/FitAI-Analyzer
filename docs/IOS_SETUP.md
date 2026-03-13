@@ -52,10 +52,10 @@ Segui **GITHUB_IOS_BUILD.md** per:
 
 Su iOS il flusso Strava è:
 
-1. Tap "Strava" → apertura Safari/in-app browser
+1. Tap "Strava" → apertura Safari esterno (necessario per il redirect)
 2. Login Strava e autorizzazione
 3. Redirect a `myhealthsync://strava/callback?code=xxx`
-4. iOS apre l’app → FlutterWebAuth2 riceve il code
+4. iOS apre l’app → app_links riceve il code
 5. Exchange code → token → salvataggio su Firestore
 
 ---

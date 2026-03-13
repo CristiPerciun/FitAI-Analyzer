@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitai_analyzer/services/gemini_service.dart';
 import 'package:fitai_analyzer/services/nutrition_service.dart';
-import 'package:fitai_analyzer/ui/widgets/alimentazione_card.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -161,6 +160,74 @@ class AlimentazioneScreen extends ConsumerWidget {
     );
   }
 
+  void _showAggiungiPastoSheet(
+    BuildContext context,
+    WidgetRef ref,
+    String mealLabel,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Aggiungi $mealLabel',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFF2E7D32),
+                    ),
+              ),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  _onAnalisiPiatto(context, ref);
+                },
+                icon: const Icon(Icons.camera_alt),
+                label: const Text('Con la foto'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF2E7D32),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Inserimento manuale $mealLabel (in arrivo)'),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.edit),
+                label: const Text('Manualmente'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF2E7D32),
+                  side: const BorderSide(color: Color(0xFF2E7D32)),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
@@ -176,11 +243,78 @@ class AlimentazioneScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            AlimentazioneCard(
-              onTap: () => _onAnalisiPiatto(context, ref),
+            _MealCard(
+              label: 'Colazione',
+              onTap: () => _showAggiungiPastoSheet(context, ref, 'colazione'),
             ),
-            // Qui andranno altre sezioni: storico pasti, obiettivi, ecc.
+            const SizedBox(height: 16),
+            _MealCard(
+              label: 'Pranzo',
+              onTap: () => _showAggiungiPastoSheet(context, ref, 'pranzo'),
+            ),
+            const SizedBox(height: 16),
+            _MealCard(
+              label: 'Cena',
+              onTap: () => _showAggiungiPastoSheet(context, ref, 'cena'),
+            ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Card pasto (Colazione/Pranzo/Cena) con stile uguale alle card della pagina principale.
+class _MealCard extends StatelessWidget {
+  const _MealCard({
+    required this.label,
+    required this.onTap,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: const Color(0xFF2E7D32).withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: const Color(0xFF2E7D32).withValues(alpha: 0.4),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: const Color(0xFF2E7D32),
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2E7D32).withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.add,
+                  color: Color(0xFF2E7D32),
+                  size: 24,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

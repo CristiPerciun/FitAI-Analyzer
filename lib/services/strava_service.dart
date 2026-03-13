@@ -204,14 +204,15 @@ class StravaService {
 
       String? code;
 
-      // iOS: ASWebAuthenticationSession a volte non apre la pagina. Fallback con Safari.
+      // iOS: SFSafariViewController (inAppBrowserView) NON gestisce redirect a custom scheme:
+      // Strava fa redirect a myhealthsync://... ma l'app non riceve il callback.
+      // Usiamo Safari esterno (externalApplication) così il redirect apre l'app.
       if (defaultTargetPlatform == TargetPlatform.iOS) {
-        debugPrint('iOS: uso fallback url_launcher + deep link');
+        debugPrint('iOS: uso Safari esterno per OAuth (redirect custom scheme)');
         final waitFuture = StravaOAuthCallback.instance.waitForCallback();
-        // inAppBrowserView: resta nell'app (SFSafariViewController), evita Chrome→Strava app
         final launched = await launchUrl(
           Uri.parse(authUrl),
-          mode: LaunchMode.inAppBrowserView,
+          mode: LaunchMode.externalApplication,
         );
         if (!launched) {
           throw Exception('Impossibile aprire Strava. Verifica la connessione.');
@@ -300,13 +301,17 @@ class StravaService {
       return list.map((e) => StravaActivity.fromJson(e as Map<String, dynamic>)).toList();
     }
 
-    // Token senza scope activity:read_all → cancella e richiedi nuova autorizzazione
-    if ((response.statusCode == 401 || response.statusCode == 403) &&
-        _isActivityReadPermissionError(response.body)) {
+    // 401/403: token scaduto, revocato o permessi insufficienti → cancella e richiedi nuova autorizzazione
+    if (response.statusCode == 401 || response.statusCode == 403) {
       await _clearTokens();
+      if (_isActivityReadPermissionError(response.body)) {
+        throw Exception(
+          'Il token Strava non ha i permessi per leggere le attività. '
+          'Riprova: verrà richiesta una nuova autorizzazione con i permessi corretti.',
+        );
+      }
       throw Exception(
-        'Il token Strava non ha i permessi per leggere le attività. '
-        'Riprova: verrà richiesta una nuova autorizzazione con i permessi corretti.',
+        'Sessione Strava scaduta o revocata. Tocca Strava per riconnettere.',
       );
     }
     throw Exception('Errore Strava: ${response.body}');

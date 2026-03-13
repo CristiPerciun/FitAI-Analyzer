@@ -47,6 +47,16 @@ String stravaErrorToUserMessage(Object e) {
         'Riprova o verifica la configurazione su strava.com/settings/api.';
   }
 
+  // Sessione scaduta/revocata
+  if (msg.contains('scaduta') || msg.contains('revocata')) {
+    return msg; // già user-friendly
+  }
+
+  // Autorizzazione annullata (utente ha chiuso la pagina)
+  if (msg.contains('annullata')) {
+    return 'Autorizzazione Strava annullata. Tocca Strava per riprovare.';
+  }
+
   // Errore generico - mantieni il messaggio ma semplifica se è troppo tecnico
   if (msg.contains('PlatformException') && msg.length > 200) {
     return 'Errore durante la connessione a Strava.\n\n'
