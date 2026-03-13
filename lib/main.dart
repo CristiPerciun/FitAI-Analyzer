@@ -24,10 +24,12 @@ void main() async {
 
 void _setupStravaOAuthDeepLinks() {
   final appLinks = AppLinks();
-  appLinks.uriLinkStream.listen((uri) {
+  void handleLink(Uri? uri) {
     StravaOAuthCallback.instance.handleUri(uri);
-  });
-  appLinks.getInitialLink().then((uri) {
-    StravaOAuthCallback.instance.handleUri(uri);
-  });
+  }
+
+  appLinks.uriLinkStream.listen(handleLink);
+  appLinks.getInitialLink().then(handleLink);
+  // getLatestLink aiuta quando l'app torna da background (es. da Safari)
+  appLinks.getLatestLink().then(handleLink);
 }

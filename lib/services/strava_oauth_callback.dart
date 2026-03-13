@@ -20,9 +20,17 @@ class StravaOAuthCallback {
   }
 
   /// Gestisce un URI in arrivo (da app_links). Ritorna true se era un callback Strava.
+  /// myhealthsync://strava/callback?code=xxx → host=strava, path=/callback
   bool handleUri(Uri? uri) {
     if (uri == null) return false;
-    if (uri.scheme != _scheme || !uri.path.contains('strava')) return false;
+    if (uri.scheme != _scheme) return false;
+    // Strava redirect: myhealthsync://strava/callback (host=strava) oppure myhealthsync://?code=...
+    final isStrava = uri.host == 'strava' ||
+        uri.path.contains('strava') ||
+        uri.path.contains('callback') ||
+        uri.queryParameters.containsKey('code') ||
+        uri.queryParameters.containsKey('error');
+    if (!isStrava) return false;
 
     final code = uri.queryParameters['code'];
     final error = uri.queryParameters['error'];

@@ -193,9 +193,10 @@ class StravaService {
       if (defaultTargetPlatform == TargetPlatform.iOS) {
         debugPrint('iOS: uso fallback url_launcher + deep link');
         final waitFuture = StravaOAuthCallback.instance.waitForCallback();
+        // inAppBrowserView: resta nell'app (SFSafariViewController), evita Chrome→Strava app
         final launched = await launchUrl(
           Uri.parse(authUrl),
-          mode: LaunchMode.externalApplication,
+          mode: LaunchMode.inAppBrowserView,
         );
         if (!launched) {
           throw Exception('Impossibile aprire Strava. Verifica la connessione.');
