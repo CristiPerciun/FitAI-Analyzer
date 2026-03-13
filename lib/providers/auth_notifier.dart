@@ -104,7 +104,15 @@ class AuthNotifier extends Notifier<AuthState> {
 
         List<StravaActivity> activities;
         try {
+          statusNotifier.setPhase(
+            StravaSyncPhase.connecting,
+            message: 'Autorizzazione Strava...',
+          );
           await ref.read(stravaServiceProvider).authenticate();
+          statusNotifier.setPhase(
+            StravaSyncPhase.connecting,
+            message: 'Recupero attività da Strava...',
+          );
           activities = await ref.read(stravaServiceProvider).getRecentActivities(days: 30);
         } catch (e) {
           // Token senza activity:read_all? Riprova con nuova autorizzazione
@@ -127,7 +135,11 @@ class AuthNotifier extends Notifier<AuthState> {
           StravaSyncPhase.connecting,
           message: 'Salvataggio su Firestore...',
         );
-        await ref.read(stravaServiceProvider).saveToFirestore(uid, activities);
+        try {
+          await ref.read(stravaServiceProvider).saveToFirestore(uid, activities);
+        } catch (e) {
+          throw Exception('Errore salvataggio dati Strava: $e');
+        }
 
         statusNotifier.setPhase(
           StravaSyncPhase.completed,
@@ -141,7 +153,7 @@ class AuthNotifier extends Notifier<AuthState> {
           // Non bloccare: aggregazione opzionale
         }
 
-        state = state.copyWith(isLoading: false, currentService: null);
+        state = state.copyWith(isLoading: false, currentService: null, error: null);
         onSuccess?.call();
         return;
     } else {

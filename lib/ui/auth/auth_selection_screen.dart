@@ -1,4 +1,6 @@
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
+import 'package:fitai_analyzer/providers/strava_sync_status_notifier.dart';
+import 'package:fitai_analyzer/routes/app_router.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:flutter/material.dart';
@@ -77,6 +79,7 @@ class AuthSelectionScreen extends ConsumerWidget {
                         _buildServiceCard(
                           context: context,
                           title: 'Alimentazione',
+                          loadingMessage: null,
                           subtitle: 'Registra i tuoi pasti (foto piatto con Gemini)',
                           icon: Icons.restaurant,
                           color: const Color(0xFF2E7D32),
@@ -94,13 +97,20 @@ class AuthSelectionScreen extends ConsumerWidget {
                           icon: Icons.directions_bike,
                           color: const Color(0xFFFC4C02),
                           width: cardWidth,
-                          onTap: () => ref
-                              .read(authNotifierProvider.notifier)
-                              .startOAuth('strava', onSuccess: () {
-                            if (context.mounted) context.go('/dashboard');
-                          }),
+                          onTap: () {
+                            ref.read(authNotifierProvider.notifier).startOAuth(
+                                  'strava',
+                                  onSuccess: () {
+                                    ref.read(appRouterProvider).go('/dashboard');
+                                  },
+                                );
+                          },
                           isLoading: authState.isLoading &&
                               authState.currentService == 'strava',
+                          loadingMessage: authState.isLoading &&
+                                  authState.currentService == 'strava'
+                              ? ref.watch(stravaSyncStatusProvider).message
+                              : null,
                         ),
                         ],
                       ),
@@ -133,6 +143,7 @@ class AuthSelectionScreen extends ConsumerWidget {
     required double width,
     required VoidCallback onTap,
     required bool isLoading,
+    String? loadingMessage,
   }) {
     return SizedBox(
       width: width,
@@ -166,7 +177,9 @@ class AuthSelectionScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  subtitle,
+                  isLoading && loadingMessage != null
+                      ? loadingMessage
+                      : subtitle,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Colors.grey[700],
                       ),
