@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/services/gemini_service.dart';
 import 'package:fitai_analyzer/services/nutrition_service.dart';
@@ -21,10 +22,27 @@ class AlimentazioneScreen extends ConsumerWidget {
     WidgetRef ref, {
     String? mealLabel,
   }) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
+    var uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
-      if (context.mounted) showErrorDialog(context, 'Utente non autenticato.');
-      return;
+      // Su iOS dopo reload la sessione può non essere ancora ripristinata.
+      // Se l'utente va direttamente su Alimentazione senza Strava, non ha mai fatto login.
+      // In entrambi i casi: tenta login anonimo (come per Strava).
+      try {
+        await ref.read(authNotifierProvider.notifier).signInAnonymously();
+        uid = FirebaseAuth.instance.currentUser?.uid;
+      } catch (e) {
+        if (context.mounted) {
+          showErrorDialog(
+            context,
+            'Impossibile autenticarsi. Riprova. ($e)',
+          );
+        }
+        return;
+      }
+      if (uid == null && context.mounted) {
+        showErrorDialog(context, 'Utente non autenticato.');
+        return;
+      }
     }
 
     final apiKeyService = ref.read(geminiApiKeyServiceProvider);
@@ -77,7 +95,7 @@ class AlimentazioneScreen extends ConsumerWidget {
         return;
       }
 
-      await nutrition.saveToFirestore(uid, result, mealLabel: mealLabel);
+      await nutrition.saveToFirestore(uid!, result, mealLabel: mealLabel);
 
       if (context.mounted) {
         _showNutritionDialog(context, result);
