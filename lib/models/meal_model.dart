@@ -6,26 +6,46 @@ class MealModel {
   /// Nome del piatto (es. "Pollo e Broccoli").
   final String dishName;
 
+  /// Calorie del piatto.
+  final int calories;
+
   /// Macros: pro, carb, fat (grammi).
   final Map<String, num> macros;
 
   /// Orario del pasto (es. "12:30").
   final String timestamp;
 
+  /// Tipo pasto: "Colazione", "Pranzo", "Cena".
+  final String mealType;
+
   /// Analisi raw da Gemini (consigli nutrizionali).
   final String rawAiAnalysis;
 
   const MealModel({
     required this.dishName,
+    required this.calories,
     required this.macros,
     required this.timestamp,
+    required this.mealType,
     required this.rawAiAnalysis,
   });
 
+  /// Titolo senza prefisso (es. "Pranzo: Pollo" → "Pollo").
+  String get displayTitle {
+    for (final prefix in ['Colazione: ', 'Pranzo: ', 'Cena: ']) {
+      if (dishName.startsWith(prefix)) {
+        return dishName.substring(prefix.length).trim();
+      }
+    }
+    return dishName;
+  }
+
   Map<String, dynamic> toFirestore() => {
         'dish_name': dishName,
+        'calories': calories,
         'macros': macros,
         'timestamp': timestamp,
+        'meal_type': mealType,
         'raw_ai_analysis': rawAiAnalysis,
       };
 
@@ -38,8 +58,10 @@ class MealModel {
     };
     return MealModel(
       dishName: data['dish_name'] as String? ?? 'Piatto',
+      calories: (data['calories'] as num?)?.toInt() ?? 0,
       macros: macros,
       timestamp: data['timestamp'] as String? ?? '',
+      mealType: data['meal_type'] as String? ?? '',
       rawAiAnalysis: data['raw_ai_analysis'] as String? ?? '',
     );
   }

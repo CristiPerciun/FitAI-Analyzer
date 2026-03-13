@@ -1,7 +1,9 @@
 import 'dart:typed_data';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:fitai_analyzer/models/meal_model.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
+import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/services/gemini_service.dart';
 import 'package:fitai_analyzer/services/nutrition_service.dart';
@@ -259,8 +261,67 @@ class AlimentazioneScreen extends ConsumerWidget {
     );
   }
 
+  void _showMealDetailDialog(BuildContext context, MealModel meal) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(meal.displayTitle),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${meal.calories} kcal',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFF2E7D32),
+                    ),
+              ),
+              if (meal.timestamp.isNotEmpty)
+                Text(
+                  'Orario: ${meal.timestamp}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  _Chip(label: 'Proteine', value: '${meal.macros['pro']?.round() ?? 0}g'),
+                  _Chip(label: 'Carbs', value: '${meal.macros['carb']?.round() ?? 0}g'),
+                  _Chip(label: 'Grassi', value: '${meal.macros['fat']?.round() ?? 0}g'),
+                ],
+              ),
+              if (meal.rawAiAnalysis.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Text(
+                  'Consiglio',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  meal.rawAiAnalysis,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Chiudi'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final mealsAsync = ref.watch(todayMealsByTypeProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Alimentazione'),
@@ -292,17 +353,23 @@ class AlimentazioneScreen extends ConsumerWidget {
           children: [
             _MealCard(
               label: 'Colazione',
+              meals: mealsAsync.valueOrNull?['Colazione'] ?? [],
               onTap: () => _showAggiungiPastoSheet(context, ref, 'colazione'),
+              onMealTap: (meal) => _showMealDetailDialog(context, meal),
             ),
             const SizedBox(height: 16),
             _MealCard(
               label: 'Pranzo',
+              meals: mealsAsync.valueOrNull?['Pranzo'] ?? [],
               onTap: () => _showAggiungiPastoSheet(context, ref, 'pranzo'),
+              onMealTap: (meal) => _showMealDetailDialog(context, meal),
             ),
             const SizedBox(height: 16),
             _MealCard(
               label: 'Cena',
+              meals: mealsAsync.valueOrNull?['Cena'] ?? [],
               onTap: () => _showAggiungiPastoSheet(context, ref, 'cena'),
+              onMealTap: (meal) => _showMealDetailDialog(context, meal),
             ),
           ],
         ),
@@ -311,14 +378,92 @@ class AlimentazioneScreen extends ConsumerWidget {
   }
 }
 
-/// Card pasto (Colazione/Pranzo/Cena) con stile uguale alle card della pagina principale.
+/// Card pasto (Colazione/Pranzo/Cena) con lista piatti e pulsante aggiungi.
 class _MealCard extends StatelessWidget {
   const _MealCard({
     required this.label,
+    required this.meals,
     required this.onTap,
+    required this.onMealTap,
   });
 
   final String label;
+  final List<MealModel> meals;
+  final VoidCallback onTap;
+  final void Function(MealModel meal) onMealTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF2E7D32).withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFF2E7D32).withValues(alpha: 0.4),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        label,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              color: const Color(0xFF2E7D32),
+                              fontWeight: FontWeight.bold,
+                            ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2E7D32).withValues(alpha: 0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.add,
+                        color: Color(0xFF2E7D32),
+                        size: 24,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          if (meals.isNotEmpty) ...[
+            Divider(
+              height: 1,
+              color: const Color(0xFF2E7D32).withValues(alpha: 0.3),
+            ),
+            ...meals.map((meal) => _MealTile(
+                  meal: meal,
+                  onTap: () => onMealTap(meal),
+                )),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Riga singolo piatto: titolo + calorie, tappabile per dettagli.
+class _MealTile extends StatelessWidget {
+  const _MealTile({
+    required this.meal,
+    required this.onTap,
+  });
+
+  final MealModel meal;
   final VoidCallback onTap;
 
   @override
@@ -327,38 +472,28 @@ class _MealCard extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: const Color(0xFF2E7D32).withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: const Color(0xFF2E7D32).withValues(alpha: 0.4),
-            ),
-          ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           child: Row(
             children: [
               Expanded(
                 child: Text(
-                  label,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: const Color(0xFF2E7D32),
-                        fontWeight: FontWeight.bold,
-                      ),
+                  meal.displayTitle,
+                  style: Theme.of(context).textTheme.bodyLarge,
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF2E7D32).withValues(alpha: 0.2),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.add,
-                  color: Color(0xFF2E7D32),
-                  size: 24,
-                ),
+              Text(
+                '${meal.calories} kcal',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF2E7D32),
+                    ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.chevron_right,
+                color: Colors.grey.shade400,
+                size: 20,
               ),
             ],
           ),

@@ -43,10 +43,15 @@ class NutritionService {
     final advice = nutritionGemini['advice'] as String? ?? '';
     final longevityScore = _num(nutritionGemini['longevity_score'] ?? 0);
 
+    final mealType = mealLabel != null
+        ? mealLabel.substring(0, 1).toUpperCase() + mealLabel.substring(1)
+        : '';
     final meal = MealModel(
       dishName: dishName,
+      calories: kcal.round(),
       macros: {'pro': pro, 'carb': carb, 'fat': fat},
       timestamp: timeStr,
+      mealType: mealType,
       rawAiAnalysis: advice,
     );
 
@@ -94,17 +99,20 @@ class NutritionService {
   }
 
   String _extractDishName(Map<String, dynamic> nut, String? mealLabel) {
+    final prefix = mealLabel != null
+        ? mealLabel.substring(0, 1).toUpperCase() + mealLabel.substring(1)
+        : null;
     final fromGemini = nut['dish_name'] as String?;
     if (fromGemini != null && fromGemini.isNotEmpty) {
-      return mealLabel != null ? '$mealLabel: $fromGemini' : fromGemini;
+      return prefix != null ? '$prefix: $fromGemini' : fromGemini;
     }
     final foods = nut['foods'] as List<dynamic>? ?? [];
     if (foods.isNotEmpty) {
       final first = foods.first;
       final name = first is Map ? (first['name'] as String? ?? 'Piatto') : 'Piatto';
-      return mealLabel != null ? '$mealLabel: $name' : name;
+      return prefix != null ? '$prefix: $name' : name;
     }
-    return mealLabel ?? 'Piatto';
+    return prefix ?? 'Piatto';
   }
 
   double _num(dynamic v) => (v is num) ? v.toDouble() : double.tryParse(v.toString()) ?? 0;
@@ -124,5 +132,20 @@ class NutritionService {
     return snapshot.docs
         .map((d) => MealModel.fromFirestore(d.data()))
         .toList();
+  }
+
+  /// Stream dei pasti del giorno per aggiornamenti real-time.
+  Stream<List<MealModel>> mealsForDayStream(String uid, String dateStr) {
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('daily_logs')
+        .doc(dateStr)
+        .collection('meals')
+        .orderBy('timestamp')
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((d) => MealModel.fromFirestore(d.data()))
+            .toList());
   }
 }
