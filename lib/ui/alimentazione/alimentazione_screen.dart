@@ -16,7 +16,11 @@ import 'package:image_picker/image_picker.dart';
 class AlimentazioneScreen extends ConsumerWidget {
   const AlimentazioneScreen({super.key});
 
-  Future<void> _onAnalisiPiatto(BuildContext context, WidgetRef ref) async {
+  Future<void> _onAnalisiPiatto(
+    BuildContext context,
+    WidgetRef ref, {
+    String? mealLabel,
+  }) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
       if (context.mounted) showErrorDialog(context, 'Utente non autenticato.');
@@ -73,7 +77,7 @@ class AlimentazioneScreen extends ConsumerWidget {
         return;
       }
 
-      await nutrition.saveToFirestore(uid, result);
+      await nutrition.saveToFirestore(uid, result, mealLabel: mealLabel);
 
       if (context.mounted) {
         _showNutritionDialog(context, result);
@@ -197,7 +201,7 @@ class AlimentazioneScreen extends ConsumerWidget {
               FilledButton.icon(
                 onPressed: () {
                   Navigator.of(ctx).pop();
-                  _onAnalisiPiatto(context, ref);
+                  _onAnalisiPiatto(context, ref, mealLabel: mealLabel);
                 },
                 icon: const Icon(Icons.camera_alt),
                 label: const Text('Con la foto'),

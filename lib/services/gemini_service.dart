@@ -99,16 +99,18 @@ Rispondi in italiano, in modo strutturato e actionable.
     final imagePart = DataPart(mimeType, imageBytes);
 
     const prompt = '''
-Analizza questa foto di un piatto/cibo. Sei un nutrizionista.
+Analizza questa foto di un piatto/cibo. Sei un nutrizionista orientato alla longevità (Peter Attia, Outlive).
 
 Restituisci un JSON con questo schema esatto:
 {
+  "dish_name": "stringa breve descrittiva del piatto (es. Pollo e Broccoli)",
   "total_calories": numero,
   "protein_g": numero,
   "carbs_g": numero,
   "fat_g": numero,
   "fiber_g": numero,
   "sugar_g": numero,
+  "longevity_score": numero da 1 a 10 (10 = ottimo per longevità: proteine adeguate, fibre, pochi zuccheri raffinati),
   "foods": [{"name": "stringa", "calories": numero, "portion": "stringa"}],
   "advice": "stringa con consigli nutrizionali brevi in italiano"
 }

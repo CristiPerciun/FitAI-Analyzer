@@ -159,18 +159,18 @@ class AggregationService {
         'total_burned_kcal': log.totalBurnedKcal,
       });
 
-      // Macro da nutrition_gemini
-      final nut = log.nutritionGemini;
+      // Macro: preferisce nutrition_summary (Livello 2), fallback a nutrition_gemini
+      final nut = log.nutritionForAi;
       if (nut.isNotEmpty) {
         macroDays++;
         macroSums['protein_g'] = macroSums['protein_g']! +
-            ((nut['protein_g'] ?? nut['protein'] ?? 0) as num).toDouble();
+            ((nut['protein_g'] ?? nut['total_protein'] ?? nut['protein'] ?? 0) as num).toDouble();
         macroSums['carbs_g'] = macroSums['carbs_g']! +
-            ((nut['carbs_g'] ?? nut['carbs'] ?? 0) as num).toDouble();
+            ((nut['carbs_g'] ?? nut['total_carbs'] ?? nut['carbs'] ?? 0) as num).toDouble();
         macroSums['fat_g'] = macroSums['fat_g']! +
-            ((nut['fat_g'] ?? nut['fat'] ?? 0) as num).toDouble();
+            ((nut['fat_g'] ?? nut['total_fat'] ?? nut['fat'] ?? 0) as num).toDouble();
         macroSums['calories'] = macroSums['calories']! +
-            ((nut['total_calories'] ?? nut['calories'] ?? 0) as num).toDouble();
+            ((nut['total_calories'] ?? nut['total_kcal'] ?? nut['calories'] ?? 0) as num).toDouble();
       }
     }
 
@@ -242,6 +242,10 @@ class AggregationService {
     int totalWorkouts = 0;
     double weightSum = 0;
     int weightCount = 0;
+    double nutritionKcalSum = 0;
+    double nutritionProteinSum = 0;
+    double nutritionLongevitySum = 0;
+    int nutritionDaysCount = 0;
     for (final log in allLogs) {
       for (final act in log.stravaActivities) {
         totalKm += ((act['distance'] as num?)?.toDouble() ?? 0) / 1000;
@@ -251,25 +255,51 @@ class AggregationService {
         weightSum += log.weightKg!;
         weightCount++;
       }
+      // Livello 3: medie nutrition_summary per biografia annuale
+      final nut = log.nutritionForAi;
+      if (nut.isNotEmpty) {
+        nutritionDaysCount++;
+        nutritionKcalSum += ((nut['total_calories'] ?? nut['total_kcal'] ?? 0) as num).toDouble();
+        nutritionProteinSum += ((nut['protein_g'] ?? nut['total_protein'] ?? 0) as num).toDouble();
+        final longevity = nut['avg_longevity_score'];
+        if (longevity != null) {
+          nutritionLongevitySum += (double.tryParse(longevity.toString()) ?? 0);
+        }
+      }
     }
 
     final annualStats = <String, dynamic>{
       'total_km_$year': totalKm,
       'total_workouts': totalWorkouts,
       'avg_weight': weightCount > 0 ? weightSum / weightCount : null,
+      'avg_daily_kcal': nutritionDaysCount > 0 ? nutritionKcalSum / nutritionDaysCount : null,
+      'avg_daily_protein': nutritionDaysCount > 0 ? nutritionProteinSum / nutritionDaysCount : null,
+      'avg_longevity_score': nutritionDaysCount > 0 ? nutritionLongevitySum / nutritionDaysCount : null,
     };
 
-    // Monthly trends (12 mesi)
+    // Monthly trends (12 mesi) - incl. medie nutrition per Livello 3
     final monthlyTrends = <Map<String, dynamic>>[];
     for (var m = 1; m <= 12; m++) {
       final monthStr = m.toString().padLeft(2, '0');
       final monthLogs = allLogs.where((l) => l.date.startsWith('$year-$monthStr')).toList();
       double mKm = 0;
       int mWorkouts = 0;
+      double mKcal = 0;
+      double mProtein = 0;
+      double mLongevity = 0;
+      int mNutDays = 0;
       for (final log in monthLogs) {
         for (final act in log.stravaActivities) {
           mKm += ((act['distance'] as num?)?.toDouble() ?? 0) / 1000;
           mWorkouts++;
+        }
+        final nut = log.nutritionForAi;
+        if (nut.isNotEmpty) {
+          mNutDays++;
+          mKcal += ((nut['total_calories'] ?? nut['total_kcal'] ?? 0) as num).toDouble();
+          mProtein += ((nut['protein_g'] ?? nut['total_protein'] ?? 0) as num).toDouble();
+          final longevity = nut['avg_longevity_score'];
+          if (longevity != null) mLongevity += (double.tryParse(longevity.toString()) ?? 0);
         }
       }
       monthlyTrends.add({
@@ -277,6 +307,9 @@ class AggregationService {
         'year': year,
         'total_km': mKm,
         'workouts': mWorkouts,
+        'avg_kcal': mNutDays > 0 ? mKcal / mNutDays : null,
+        'avg_protein': mNutDays > 0 ? mProtein / mNutDays : null,
+        'avg_longevity_score': mNutDays > 0 ? mLongevity / mNutDays : null,
       });
     }
 
@@ -370,6 +403,13 @@ class AggregationService {
     sb.writeln('--- STATISTICHE ANNUALI $year ---');
     sb.writeln('Distanza totale: ${totalKm.toStringAsFixed(1)} km');
     sb.writeln('Allenamenti totali: $workouts');
+    final avgKcal = annualStats['avg_daily_kcal'] as num?;
+    final avgProtein = annualStats['avg_daily_protein'] as num?;
+    final avgLongevity = annualStats['avg_longevity_score'] as num?;
+    if (avgKcal != null || avgProtein != null) {
+      sb.writeln('Nutrizione media giornaliera: ${avgKcal?.toStringAsFixed(0) ?? '?'} kcal, ${avgProtein?.toStringAsFixed(0) ?? '?'} g proteine');
+      if (avgLongevity != null) sb.writeln('Score longevità medio: ${avgLongevity.toStringAsFixed(1)}/10');
+    }
     sb.writeln();
     sb.writeln('--- METRICHE LONGEVITÀ (riferimenti Peter Attia, Outlive) ---');
     sb.writeln('VO2max stimato: ${vo2.toStringAsFixed(1)} ml/kg/min');
@@ -385,7 +425,12 @@ class AggregationService {
     for (final m in monthlyTrends) {
       final km = (m['total_km'] as num?)?.toDouble() ?? 0;
       final w = m['workouts'] as int? ?? 0;
-      sb.writeln('Mese ${m['month']}: $km km, $w allenamenti');
+      final mKcal = m['avg_kcal'] as num?;
+      final mProt = m['avg_protein'] as num?;
+      final nutStr = (mKcal != null || mProt != null)
+          ? ' | Nut: ${mKcal?.toStringAsFixed(0) ?? '?'} kcal, ${mProt?.toStringAsFixed(0) ?? '?'}g prot'
+          : '';
+      sb.writeln('Mese ${m['month']}: $km km, $w allenamenti$nutStr');
     }
     sb.writeln();
     sb.writeln('--- EVOLUZIONE ---');

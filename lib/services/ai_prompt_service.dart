@@ -33,7 +33,7 @@ class AiPromptService {
 
     final todayActivities = today?.stravaActivities.length ?? 0;
     final todayBurned = today?.totalBurnedKcal ?? 0.0;
-    final todayNutrition = _formatNutrition(today?.nutritionGemini ?? {});
+    final todayNutrition = _formatNutrition(today?.nutritionForAi ?? {});
 
     return """
 Utente obiettivo: $goalStr (dimagrire o massa muscolare).
@@ -107,14 +107,16 @@ Analizza in modo scientifico, personalizzato e approfondito. Dai piano settimana
     if (nut.isEmpty) return 'nessun dato';
 
     final parts = <String>[];
-    final cal = nut['total_calories'] ?? nut['calories'];
+    final cal = nut['total_calories'] ?? nut['total_kcal'] ?? nut['calories'];
     if (cal != null) parts.add('${(cal as num).round()} kcal');
-    final p = nut['protein_g'] ?? nut['protein'];
+    final p = nut['protein_g'] ?? nut['total_protein'] ?? nut['protein'];
     if (p != null) parts.add('P: ${(p as num).round()}g');
-    final c = nut['carbs_g'] ?? nut['carbs'];
+    final c = nut['carbs_g'] ?? nut['total_carbs'] ?? nut['carbs'];
     if (c != null) parts.add('C: ${(c as num).round()}g');
-    final f = nut['fat_g'] ?? nut['fat'];
+    final f = nut['fat_g'] ?? nut['total_fat'] ?? nut['fat'];
     if (f != null) parts.add('F: ${(f as num).round()}g');
+    final longevity = nut['avg_longevity_score'];
+    if (longevity != null) parts.add('Longevità: $longevity/10');
 
     return parts.isEmpty ? 'dati parziali' : parts.join(' | ');
   }

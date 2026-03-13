@@ -5,6 +5,7 @@ part 'daily_log_model.g.dart';
 
 /// Livello 1 - Log giornaliero (daily_logs/{YYYY-MM-DD}).
 /// Dati raw da Strava + Gemini (foto piatto) + peso opzionale.
+/// Strategia Tre Livelli: nutrition_summary per Livello 2/3, meals subcollection per Livello 1.
 @JsonSerializable()
 class DailyLogModel {
   /// Data in formato YYYY-MM-DD (usata come doc ID).
@@ -15,8 +16,14 @@ class DailyLogModel {
   final List<Map<String, dynamic>> stravaActivities;
 
   /// Nutrizione da Gemini (foto piatto): total_calories, protein_g, carbs_g, etc.
+  /// Retrocompatibilità: usato se nutrition_summary assente.
   @JsonKey(name: 'nutrition_gemini', defaultValue: {})
   final Map<String, dynamic> nutritionGemini;
+
+  /// Sintesi nutrizione per Livello 2/3: total_kcal, total_protein, avg_longevity_score.
+  /// L'IA legge solo questo per trend settimanale senza scaricare ogni pasto.
+  @JsonKey(name: 'nutrition_summary', defaultValue: {})
+  final Map<String, dynamic> nutritionSummary;
 
   /// Calorie bruciate totali (da attività).
   @JsonKey(name: 'total_burned_kcal', defaultValue: 0.0)
@@ -37,11 +44,26 @@ class DailyLogModel {
     required this.date,
     required this.stravaActivities,
     required this.nutritionGemini,
+    this.nutritionSummary = const {},
     required this.totalBurnedKcal,
     this.weightKg,
     required this.goalToday,
     required this.timestamp,
   });
+
+  /// Nutrizione per prompt AI: preferisce nutrition_summary (Livello 2/3), fallback a nutrition_gemini.
+  Map<String, dynamic> get nutritionForAi {
+    if (nutritionSummary.isNotEmpty) {
+      return {
+        'total_calories': nutritionSummary['total_kcal'],
+        'protein_g': nutritionSummary['total_protein'],
+        'carbs_g': nutritionSummary['total_carbs'],
+        'fat_g': nutritionSummary['total_fat'],
+        'avg_longevity_score': nutritionSummary['avg_longevity_score'],
+      };
+    }
+    return nutritionGemini;
+  }
 
   factory DailyLogModel.fromJson(Map<String, dynamic> json) =>
       _$DailyLogModelFromJson(json);
