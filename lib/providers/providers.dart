@@ -2,10 +2,16 @@ import 'package:fitai_analyzer/models/meal_model.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/services/auth_service.dart';
 import 'package:fitai_analyzer/services/nutrition_service.dart';
+import 'package:fitai_analyzer/services/strava_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Service providers - dependency injection via Riverpod
 final authServiceProvider = Provider<AuthService>((ref) => AuthService());
+
+/// Stato connessione Strava. Invalidare dopo connect/disconnect.
+final stravaConnectedProvider = FutureProvider.autoDispose<bool>((ref) async {
+  return ref.read(stravaServiceProvider).isConnected();
+});
 
 /// Stream dei pasti di oggi, raggruppati per tipo (Colazione/Pranzo/Cena).
 /// Ritorna mappa mealLabel -> List di MealModel.

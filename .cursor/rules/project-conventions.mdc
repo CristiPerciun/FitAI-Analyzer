@@ -22,6 +22,7 @@ alwaysApply: true
 ## Database
 
 - **Firebase**: Cloud Firestore per dati strutturati, Firebase Auth per login
+- **Strategia Tre Livelli**: vedi `three-levels-memory-strategy.mdc` – architettura vincolante per daily_logs, rolling_10days, baseline_profile
 - Scalabile, real-time, integrazione con Riverpod (stream providers)
 - Offline: caching built-in di Firebase
 

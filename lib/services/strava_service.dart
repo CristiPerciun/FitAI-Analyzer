@@ -151,6 +151,12 @@ class StravaService {
 
   Future<void> _clearTokens() => clearTokens();
 
+  /// Verifica se Strava è collegato (token presente e valido o refreshabile).
+  Future<bool> isConnected() async {
+    await _loadInitialTokens();
+    return _accessToken != null;
+  }
+
   bool _isActivityReadPermissionError(String body) =>
       body.contains('activity:read_permission') || body.contains('activity:read_all');
 

@@ -7,6 +7,7 @@ import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/services/gemini_service.dart';
 import 'package:fitai_analyzer/services/nutrition_service.dart';
+import 'package:fitai_analyzer/ui/widgets/app_drawer.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
 import 'package:flutter/material.dart';
@@ -326,26 +327,18 @@ class AlimentazioneScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Alimentazione'),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/'),
+          icon: const Icon(Icons.menu),
+          onPressed: () => Scaffold.of(context).openDrawer(),
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.key),
-            tooltip: 'Chiave API Gemini',
-            onPressed: () async {
-              await showGeminiApiKeyDialog(context, ref);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Chiave salvata. Usa "Con la foto" per analizzare.'),
-                  ),
-                );
-              }
-            },
+            icon: const Icon(Icons.arrow_back),
+            tooltip: 'Torna indietro',
+            onPressed: () => context.go('/'),
           ),
         ],
       ),
+      drawer: const AppDrawer(showLogout: false),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(

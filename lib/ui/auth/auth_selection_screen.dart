@@ -1,8 +1,5 @@
-import 'package:fitai_analyzer/providers/auth_notifier.dart';
-import 'package:fitai_analyzer/providers/strava_sync_status_notifier.dart';
-import 'package:fitai_analyzer/routes/app_router.dart';
-import 'package:fitai_analyzer/services/strava_service.dart';
-import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
+import 'package:fitai_analyzer/providers/providers.dart';
+import 'package:fitai_analyzer/ui/widgets/app_drawer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -10,40 +7,52 @@ import 'package:go_router/go_router.dart';
 class AuthSelectionScreen extends ConsumerWidget {
   const AuthSelectionScreen({super.key});
 
+  void _onAllenamentiTap(BuildContext context, WidgetRef ref) async {
+    final isConnected = await ref.read(stravaConnectedProvider.future);
+    if (isConnected) {
+      if (context.mounted) context.go('/dashboard');
+    } else {
+      if (!context.mounted) return;
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Connetti Strava'),
+          content: const Text(
+            'Per vedere la dashboard con allenamenti e attività, connetti il tuo account Strava dal menu.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('OK'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (context.mounted) {
+                    Scaffold.of(context).openDrawer();
+                  }
+                });
+              },
+              child: const Text('Apri menu'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final authState = ref.watch(authNotifierProvider);
-
-    ref.listen(authNotifierProvider, (prev, next) {
-      if (next.error != null &&
-          next.error!.isNotEmpty &&
-          next.error != prev?.error &&
-          context.mounted) {
-        showErrorDialog(context, next.error!);
-      }
-    });
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('FitAI Analyzer'),
-        leading: const Icon(Icons.fitness_center, size: 28),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.link_off),
-            tooltip: 'Disconnetti Strava',
-            onPressed: () async {
-              await ref.read(stravaServiceProvider).clearTokens();
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Strava disconnesso. Ricollega per sincronizzare.'),
-                  ),
-                );
-              }
-            },
-          ),
-        ],
+        leading: IconButton(
+          icon: const Icon(Icons.menu),
+          onPressed: () => Scaffold.of(context).openDrawer(),
+        ),
       ),
+      drawer: const AppDrawer(showLogout: false),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -92,25 +101,14 @@ class AuthSelectionScreen extends ConsumerWidget {
                         const SizedBox(height: 24),
                         _buildServiceCard(
                           context: context,
-                          title: 'Strava',
-                          subtitle: 'Allenamenti e attività',
+                          title: 'Allenamenti e attività',
+                          subtitle: 'Dashboard con dati Strava',
                           icon: Icons.directions_bike,
                           color: const Color(0xFFFC4C02),
                           width: cardWidth,
-                          onTap: () {
-                            ref.read(authNotifierProvider.notifier).startOAuth(
-                                  'strava',
-                                  onSuccess: () {
-                                    ref.read(appRouterProvider).go('/dashboard');
-                                  },
-                                );
-                          },
-                          isLoading: authState.isLoading &&
-                              authState.currentService == 'strava',
-                          loadingMessage: authState.isLoading &&
-                                  authState.currentService == 'strava'
-                              ? ref.watch(stravaSyncStatusProvider).message
-                              : null,
+                          onTap: () => _onAllenamentiTap(context, ref),
+                          isLoading: false,
+                          loadingMessage: null,
                         ),
                         ],
                       ),

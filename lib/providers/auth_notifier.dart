@@ -159,6 +159,7 @@ class AuthNotifier extends Notifier<AuthState> {
         }
 
         state = state.copyWith(isLoading: false, currentService: null, error: null);
+        ref.invalidate(stravaConnectedProvider);
         onSuccess?.call();
         return;
     } else {

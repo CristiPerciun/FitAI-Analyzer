@@ -1,0 +1,172 @@
+---
+description: Strategia a Tre Livelli di Memoria - architettura dati Firestore vincolante
+alwaysApply: true
+---
+
+# Strategia a "Tre Livelli" di Memoria
+
+**VINCOLANTE**: Questa strategia NON deve essere modificata. Ogni nuovo dato deve integrarsi rispettandola.
+
+## Principio
+
+I dati vengono organizzati su tre livelli di granularità per ottimizzare:
+- **Costo**: l'IA non scarica mai tutti i dettagli quando serve solo un trend
+- **Velocità**: letture leggere per analisi settimanali/annuali
+- **Completezza**: dettaglio disponibile quando serve (es. "Com'è andato il pranzo?")
+
+---
+
+## Livello 1 – Dettaglio giornaliero
+
+**Scopo**: Dati raw e dettagliati per un singolo giorno. Usato per domande specifiche ("Com'è andato il pranzo?", "Cosa ho mangiato oggi?").
+
+### Percorso Firestore
+
+```
+/users/{uid}/daily_logs/{YYYY-MM-DD}/
+```
+
+**Documento principale** (daily_log):
+- `date`, `timestamp`
+- `strava_activities`: lista attività raw
+- `total_burned_kcal`
+- `weight_kg`, `goal_today`
+- `nutrition_summary`: sintesi aggregata (vedi sotto)
+- `nutrition_gemini`: ultimo pasto (retrocompatibilità)
+
+**Sottocollezione pasti**:
+```
+/users/{uid}/daily_logs/{date}/meals/{mealId}
+```
+
+Ogni pasto: `dish_name`, `calories`, `macros`, `timestamp`, `meal_type`, `raw_ai_analysis`.
+
+### Quando usare Livello 1
+
+- UI: lista pasti del giorno, dettaglio singolo piatto
+- Prompt AI: domande sul singolo pasto/giorno
+- Lettura: `getMealsForDay()`, `mealsForDayStream()`, doc `daily_logs/{date}`
+
+---
+
+## Livello 2 – Trend settimanale (rolling)
+
+**Scopo**: Aggregati pre-calcolati degli ultimi 10 giorni. L'IA legge UN solo documento per capire il trend senza scaricare ogni daily_log.
+
+### Percorso Firestore
+
+```
+/users/{uid}/rolling_10days/current
+```
+
+**Campi** (Rolling10DaysModel):
+- `activities_summary`: riepilogo per giorno
+- `total_distance_km`, `total_zone2_minutes`, `avg_hr`
+- `macro_averages`: protein_g, carbs_g, fat_g, calories (medie)
+- `estimated_vo2_max`, `last_updated`
+
+### Regola critica
+
+**Livello 2 NON legge mai le sottocollezioni** (es. meals). Legge SOLO:
+- i documenti `daily_logs/{date}` 
+- i campi di sintesi sul documento (es. `nutrition_summary`)
+
+### Aggregazione
+
+- `AggregationService.updateRolling10DaysAndBaseline()` calcola da `daily_logs`
+- Per nutrizione: usa `nutrition_summary` (o `nutrition_gemini` se assente) via `DailyLogModel.nutritionForAi`
+- Aggiornato dopo sync Strava e quando cambiano i daily_logs
+
+### Quando usare Livello 2
+
+- Prompt AI: "Negli ultimi 7 giorni le tue proteine sono state costanti"
+- Dashboard: trend breve
+- Lettura: `rolling_10days/current`
+
+---
+
+## Livello 3 – Longevità annuale (baseline)
+
+**Scopo**: Profilo evolutivo annuale. Medie mensili e statistiche per analisi di longevità (Peter Attia, Outlive).
+
+### Percorso Firestore
+
+```
+/users/{uid}/baseline_profile/main
+```
+
+**Campi** (BaselineProfileModel):
+- `goal`, `annual_stats`, `monthly_trends`
+- `key_metrics_attia`, `evolution_notes`
+- `ai_ready_summary`: testo 4000+ caratteri pronto per prompt AI
+- `last_baseline_update`, `references`
+
+### Regola critica
+
+**Livello 3 NON legge mai Livello 1** (meals, singoli daily_log raw). Legge:
+- `daily_logs` solo per campi di sintesi (`nutrition_summary`, `strava_activities` aggregati)
+- oppure `rolling_10days/current` già calcolato
+
+### Aggregazione
+
+- `_computeBaselineProfile()` in AggregationService
+- Legge tutti i `daily_logs` dell'anno
+- Per nutrizione: usa `nutritionForAi` (nutrition_summary) → medie in `annual_stats`, `monthly_trends`
+- Aggiornato ogni 10 giorni (`_baselineUpdateIntervalDays`)
+
+### Quando usare Livello 3
+
+- Prompt AI: report annuale, piano longevità
+- Lettura: `baseline_profile/main`
+
+---
+
+## Flusso dati (esempio nutrizione)
+
+```
+[Gemini analizza foto]
+       ↓
+1. Salva in meals/{mealId} (Livello 1)
+2. Aggiorna nutrition_summary su daily_logs/{date} (Livello 1)
+       ↓
+[AggregationService]
+       ↓
+3. Legge daily_logs (solo nutrition_summary) → rolling_10days (Livello 2)
+4. Legge daily_logs + rolling → baseline_profile (Livello 3)
+       ↓
+[Prompt AI]
+- "Com'è il pranzo?" → meals subcollection (Livello 1)
+- "Trend proteine ultimi 7 giorni?" → rolling_10days (Livello 2)
+- "Come va la nutrizione quest'anno?" → baseline ai_ready_summary (Livello 3)
+```
+
+---
+
+## Regole per nuovi dati
+
+Se aggiungi un nuovo tipo di dato (es. sonno, HRV, peso):
+
+1. **Livello 1**: Salva il dettaglio in `daily_logs/{date}` o in una sottocollezione sotto daily_log
+2. **Campo di sintesi**: Aggiungi un campo `*_summary` sul documento daily_log (es. `sleep_summary: { hours: 7.5, quality: 8 }`) per evitare che Livello 2/3 debba leggere i dettagli
+3. **Livello 2**: In `_computeRolling10Days` aggrega da `*_summary` (o dal campo sul daily_log)
+4. **Livello 3**: In `_computeBaselineProfile` includi le medie in `annual_stats` e `monthly_trends`
+5. **Getter unificato**: Se il dato ha fallback (vecchio formato), usa un getter tipo `nutritionForAi` che preferisce il summary
+
+### Esempio struttura per sonno
+
+```
+Livello 1: daily_logs/{date} → sleep_sessions/{id} (dettaglio)
+           daily_logs/{date} → sleep_summary: { hours: 7.5, quality: 8 }
+Livello 2: rolling_10days → avg_sleep_hours, avg_quality
+Livello 3: baseline_profile → annual_stats.avg_sleep, monthly_trends[].avg_sleep
+```
+
+---
+
+## File di riferimento
+
+- `lib/models/daily_log_model.dart` – nutritionForAi, nutrition_summary
+- `lib/models/meal_model.dart` – sottocollezione meals
+- `lib/services/nutrition_service.dart` – salvataggio Livello 1 + aggregation summary
+- `lib/services/aggregation_service.dart` – Livello 2 (rolling), Livello 3 (baseline)
+- `lib/services/ai_prompt_service.dart` – costruzione contesto da tutti e tre i livelli
