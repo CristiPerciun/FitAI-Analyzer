@@ -1,9 +1,7 @@
-import 'package:fitai_analyzer/ui/alimentazione/alimentazione_screen.dart';
-import 'package:fitai_analyzer/ui/auth/auth_selection_screen.dart';
 import 'package:fitai_analyzer/ui/auth/login_screen.dart';
-import 'package:fitai_analyzer/ui/dashboard/dashboard_screen.dart';
 import 'package:fitai_analyzer/ui/onboarding/onboarding_details_screen.dart';
 import 'package:fitai_analyzer/ui/onboarding/onboarding_screen.dart';
+import 'package:fitai_analyzer/ui/shell/main_shell_screen.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,28 +16,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final isLoggedIn = ref.read(authNotifierProvider).user != null;
       final isLoginRoute = state.uri.path == '/' || state.uri.path == '/login';
-      final isAlimentazioneRoute = state.uri.path == '/alimentazione';
 
-      if (!isLoggedIn && !isLoginRoute && !isAlimentazioneRoute) return '/';
-      if (isLoggedIn && isLoginRoute) return '/dashboard';
+      if (!isLoggedIn && !isLoginRoute) return '/';
+      if (isLoggedIn && isLoginRoute) return '/';
       return null;
     },
     routes: [
       GoRoute(
         path: '/',
-        builder: (context, state) => const AuthSelectionScreen(),
+        builder: (context, state) => const MainShellScreen(),
       ),
       GoRoute(
         path: '/login',
         builder: (context, state) => const LoginScreen(),
-      ),
-      GoRoute(
-        path: '/alimentazione',
-        builder: (context, state) => const AlimentazioneScreen(),
-      ),
-      GoRoute(
-        path: '/dashboard',
-        builder: (context, state) => const DashboardScreen(),
       ),
       GoRoute(
         path: '/onboarding',

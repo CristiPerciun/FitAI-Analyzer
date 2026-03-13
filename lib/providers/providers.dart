@@ -13,6 +13,9 @@ final stravaConnectedProvider = FutureProvider.autoDispose<bool>((ref) async {
   return ref.read(stravaServiceProvider).isConnected();
 });
 
+/// Indice tab attivo nella bottom bar (0=Home, 1=Allenamenti, 2=Alimentazione, 3=Impostazioni).
+final selectedTabIndexProvider = StateProvider<int>((ref) => 0);
+
 /// Stream dei pasti di oggi, raggruppati per tipo (Colazione/Pranzo/Cena).
 /// Ritorna mappa mealLabel -> List di MealModel.
 final todayMealsByTypeProvider = StreamProvider<Map<String, List<MealModel>>>((ref) async* {

@@ -7,13 +7,34 @@ import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/services/gemini_service.dart';
 import 'package:fitai_analyzer/services/nutrition_service.dart';
-import 'package:fitai_analyzer/ui/widgets/app_drawer.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+
+String get _galleryButtonLabel {
+  if (kIsWeb) return 'Scegli dall\'archivio';
+  switch (defaultTargetPlatform) {
+    case TargetPlatform.iOS:
+      return 'Scegli dalle foto';
+    case TargetPlatform.android:
+      return 'Scegli dalla galleria';
+    case TargetPlatform.windows:
+    case TargetPlatform.macOS:
+    case TargetPlatform.linux:
+      return 'Scegli dal PC';
+    default:
+      return 'Scegli immagine';
+  }
+}
+
+/// Su Windows/macOS/Linux la fotocamera non è supportata da image_picker.
+bool get _isCameraSupported =>
+    !kIsWeb &&
+    (defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.android);
 
 /// Pagina dedicata all'alimentazione.
 /// Qui andranno tutte le funzionalità: analizza piatto, storico pasti, ecc.
@@ -24,6 +45,7 @@ class AlimentazioneScreen extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref, {
     String? mealLabel,
+    ImageSource imageSource = ImageSource.camera,
   }) async {
     var uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
@@ -55,9 +77,14 @@ class AlimentazioneScreen extends ConsumerWidget {
       if (!saved || !context.mounted) return;
     }
 
+    // Su desktop (Windows/macOS/Linux) la fotocamera non è supportata.
+    final source = _isCameraSupported
+        ? imageSource
+        : ImageSource.gallery;
+
     final picker = ImagePicker();
     final xFile = await picker.pickImage(
-      source: ImageSource.camera,
+      source: source,
       imageQuality: 85,
     );
     if (xFile == null || !context.mounted) return;
@@ -219,13 +246,32 @@ class AlimentazioneScreen extends ConsumerWidget {
                     ),
               ),
               const SizedBox(height: 24),
+              if (_isCameraSupported)
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    _onAnalisiPiatto(context, ref,
+                        mealLabel: mealLabel, imageSource: ImageSource.camera);
+                  },
+                  icon: const Icon(Icons.camera_alt),
+                  label: const Text('Scatta foto'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF2E7D32),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              if (_isCameraSupported) const SizedBox(height: 12),
               FilledButton.icon(
                 onPressed: () {
                   Navigator.of(ctx).pop();
-                  _onAnalisiPiatto(context, ref, mealLabel: mealLabel);
+                  _onAnalisiPiatto(context, ref,
+                      mealLabel: mealLabel, imageSource: ImageSource.gallery);
                 },
-                icon: const Icon(Icons.camera_alt),
-                label: const Text('Con la foto'),
+                icon: const Icon(Icons.photo_library),
+                label: Text(_galleryButtonLabel),
                 style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xFF2E7D32),
                   padding: const EdgeInsets.symmetric(vertical: 16),
@@ -326,19 +372,7 @@ class AlimentazioneScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Alimentazione'),
-        leading: IconButton(
-          icon: const Icon(Icons.menu),
-          onPressed: () => Scaffold.of(context).openDrawer(),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back),
-            tooltip: 'Torna indietro',
-            onPressed: () => context.go('/'),
-          ),
-        ],
       ),
-      drawer: const AppDrawer(showLogout: false),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
