@@ -4,40 +4,54 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 
-import '../utils/api_constants.dart';
+import 'gemini_api_key_service.dart';
 
-final geminiServiceProvider = Provider<GeminiService>((ref) => GeminiService());
+final geminiServiceProvider = Provider<GeminiService>((ref) {
+  final apiKeyService = ref.watch(geminiApiKeyServiceProvider);
+  return GeminiService(apiKeyService: apiKeyService);
+});
 
 class GeminiService {
+  GeminiService({required GeminiApiKeyService apiKeyService})
+      : _apiKeyService = apiKeyService;
+
+  final GeminiApiKeyService _apiKeyService;
+
   GenerativeModel? _model;
   GenerativeModel? _modelNutrition;
+  String? _lastKey;
 
-  GenerativeModel get _getModel {
-    _model ??= GenerativeModel(
-      model: 'gemini-2.5-flash',
-      apiKey: ApiConstants.geminiApiKey,
-    );
+  Future<GenerativeModel> _getModel() async {
+    final key = await _apiKeyService.getKey();
+    _checkApiKey(key);
+    if (_model == null || _lastKey != key) {
+      _lastKey = key;
+      _model = GenerativeModel(model: 'gemini-2.5-flash', apiKey: key);
+    }
     return _model!;
   }
 
-  /// Modello per analisi nutrizione da foto (JSON forced).
-  GenerativeModel get _getModelNutrition {
-    _modelNutrition ??= GenerativeModel(
-      model: 'gemini-2.5-flash',
-      apiKey: ApiConstants.geminiApiKey,
-      generationConfig: GenerationConfig(
-        responseMimeType: 'application/json',
-      ),
-    );
+  Future<GenerativeModel> _getModelNutrition() async {
+    final key = await _apiKeyService.getKey();
+    _checkApiKey(key);
+    if (_modelNutrition == null || _lastKey != key) {
+      _lastKey = key;
+      _modelNutrition = GenerativeModel(
+        model: 'gemini-2.5-flash',
+        apiKey: key,
+        generationConfig: GenerationConfig(
+          responseMimeType: 'application/json',
+        ),
+      );
+    }
     return _modelNutrition!;
   }
 
-  void _checkApiKey() {
-    if (ApiConstants.geminiApiKey.isEmpty ||
-        ApiConstants.geminiApiKey.startsWith('INSERISCI_QUI')) {
+  void _checkApiKey(String key) {
+    if (key.isEmpty || key.startsWith('INSERISCI_QUI')) {
       throw StateError(
-        'Configura GEMINI_API_KEY nel file .env '
-        '(ottienila da aistudio.google.com/apikey)',
+        'Configura la chiave Gemini: inseriscila nell\'app (Impostazioni) '
+        'o nel file .env (ottienila da aistudio.google.com/apikey)',
       );
     }
   }
@@ -46,7 +60,7 @@ class GeminiService {
   /// [context] - output di AiPromptService.buildFullAIContext
   /// Usato per report annuale e piano settimanale.
   Future<String> analyzeFitnessContext(String context) async {
-    _checkApiKey();
+    final model = await _getModel();
 
     final prompt = '''
 $context
@@ -61,7 +75,7 @@ Sulla base del contesto sopra, fornisci:
 Rispondi in italiano, in modo strutturato e actionable.
 ''';
 
-    final response = await _getModel.generateContent([Content.text(prompt)]);
+    final response = await model.generateContent([Content.text(prompt)]);
 
     final text = response.text;
     if (text == null || text.isEmpty) {
@@ -80,7 +94,7 @@ Rispondi in italiano, in modo strutturato e actionable.
     Uint8List imageBytes, {
     String mimeType = 'image/jpeg',
   }) async {
-    _checkApiKey();
+    final model = await _getModelNutrition();
 
     final imagePart = DataPart(mimeType, imageBytes);
 
@@ -102,7 +116,7 @@ Restituisci un JSON con questo schema esatto:
 Stima le calorie e i macronutrienti in base al cibo visibile. Sii realistico.
 ''';
 
-    final response = await _getModelNutrition.generateContent([
+    final response = await model.generateContent([
       Content.multi([TextPart(prompt), imagePart])
     ]);
 

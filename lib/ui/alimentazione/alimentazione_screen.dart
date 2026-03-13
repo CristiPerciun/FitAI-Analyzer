@@ -1,9 +1,11 @@
 import 'dart:typed_data';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/services/gemini_service.dart';
 import 'package:fitai_analyzer/services/nutrition_service.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
+import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -19,6 +21,13 @@ class AlimentazioneScreen extends ConsumerWidget {
     if (uid == null) {
       if (context.mounted) showErrorDialog(context, 'Utente non autenticato.');
       return;
+    }
+
+    final apiKeyService = ref.read(geminiApiKeyServiceProvider);
+    if (!await apiKeyService.hasValidKey()) {
+      if (!context.mounted) return;
+      final saved = await showGeminiApiKeyDialog(context, ref);
+      if (!saved || !context.mounted) return;
     }
 
     final picker = ImagePicker();
@@ -237,6 +246,22 @@ class AlimentazioneScreen extends ConsumerWidget {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go('/'),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.key),
+            tooltip: 'Chiave API Gemini',
+            onPressed: () async {
+              await showGeminiApiKeyDialog(context, ref);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Chiave salvata. Usa "Con la foto" per analizzare.'),
+                  ),
+                );
+              }
+            },
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),

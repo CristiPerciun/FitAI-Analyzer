@@ -3,9 +3,11 @@ import 'package:fitai_analyzer/models/fitness_data.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
 import 'package:fitai_analyzer/services/ai_prompt_service.dart';
+import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/services/gemini_service.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
+import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/strava_activity_card.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
@@ -21,6 +23,13 @@ class DashboardScreen extends ConsumerWidget {
         showErrorDialog(context, 'Utente non autenticato.');
       }
       return;
+    }
+
+    final apiKeyService = ref.read(geminiApiKeyServiceProvider);
+    if (!await apiKeyService.hasValidKey()) {
+      if (!context.mounted) return;
+      final saved = await showGeminiApiKeyDialog(context, ref);
+      if (!saved || !context.mounted) return;
     }
 
     showDialog(
