@@ -1,4 +1,5 @@
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
+import 'package:fitai_analyzer/services/strava_service.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,10 +25,27 @@ class AuthSelectionScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('FitAI Analyzer'),
         leading: const Icon(Icons.fitness_center, size: 28),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.link_off),
+            tooltip: 'Disconnetti Strava',
+            onPressed: () async {
+              await ref.read(stravaServiceProvider).clearTokens();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Strava disconnesso. Ricollega per sincronizzare.'),
+                  ),
+                );
+              }
+            },
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Text(
               'Connetti i tuoi dati',
@@ -51,8 +69,11 @@ class AuthSelectionScreen extends ConsumerWidget {
                       : constraints.maxWidth * 0.85;
 
                   return SingleChildScrollView(
-                    child: Column(
-                      children: [
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
                         _buildServiceCard(
                           context: context,
                           title: 'Alimentazione',
@@ -81,17 +102,21 @@ class AuthSelectionScreen extends ConsumerWidget {
                           isLoading: authState.isLoading &&
                               authState.currentService == 'strava',
                         ),
-                      ],
+                        ],
+                      ),
                     ),
                   );
                 },
               ),
             ),
-            Text(
-              'I tuoi dati restano privati e al sicuro',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.grey[600],
-                  ),
+            Center(
+              child: Text(
+                'I tuoi dati restano privati e al sicuro',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.grey[600],
+                    ),
+                textAlign: TextAlign.center,
+              ),
             ),
           ],
         ),

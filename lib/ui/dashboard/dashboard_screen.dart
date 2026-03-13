@@ -95,18 +95,6 @@ class DashboardScreen extends ConsumerWidget {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.link_off),
-            tooltip: 'Disconnetti Strava',
-            onPressed: () async {
-              await ref.read(stravaServiceProvider).clearTokens();
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Strava disconnesso. Ricollega dalla schermata iniziale.')),
-                );
-              }
-            },
-          ),
-          IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () =>
                 ref.read(authNotifierProvider.notifier).signOut(),
