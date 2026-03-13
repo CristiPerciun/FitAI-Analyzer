@@ -6,8 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'strava_desktop_stub.dart' if (dart.library.io) 'strava_desktop_io.dart' as desktop;
+import 'strava_oauth_callback.dart';
 
 import '../models/fitness_data.dart';
 
@@ -179,13 +181,29 @@ class StravaService {
       final authUrl = Uri.parse(authUrlBase).replace(queryParameters: params).toString();
       debugPrint('Flutter su mobile → oauth/mobile/authorize, redirect: $redirectUri');
 
-      final result = await FlutterWebAuth2.authenticate(
-        url: authUrl,
-        callbackUrlScheme: callbackScheme,
-      );
+      String? code;
 
-      final uri = Uri.parse(result);
-      final code = uri.queryParameters['code'];
+      // iOS: ASWebAuthenticationSession a volte non apre la pagina. Fallback con Safari.
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        debugPrint('iOS: uso fallback url_launcher + deep link');
+        final waitFuture = StravaOAuthCallback.instance.waitForCallback();
+        final launched = await launchUrl(
+          Uri.parse(authUrl),
+          mode: LaunchMode.externalApplication,
+        );
+        if (!launched) {
+          throw Exception('Impossibile aprire Strava. Verifica la connessione.');
+        }
+        code = await waitFuture;
+      } else {
+        final result = await FlutterWebAuth2.authenticate(
+          url: authUrl,
+          callbackUrlScheme: callbackScheme,
+        );
+        final uri = Uri.parse(result);
+        code = uri.queryParameters['code'];
+      }
+
       if (code == null) {
         throw Exception('Nessun code ricevuto da Strava (mobile)');
       }

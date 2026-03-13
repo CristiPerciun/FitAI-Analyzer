@@ -41,6 +41,7 @@ dependencies:
   flutter_web_auth_2: ^5.0.1
   shared_preferences: ^2.3.2
   url_launcher: ^6.2.5
+  app_links: ^6.3.2
   flutter_secure_storage: ^10.0.0
   json_annotation: ^4.9.0
   fl_chart: ^1.1.1

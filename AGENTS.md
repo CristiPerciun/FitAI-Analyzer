@@ -3,6 +3,7 @@
 **Ogni agente Cursor deve rispettare queste regole PRIMA di eseguire qualsiasi prompt.**
 
 Consulta `.cursor/rules/project-conventions.mdc` per i dettagli completi.
+Consulta `.cursor/rules/ios-build-ci.mdc` per requisiti build iOS e CI (.env, workflow).
 
 ## Riepilogo vincolante
 
@@ -12,3 +13,4 @@ Consulta `.cursor/rules/project-conventions.mdc` per i dettagli completi.
 - **UI**: Material 3, responsive, fl_chart, go_router
 - **Sicurezza**: secure storage per API keys, try-catch, debounce
 - **Deploy**: Flutter build Android/iOS
+- **Build iOS CI**: workflow deve creare `.env` prima di pub get; dotenv in try-catch; api_constants con fallback (vedi ios-build-ci.mdc)

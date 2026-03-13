@@ -1,0 +1,55 @@
+---
+description: Requisiti build iOS e CI - .env, dotenv, workflow GitHub Actions
+alwaysApply: true
+---
+
+# Build iOS e CI - Requisiti vincolanti
+
+**NON modificare questi aspetti senza adattare il resto, altrimenti la build iOS in CI fallirà.**
+
+## 1. Asset `.env` in pubspec.yaml
+
+Se `pubspec.yaml` contiene `assets: - .env`, il file `.env` **deve esistere** al momento di `flutter build`. In CI non è nel repo (è in `.gitignore`).
+
+**Obbligatorio nel workflow** (`.github/workflows/build-ios.yml`): step **prima** di `Flutter pub get`:
+
+```yaml
+- name: Setup .env per CI
+  run: echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > .env
+```
+
+## 2. main.dart – dotenv.load()
+
+Usare **sempre** try-catch:
+
+```dart
+try {
+  await dotenv.load(fileName: '.env');
+} catch (_) {
+  // .env non disponibile – usa fallback in api_constants
+}
+```
+
+## 3. api_constants.dart – chiave Gemini
+
+Usare **fallback** per evitare crash se `.env` non è caricato:
+
+```dart
+static String get geminiApiKey =>
+    dotenv.get('GEMINI_API_KEY', fallback: 'INSERISCI_QUI_LA_TUA_GEMINI_API_KEY');
+```
+
+## 4. Info.plist iOS – permessi camera/galleria
+
+Per `image_picker` (analisi foto piatto) servono:
+
+- `NSCameraUsageDescription`
+- `NSPhotoLibraryUsageDescription`
+
+## 5. Checklist prima di modifiche che toccano .env / CI
+
+- [ ] Workflow crea `.env` prima di `flutter pub get`?
+- [ ] `dotenv.load()` è in try-catch?
+- [ ] `api_constants` usa fallback?
+- [ ] `.env` è in `.gitignore`? (sì)
+- [ ] `.env.example` documenta le variabili necessarie?
