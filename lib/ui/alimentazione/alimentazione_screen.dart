@@ -7,6 +7,7 @@ import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/services/gemini_service.dart';
 import 'package:fitai_analyzer/services/nutrition_service.dart';
+import 'package:fitai_analyzer/ui/theme/app_colors.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
 import 'package:flutter/material.dart';
@@ -242,7 +243,7 @@ class AlimentazioneScreen extends ConsumerWidget {
                 'Aggiungi $mealLabel',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: const Color(0xFF2E7D32),
+                      color: AppColors.darkGreen,
                     ),
               ),
               const SizedBox(height: 24),
@@ -256,7 +257,7 @@ class AlimentazioneScreen extends ConsumerWidget {
                   icon: const Icon(Icons.camera_alt),
                   label: const Text('Scatta foto'),
                   style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF2E7D32),
+                    backgroundColor: AppColors.darkGreen,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -273,7 +274,7 @@ class AlimentazioneScreen extends ConsumerWidget {
                 icon: const Icon(Icons.photo_library),
                 label: Text(_galleryButtonLabel),
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF2E7D32),
+                  backgroundColor: AppColors.darkGreen,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -293,8 +294,8 @@ class AlimentazioneScreen extends ConsumerWidget {
                 icon: const Icon(Icons.edit),
                 label: const Text('Manualmente'),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF2E7D32),
-                  side: const BorderSide(color: Color(0xFF2E7D32)),
+                  foregroundColor: AppColors.darkGreen,
+                  side: const BorderSide(color: AppColors.darkGreen),
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -322,7 +323,7 @@ class AlimentazioneScreen extends ConsumerWidget {
                 '${meal.calories} kcal',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: const Color(0xFF2E7D32),
+                      color: AppColors.darkGreen,
                     ),
               ),
               if (meal.timestamp.isNotEmpty)
@@ -423,17 +424,17 @@ class _MealCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF2E7D32).withValues(alpha: 0.15),
+        color: AppColors.darkGreen.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: const Color(0xFF2E7D32).withValues(alpha: 0.4),
+          color: AppColors.darkGreen.withValues(alpha: 0.4),
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Material(
-            color: Colors.transparent,
+            color: AppColors.transparent,
             child: InkWell(
               onTap: onTap,
               borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
@@ -445,7 +446,7 @@ class _MealCard extends StatelessWidget {
                       child: Text(
                         label,
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              color: const Color(0xFF2E7D32),
+                              color: AppColors.darkGreen,
                               fontWeight: FontWeight.bold,
                             ),
                       ),
@@ -453,12 +454,12 @@ class _MealCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF2E7D32).withValues(alpha: 0.2),
+                        color: AppColors.darkGreen.withValues(alpha: 0.2),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
                         Icons.add,
-                        color: Color(0xFF2E7D32),
+                        color: AppColors.darkGreen,
                         size: 24,
                       ),
                     ),
@@ -470,7 +471,7 @@ class _MealCard extends StatelessWidget {
           if (meals.isNotEmpty) ...[
             Divider(
               height: 1,
-              color: const Color(0xFF2E7D32).withValues(alpha: 0.3),
+              color: AppColors.darkGreen.withValues(alpha: 0.3),
             ),
             ...meals.map((meal) => _MealTile(
                   meal: meal,
@@ -496,7 +497,7 @@ class _MealTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.transparent,
+      color: AppColors.transparent,
       child: InkWell(
         onTap: onTap,
         child: Padding(
@@ -513,13 +514,13 @@ class _MealTile extends StatelessWidget {
                 '${meal.calories} kcal',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w600,
-                      color: const Color(0xFF2E7D32),
+                      color: AppColors.darkGreen,
                     ),
               ),
               const SizedBox(width: 8),
               Icon(
                 Icons.chevron_right,
-                color: Colors.grey.shade400,
+                color: AppColors.hintMedium,
                 size: 20,
               ),
             ],

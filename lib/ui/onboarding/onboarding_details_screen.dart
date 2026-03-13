@@ -1,5 +1,6 @@
 import 'package:fitai_analyzer/models/user_profile.dart';
 import 'package:fitai_analyzer/providers/user_profile_notifier.dart';
+import 'package:fitai_analyzer/ui/theme/app_colors.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -452,7 +453,7 @@ class _OnboardingDetailsScreenState
                         width: 24,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: Colors.white,
+                          color: AppColors.white,
                         ),
                       )
                     : const Text('Genera il mio piano AI'),

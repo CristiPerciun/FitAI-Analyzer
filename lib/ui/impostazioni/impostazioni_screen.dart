@@ -4,12 +4,11 @@ import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/providers/strava_sync_status_notifier.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
+import 'package:fitai_analyzer/ui/theme/app_colors.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-const _stravaOrange = Color(0xFFFC4C02);
 
 /// Schermata Impostazioni: Strava, chiave Gemini, logout.
 class ImpostazioniScreen extends ConsumerWidget {
@@ -45,18 +44,18 @@ class ImpostazioniScreen extends ConsumerWidget {
             leading: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: _stravaOrange.withValues(alpha: 0.12),
+                color: AppColors.stravaOrange.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.directions_bike,
-                  color: _stravaOrange, size: 24),
+              child: Icon(Icons.directions_bike,
+                  color: AppColors.stravaOrange, size: 24),
             ),
             title: isConnected ? 'Strava connesso' : 'Connect Strava',
             subtitle: isStravaLoading
                 ? (syncStatus.message ?? 'Connessione...')
-                : (isConnected ? 'Collegato' : 'Collega account Strava'),
+                : (isConnected ? 'Tocca per sincronizzare' : 'Collega account Strava'),
             enabled: !isStravaLoading,
-            onTap: isConnected ? null : () => _onConnectStrava(context, ref),
+            onTap: () => _onConnectStrava(context, ref),
           ),
           if (isConnected)
             _SettingsTile(

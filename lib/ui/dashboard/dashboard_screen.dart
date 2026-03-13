@@ -2,10 +2,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitai_analyzer/models/fitness_data.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
+import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/services/ai_prompt_service.dart';
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/services/gemini_service.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
+import 'package:fitai_analyzer/ui/theme/app_colors.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/strava_activity_card.dart';
@@ -15,6 +17,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
+
+  Future<void> _onSyncStrava(BuildContext context, WidgetRef ref) async {
+    await ref.read(authNotifierProvider.notifier).startOAuth(
+      'strava',
+      onSuccess: () {
+        ref.invalidate(healthDataStreamProvider);
+        ref.read(selectedTabIndexProvider.notifier).state = 1;
+      },
+    );
+  }
 
   Future<void> _onAnalisiAI(BuildContext context, WidgetRef ref) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -81,6 +93,7 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authNotifierProvider);
     final healthAsync = ref.watch(healthDataStreamProvider);
+    final stravaConnected = ref.watch(stravaConnectedProvider).valueOrNull ?? false;
 
     ref.listen(healthDataStreamProvider, (prev, next) {
       next.whenOrNull(
@@ -106,7 +119,11 @@ class DashboardScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 24),
             healthAsync.when(
-              data: (data) => _CaloriesChartCard(data: data),
+              data: (data) => _CaloriesChartCard(
+                data: data,
+                isStravaConnected: stravaConnected,
+                onSyncTap: () => _onSyncStrava(context, ref),
+              ),
               loading: () => const _ChartSkeleton(),
               error: (e, _) => _ErrorCard(message: e.toString()),
             ),
@@ -114,7 +131,11 @@ class DashboardScreen extends ConsumerWidget {
             healthAsync.when(
               data: (data) {
                 final stravaData = data.where((d) => d.source == 'strava').toList();
-                return _StravaActivitiesCard(data: stravaData);
+                return _StravaActivitiesCard(
+                  data: stravaData,
+                  isStravaConnected: stravaConnected,
+                  onSyncTap: () => _onSyncStrava(context, ref),
+                );
               },
               loading: () => const _ChartSkeleton(),
               error: (e, _) => _ErrorCard(message: e.toString()),
@@ -134,7 +155,7 @@ class _AnalisiAIButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.transparent,
+      color: AppColors.transparent,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
@@ -216,7 +237,7 @@ class _WelcomeCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: AppColors.shadowLight(0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -243,9 +264,15 @@ class _WelcomeCard extends StatelessWidget {
 }
 
 class _CaloriesChartCard extends StatelessWidget {
-  const _CaloriesChartCard({required this.data});
+  const _CaloriesChartCard({
+    required this.data,
+    required this.isStravaConnected,
+    required this.onSyncTap,
+  });
 
   final List<FitnessData> data;
+  final bool isStravaConnected;
+  final VoidCallback onSyncTap;
 
   @override
   Widget build(BuildContext context) {
@@ -291,9 +318,25 @@ class _CaloriesChartCard extends StatelessWidget {
             height: 200,
             child: barGroups.isEmpty
                 ? Center(
-                    child: Text(
-                      'Nessun dato. Connetti una fonte per sincronizzare.',
-                      style: Theme.of(context).textTheme.bodySmall,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          isStravaConnected
+                              ? 'Nessun dato. Sincronizza per caricare le attività.'
+                              : 'Nessun dato. Connetti Strava per sincronizzare.',
+                          style: Theme.of(context).textTheme.bodySmall,
+                          textAlign: TextAlign.center,
+                        ),
+                        if (isStravaConnected) ...[
+                          const SizedBox(height: 12),
+                          FilledButton.icon(
+                            onPressed: onSyncTap,
+                            icon: const Icon(Icons.sync, size: 18),
+                            label: const Text('Sincronizza'),
+                          ),
+                        ],
+                      ],
                     ),
                   )
                 : BarChart(
@@ -322,9 +365,15 @@ class _CaloriesChartCard extends StatelessWidget {
 }
 
 class _StravaActivitiesCard extends StatelessWidget {
-  const _StravaActivitiesCard({required this.data});
+  const _StravaActivitiesCard({
+    required this.data,
+    required this.isStravaConnected,
+    required this.onSyncTap,
+  });
 
   final List<FitnessData> data;
+  final bool isStravaConnected;
+  final VoidCallback onSyncTap;
 
   @override
   Widget build(BuildContext context) {
@@ -340,7 +389,7 @@ class _StravaActivitiesCard extends StatelessWidget {
               barRods: [
                 BarChartRodData(
                   toY: (e.value.distanceKm ?? 0).toDouble(),
-                  color: const Color(0xFFFC4C02),
+                  color: AppColors.stravaOrange,
                   width: 16,
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(4),
@@ -368,7 +417,7 @@ class _StravaActivitiesCard extends StatelessWidget {
           Row(
             children: [
               const Icon(Icons.directions_bike,
-                  color: Color(0xFFFC4C02), size: 24),
+                  color: AppColors.stravaOrange, size: 24),
               const SizedBox(width: 8),
               Text(
                 'Attività Strava',
@@ -381,9 +430,25 @@ class _StravaActivitiesCard extends StatelessWidget {
             height: 200,
             child: barGroups.isEmpty
                 ? Center(
-                    child: Text(
-                      'Nessuna attività. Connetti Strava per sincronizzare.',
-                      style: Theme.of(context).textTheme.bodySmall,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          isStravaConnected
+                              ? 'Nessuna attività. Sincronizza per caricare le attività.'
+                              : 'Nessuna attività. Connetti Strava per sincronizzare.',
+                          style: Theme.of(context).textTheme.bodySmall,
+                          textAlign: TextAlign.center,
+                        ),
+                        if (isStravaConnected) ...[
+                          const SizedBox(height: 12),
+                          FilledButton.icon(
+                            onPressed: onSyncTap,
+                            icon: const Icon(Icons.sync, size: 18),
+                            label: const Text('Sincronizza'),
+                          ),
+                        ],
+                      ],
                     ),
                   )
                 : BarChart(

@@ -3,6 +3,7 @@ import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/routes/app_router.dart';
 import 'package:fitai_analyzer/services/strava_oauth_callback.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
+import 'package:fitai_analyzer/ui/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -49,11 +50,11 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         scaffoldMessengerKey.currentState?.showSnackBar(
           SnackBar(
             content: Text(next),
-            backgroundColor: Colors.red.shade700,
+            backgroundColor: AppColors.errorRed,
             duration: const Duration(seconds: 8),
             action: SnackBarAction(
               label: 'OK',
-              textColor: Colors.white,
+              textColor: AppColors.white,
               onPressed: () =>
                   scaffoldMessengerKey.currentState?.hideCurrentSnackBar(),
             ),

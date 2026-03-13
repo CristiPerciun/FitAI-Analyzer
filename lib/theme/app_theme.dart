@@ -1,33 +1,34 @@
+import 'package:fitai_analyzer/ui/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 
 final appLightTheme = ThemeData(
   useMaterial3: true,
   colorScheme: ColorScheme.fromSeed(
-    seedColor: const Color(0xFF4CAF50), // Verde principale
+    seedColor: AppColors.primaryGreen,
     brightness: Brightness.light,
   ),
-  scaffoldBackgroundColor: const Color(0xFFE8F5E9), // Sfondo verde chiarissimo
+  scaffoldBackgroundColor: AppColors.scaffoldLight,
   appBarTheme: const AppBarTheme(
-    backgroundColor: Color(0xFF2E7D32),
-    foregroundColor: Colors.white,
+    backgroundColor: AppColors.darkGreen,
+    foregroundColor: AppColors.white,
     elevation: 0,
     centerTitle: true,
   ),
   cardTheme: CardThemeData(
     elevation: 6,
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-    shadowColor: Colors.black26,
+    shadowColor: AppColors.shadow,
   ),
   textTheme: const TextTheme(
-    headlineMedium: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF37474F)),
-    titleLarge: TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF37474F)),
+    headlineMedium: TextStyle(fontWeight: FontWeight.w700, color: AppColors.textDark),
+    titleLarge: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textDark),
   ),
 );
 
 final appDarkTheme = ThemeData(
   useMaterial3: true,
   colorScheme: ColorScheme.fromSeed(
-    seedColor: const Color(0xFF4CAF50),
+    seedColor: AppColors.primaryGreen,
     brightness: Brightness.dark,
   ),
 );

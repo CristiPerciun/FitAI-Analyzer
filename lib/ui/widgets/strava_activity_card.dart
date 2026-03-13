@@ -1,4 +1,5 @@
 import 'package:fitai_analyzer/services/strava_service.dart';
+import 'package:fitai_analyzer/ui/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -54,7 +55,7 @@ class StravaActivityCard extends StatelessWidget {
                   Icon(
                     _getIcon(activity.sportType),
                     size: 32,
-                    color: const Color(0xFFFC4C02),
+                    color: AppColors.stravaOrange,
                   ),
                   const SizedBox(width: 12),
                   Expanded(

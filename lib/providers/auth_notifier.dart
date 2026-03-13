@@ -9,6 +9,11 @@ import 'package:fitai_analyzer/utils/strava_error_messages.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+/// Stream dello stato auth Firebase. Usato per aggiornare AuthNotifier al riavvio app.
+final _authUserStreamProvider = StreamProvider<User?>((ref) {
+  return ref.watch(authServiceProvider).authStateChanges;
+});
+
 class AuthState {
   static const _omit = Object();
 
@@ -44,9 +49,17 @@ class AuthState {
 class AuthNotifier extends Notifier<AuthState> {
   @override
   AuthState build() {
-    // Idrata da Firebase: su iOS l'app può essere riavviata dal deep link Strava
-    // e lo stato Riverpod è perso, ma FirebaseAuth persiste
-    final user = FirebaseAuth.instance.currentUser;
+    // Ascolta authStateChanges: al riavvio app Firebase ripristina la sessione
+    // in modo asincrono; senza questo listener AuthNotifier resterebbe con user=null
+    ref.listen(_authUserStreamProvider, (prev, next) {
+      next.whenData((user) {
+        if (state.user != user) {
+          state = state.copyWith(user: user);
+        }
+      });
+    });
+    // Valore iniziale sincrono (può essere null se Firebase non ha ancora ripristinato)
+    final user = ref.read(authServiceProvider).currentUser;
     return AuthState(user: user);
   }
 
