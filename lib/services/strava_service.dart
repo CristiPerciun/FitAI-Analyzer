@@ -123,8 +123,23 @@ class StravaService {
         : null;
   }
 
-  /// Rimuove i token salvati. Pubblico per "Disconnetti Strava".
+  /// Rimuove i token: revoca su Strava (deauthorize) e cancella in locale.
   Future<void> clearTokens() async {
+    await _loadInitialTokens();
+    if (_accessToken != null) {
+      try {
+        if (_isTokenExpired() && _refreshToken != null) {
+          await _performTokenRefresh();
+        }
+        await http.post(
+          Uri.parse('https://www.strava.com/oauth/deauthorize').replace(
+            queryParameters: {'access_token': _accessToken!},
+          ),
+        );
+      } catch (_) {
+        // Revoca fallita (token già invalidato, offline, ecc.) - cancella comunque in locale
+      }
+    }
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('strava_access_token');
     await prefs.remove('strava_refresh_token');
