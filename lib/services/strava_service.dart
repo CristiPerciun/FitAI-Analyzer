@@ -105,7 +105,7 @@ class StravaService {
   static const String clientId = '210889';
   static const String clientSecret = '86f8945313e8f838bb08e074be926b2c09ab7a54';
   /// Redirect URI per OAuth. In Strava (strava.com/settings/api) imposta
-  /// "Authorization Callback Domain" = myhealthsync
+  /// "Authorization Callback Domain" = strava (host di myhealthsync://strava/callback)
   static const String redirectUri = 'myhealthsync://strava/callback';
   static const String callbackScheme = 'myhealthsync';
 
@@ -123,8 +123,8 @@ class StravaService {
         : null;
   }
 
-  /// Rimuove i token salvati (es. quando manca activity:read_all).
-  Future<void> _clearTokens() async {
+  /// Rimuove i token salvati. Pubblico per "Disconnetti Strava".
+  Future<void> clearTokens() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('strava_access_token');
     await prefs.remove('strava_refresh_token');
@@ -133,6 +133,8 @@ class StravaService {
     _refreshToken = null;
     _expiresAt = null;
   }
+
+  Future<void> _clearTokens() => clearTokens();
 
   bool _isActivityReadPermissionError(String body) =>
       body.contains('activity:read_permission') || body.contains('activity:read_all');
@@ -178,8 +180,12 @@ class StravaService {
     if (isMobile) {
       params['redirect_uri'] = redirectUri;
 
-      final authUrl = Uri.parse(authUrlBase).replace(queryParameters: params).toString();
-      debugPrint('Flutter su mobile → oauth/mobile/authorize, redirect: $redirectUri');
+      // iOS Safari: usa endpoint web (oauth/authorize) invece di mobile - evita "invalid redirect_uri"
+      final String urlBase = defaultTargetPlatform == TargetPlatform.iOS
+          ? 'https://www.strava.com/oauth/authorize?'
+          : authUrlBase;
+      final authUrl = Uri.parse(urlBase).replace(queryParameters: params).toString();
+      debugPrint('Flutter su mobile → $urlBase, redirect: $redirectUri');
 
       String? code;
 

@@ -6,9 +6,9 @@ Se l'app mostra un errore di redirect URI o la pagina Strava non si carica corre
 
 1. Vai su **https://www.strava.com/settings/api**
 2. Accedi con il tuo account Strava
-3. Nel campo **"Authorization Callback Domain"** prova uno di questi valori (in ordine):
-   - `myhealthsync` (solo lo scheme)
-   - `strava` (la parte host se il primo non funziona)
+3. Nel campo **"Authorization Callback Domain"** inserisci:
+   - **`strava`** (host di myhealthsync://strava/callback) – consigliato per iOS
+   - oppure `myhealthsync` se il primo non funziona
 4. Clicca **Save**
 5. Riprova la connessione dall'app
 
