@@ -15,4 +15,4 @@ Consulta `.cursor/rules/three-levels-memory-strategy.mdc` per la strategia a Tre
 - **UI**: Material 3, responsive, fl_chart, go_router
 - **Sicurezza**: secure storage per API keys, try-catch, debounce
 - **Deploy**: Flutter build Android/iOS
-- **Build iOS CI**: workflow deve creare `.env` prima di pub get; dotenv in try-catch; api_constants con fallback (vedi ios-build-ci.mdc)
+- **Build iOS CI**: workflow deve creare `.env` prima di pub get; dotenv in try-catch; GeminiApiKeyService con fallback (vedi ios-build-ci.mdc)

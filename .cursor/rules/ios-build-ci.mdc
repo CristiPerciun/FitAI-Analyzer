@@ -26,17 +26,16 @@ Usare **sempre** try-catch:
 try {
   await dotenv.load(fileName: '.env');
 } catch (_) {
-  // .env non disponibile – usa fallback in api_constants
+  // .env non disponibile – GeminiApiKeyService usa dotenv.get con fallback
 }
 ```
 
-## 3. api_constants.dart – chiave Gemini
+## 3. GeminiApiKeyService – chiave Gemini
 
-Usare **fallback** per evitare crash se `.env` non è caricato:
+`GeminiApiKeyService` legge la chiave da Secure Storage o da `.env`. Usa **fallback** per evitare crash se `.env` non è caricato:
 
 ```dart
-static String get geminiApiKey =>
-    dotenv.get('GEMINI_API_KEY', fallback: 'INSERISCI_QUI_LA_TUA_GEMINI_API_KEY');
+return dotenv.get('GEMINI_API_KEY', fallback: '');
 ```
 
 ## 4. Info.plist iOS – permessi camera/galleria
@@ -50,6 +49,6 @@ Per `image_picker` (analisi foto piatto) servono:
 
 - [ ] Workflow crea `.env` prima di `flutter pub get`?
 - [ ] `dotenv.load()` è in try-catch?
-- [ ] `api_constants` usa fallback?
+- [ ] `GeminiApiKeyService` usa dotenv.get con fallback?
 - [ ] `.env` è in `.gitignore`? (sì)
 - [ ] `.env.example` documenta le variabili necessarie?

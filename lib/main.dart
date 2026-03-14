@@ -14,7 +14,7 @@ void main() async {
   try {
     await dotenv.load(fileName: '.env');
   } catch (_) {
-    // .env non disponibile (es. CI senza asset) - usa fallback in api_constants
+    // .env non disponibile (es. CI senza asset) - GeminiApiKeyService usa fallback
   }
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 

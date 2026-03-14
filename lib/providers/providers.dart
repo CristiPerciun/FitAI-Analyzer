@@ -84,22 +84,6 @@ Future<void> loadLongevityPlan(WidgetRef ref) async {
   } catch (_) {}
 }
 
-/// Stream dei pasti di oggi, raggruppati per tipo (Colazione/Pranzo/Cena).
-/// Ritorna mappa mealLabel -> List di MealModel.
-final todayMealsByTypeProvider = StreamProvider<Map<String, List<MealModel>>>((ref) async* {
-  final authState = ref.watch(authNotifierProvider);
-  final uid = authState.user?.uid;
-  if (uid == null) {
-    yield {};
-    return;
-  }
-  final dateStr = DateTime.now().toIso8601String().split('T')[0];
-  final nutrition = ref.read(nutritionServiceProvider);
-  await for (final meals in nutrition.mealsForDayStream(uid, dateStr)) {
-    yield _groupMealsByType(meals);
-  }
-});
-
 /// Date con pasti, ordinate dal più recente.
 final mealDatesProvider = StreamProvider<List<String>>((ref) {
   final uid = ref.watch(authNotifierProvider).user?.uid;

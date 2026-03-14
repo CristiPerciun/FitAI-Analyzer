@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// Estensione tema per le card con gradiente (stile Analisi AI).
-/// Usata da: compact_activity_card, alimentazione_card, _MealCard.
+/// Usata da: compact_activity_card, _MealCard.
 class AppCardTheme extends ThemeExtension<AppCardTheme> {
   const AppCardTheme({
     required this.gradientColors,
