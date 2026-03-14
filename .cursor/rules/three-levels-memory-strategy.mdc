@@ -113,6 +113,7 @@ Ogni pasto: `dish_name`, `calories`, `macros`, `timestamp`, `meal_type`, `raw_ai
 - Legge tutti i `daily_logs` dell'anno
 - Per nutrizione: usa `nutritionForAi` (nutrition_summary) → medie in `annual_stats`, `monthly_trends`
 - Aggiornato ogni 10 giorni (`_baselineUpdateIntervalDays`)
+- **Con AI**: se API key Gemini valida, `evolution_notes` e `ai_ready_summary` sono generati dall'AI; altrimenti fallback a template
 
 ### Quando usare Livello 3
 
@@ -167,6 +168,8 @@ Livello 3: baseline_profile → annual_stats.avg_sleep, monthly_trends[].avg_sle
 
 - `lib/models/daily_log_model.dart` – nutritionForAi, nutrition_summary
 - `lib/models/meal_model.dart` – sottocollezione meals
+- `lib/models/longevity_home_package.dart` – pacchetto unificato per Home AI
 - `lib/services/nutrition_service.dart` – salvataggio Livello 1 + aggregation summary
 - `lib/services/aggregation_service.dart` – Livello 2 (rolling), Livello 3 (baseline)
 - `lib/services/ai_prompt_service.dart` – costruzione contesto da tutti e tre i livelli
+- `lib/services/longevity_engine.dart` – pacchetto informativo Home (Livello 1+2+3)

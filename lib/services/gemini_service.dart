@@ -56,6 +56,18 @@ class GeminiService {
     }
   }
 
+  /// Genera risposta da un prompt completo (senza appendere istruzioni).
+  /// Usato per Home: il prompt include già l'istruzione (LongevityEngine.buildHomeAiPrompt).
+  Future<String> generateFromPrompt(String prompt) async {
+    final model = await _getModel();
+    final response = await model.generateContent([Content.text(prompt)]);
+    final text = response.text;
+    if (text == null || text.isEmpty) {
+      throw Exception('Gemini non ha restituito risposta');
+    }
+    return text;
+  }
+
   /// Invia il contesto completo a Gemini e restituisce l'analisi.
   /// [context] - output di AiPromptService.buildFullAIContext
   /// Usato per report annuale e piano settimanale.

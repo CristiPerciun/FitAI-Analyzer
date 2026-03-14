@@ -1,14 +1,31 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/baseline_profile_model.dart';
 import '../models/daily_log_model.dart';
 import '../models/rolling_10days_model.dart';
+import 'gemini_api_key_service.dart';
+import 'gemini_service.dart';
 
-final aggregationServiceProvider =
-    Provider<AggregationService>((ref) => AggregationService());
+final aggregationServiceProvider = Provider<AggregationService>((ref) {
+  return AggregationService(
+    geminiService: ref.read(geminiServiceProvider),
+    geminiApiKeyService: ref.read(geminiApiKeyServiceProvider),
+  );
+});
 
 class AggregationService {
+  AggregationService({
+    required GeminiService geminiService,
+    required GeminiApiKeyService geminiApiKeyService,
+  })  : _geminiService = geminiService,
+        _geminiApiKeyService = geminiApiKeyService;
+
+  final GeminiService _geminiService;
+  final GeminiApiKeyService _geminiApiKeyService;
+
   static const int _baselineUpdateIntervalDays = 10;
 
   /// Aggiorna Livello 2 (rolling_10days) e, se necessario, Livello 3 (baseline_profile).
@@ -323,22 +340,53 @@ class AggregationService {
       'hr_recovery_avg': 45, // placeholder - da dati HR
     };
 
-    // Evolution notes (testo generato)
-    final evolutionNotes = _buildEvolutionNotes(
-      allLogs: allLogs,
-      annualStats: annualStats,
-      year: year,
-    );
-
-    // AI-ready summary (4000+ caratteri, riferimenti Attia)
-    final aiReadySummary = _buildAiReadySummary(
-      goalIa: goalIa,
-      annualStats: annualStats,
-      keyMetricsAttia: keyMetricsAttia,
-      monthlyTrends: monthlyTrends,
-      evolutionNotes: evolutionNotes,
-      rolling: rolling,
-    );
+    // Evolution notes e ai_ready_summary: generati con AI ogni 10 giorni (strategia Tre Livelli)
+    String evolutionNotes;
+    String aiReadySummary;
+    try {
+      if (await _geminiApiKeyService.hasValidKey()) {
+        final aiResult = await _generateBaselineWithAi(
+          goalIa: goalIa,
+          annualStats: annualStats,
+          keyMetricsAttia: keyMetricsAttia,
+          monthlyTrends: monthlyTrends,
+          rolling: rolling,
+          allLogs: allLogs,
+          year: year,
+        );
+        evolutionNotes = aiResult.evolutionNotes;
+        aiReadySummary = aiResult.aiReadySummary;
+      } else {
+        evolutionNotes = _buildEvolutionNotes(
+          allLogs: allLogs,
+          annualStats: annualStats,
+          year: year,
+        );
+        aiReadySummary = _buildAiReadySummary(
+          goalIa: goalIa,
+          annualStats: annualStats,
+          keyMetricsAttia: keyMetricsAttia,
+          monthlyTrends: monthlyTrends,
+          evolutionNotes: evolutionNotes,
+          rolling: rolling,
+        );
+      }
+    } catch (_) {
+      // Fallback se AI fallisce
+      evolutionNotes = _buildEvolutionNotes(
+        allLogs: allLogs,
+        annualStats: annualStats,
+        year: year,
+      );
+      aiReadySummary = _buildAiReadySummary(
+        goalIa: goalIa,
+        annualStats: annualStats,
+        keyMetricsAttia: keyMetricsAttia,
+        monthlyTrends: monthlyTrends,
+        evolutionNotes: evolutionNotes,
+        rolling: rolling,
+      );
+    }
 
     return BaselineProfileModel(
       goalIa: goalIa,
@@ -354,6 +402,69 @@ class AggregationService {
         'ACSM - Linee guida esercizio cardiovascolare',
       ],
     );
+  }
+
+  /// Genera evolution_notes e ai_ready_summary con AI (baseline aggiornato ogni 10 gg con AI).
+  Future<({String evolutionNotes, String aiReadySummary})> _generateBaselineWithAi({
+    required String goalIa,
+    required Map<String, dynamic> annualStats,
+    required Map<String, dynamic> keyMetricsAttia,
+    required List<Map<String, dynamic>> monthlyTrends,
+    required Rolling10DaysModel rolling,
+    required List<DailyLogModel> allLogs,
+    required int year,
+  }) async {
+    final fallbackEvolution = _buildEvolutionNotes(
+      allLogs: allLogs,
+      annualStats: annualStats,
+      year: year,
+    );
+    final fallbackSummary = _buildAiReadySummary(
+      goalIa: goalIa,
+      annualStats: annualStats,
+      keyMetricsAttia: keyMetricsAttia,
+      monthlyTrends: monthlyTrends,
+      evolutionNotes: fallbackEvolution,
+      rolling: rolling,
+    );
+
+    final prompt = '''
+Sei un esperto di longevità (Peter Attia, Outlive). Genera il profilo baseline per un utente FitAI Analyzer.
+
+DATI RAW:
+- goal_ia: $goalIa
+- annual_stats: ${annualStats.toString()}
+- key_metrics_attia: ${keyMetricsAttia.toString()}
+- monthly_trends: ${monthlyTrends.map((m) => 'Mese ${m['month']}: km=${m['total_km']}, workouts=${m['workouts']}, avg_kcal=${m['avg_kcal']}, avg_protein=${m['avg_protein']}').join('; ')}
+- rolling 10gg: ${rolling.totalDistanceKm} km, Zone 2: ${rolling.totalZone2Minutes} min, VO2: ${rolling.estimatedVo2Max.toStringAsFixed(1)}
+
+Restituisci un JSON con esattamente questi campi:
+{
+  "evolution_notes": "stringa 100-300 caratteri: note evolutive sintetiche (es. Da gennaio a marzo hai percorso X km, peso medio Y kg, progressione per longevità)",
+  "ai_ready_summary": "stringa 4000+ caratteri: profilo completo AI-ready con statistiche annuali, metriche Attia, trend mensili, evoluzione, riferimenti Outlive/Stanford. Formato come _buildAiReadySummary ma arricchito con insight personalizzati"
+}
+
+Rispondi SOLO con il JSON, nessun altro testo.
+''';
+
+    try {
+      final response = await _geminiService.generateFromPrompt(prompt);
+      final cleaned = response
+          .replaceAll(RegExp(r'```json\s*'), '')
+          .replaceAll(RegExp(r'\s*```'), '')
+          .trim();
+      final decoded = json.decode(cleaned) as Map<String, dynamic>?;
+      if (decoded != null) {
+        final ev = decoded['evolution_notes']?.toString();
+        final sum = decoded['ai_ready_summary']?.toString();
+        if (ev != null && ev.isNotEmpty && sum != null && sum.length >= 500) {
+          return (evolutionNotes: ev, aiReadySummary: sum);
+        }
+      }
+    } catch (_) {
+      // Fallback
+    }
+    return (evolutionNotes: fallbackEvolution, aiReadySummary: fallbackSummary);
   }
 
   String _buildEvolutionNotes({
