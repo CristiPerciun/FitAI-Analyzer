@@ -7,7 +7,8 @@ import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/services/gemini_service.dart';
 import 'package:fitai_analyzer/services/nutrition_service.dart';
-import 'package:fitai_analyzer/ui/theme/app_colors.dart';
+import 'package:fitai_analyzer/theme/app_card_theme.dart';
+import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
 import 'package:flutter/material.dart';
@@ -113,7 +114,6 @@ class AlimentazioneScreen extends ConsumerWidget {
 
     try {
       final gemini = ref.read(geminiServiceProvider);
-      final nutrition = ref.read(nutritionServiceProvider);
       final result = await gemini.analyzeNutritionFromImage(
         Uint8List.fromList(bytes),
         mimeType: mimeType,
@@ -126,10 +126,8 @@ class AlimentazioneScreen extends ConsumerWidget {
         return;
       }
 
-      await nutrition.saveToFirestore(uid!, result, mealLabel: mealLabel);
-
       if (context.mounted) {
-        _showNutritionDialog(context, result);
+        _showNutritionDialog(context, ref, result, uid: uid!, mealLabel: mealLabel);
       }
     } catch (e) {
       if (context.mounted) {
@@ -139,7 +137,13 @@ class AlimentazioneScreen extends ConsumerWidget {
     }
   }
 
-  void _showNutritionDialog(BuildContext context, Map<String, dynamic> nut) {
+  void _showNutritionDialog(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> nut, {
+    required String uid,
+    String? mealLabel,
+  }) {
     final cal = nut['total_calories'] ?? nut['calories'] ?? 0;
     final p = nut['protein_g'] ?? nut['protein'] ?? 0;
     final c = nut['carbs_g'] ?? nut['carbs'] ?? 0;
@@ -215,7 +219,31 @@ class AlimentazioneScreen extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Chiudi'),
+            child: const Text('Annulla'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              try {
+                await ref.read(nutritionServiceProvider).saveToFirestore(
+                      uid,
+                      nut,
+                      mealLabel: mealLabel,
+                    );
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Analisi salvata'),
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  showErrorDialog(context, e.toString());
+                }
+              }
+            },
+            child: const Text('Salva'),
           ),
         ],
       ),
@@ -229,83 +257,90 @@ class AlimentazioneScreen extends ConsumerWidget {
   ) {
     showModalBottomSheet(
       context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Aggiungi $mealLabel',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.darkGreen,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        final colorScheme = theme.colorScheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Aggiungi $mealLabel',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.onSurface,
+                      ),
+                ),
+                const SizedBox(height: 24),
+                if (_isCameraSupported)
+                  FilledButton.icon(
+                    onPressed: () {
+                      Navigator.of(ctx).pop();
+                      _onAnalisiPiatto(context, ref,
+                          mealLabel: mealLabel, imageSource: ImageSource.camera);
+                    },
+                    icon: const Icon(Icons.camera_alt),
+                    label: const Text('Scatta foto'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: colorScheme.primary,
+                      foregroundColor: colorScheme.onPrimary,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
-              ),
-              const SizedBox(height: 24),
-              if (_isCameraSupported)
+                  ),
+                if (_isCameraSupported) const SizedBox(height: 12),
                 FilledButton.icon(
                   onPressed: () {
                     Navigator.of(ctx).pop();
                     _onAnalisiPiatto(context, ref,
-                        mealLabel: mealLabel, imageSource: ImageSource.camera);
+                        mealLabel: mealLabel, imageSource: ImageSource.gallery);
                   },
-                  icon: const Icon(Icons.camera_alt),
-                  label: const Text('Scatta foto'),
+                  icon: const Icon(Icons.photo_library),
+                  label: Text(_galleryButtonLabel),
                   style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.darkGreen,
+                    backgroundColor: colorScheme.primary,
+                    foregroundColor: colorScheme.onPrimary,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                 ),
-              if (_isCameraSupported) const SizedBox(height: 12),
-              FilledButton.icon(
-                onPressed: () {
-                  Navigator.of(ctx).pop();
-                  _onAnalisiPiatto(context, ref,
-                      mealLabel: mealLabel, imageSource: ImageSource.gallery);
-                },
-                icon: const Icon(Icons.photo_library),
-                label: Text(_galleryButtonLabel),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.darkGreen,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.of(ctx).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Inserimento manuale $mealLabel (in arrivo)'),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Inserimento manuale $mealLabel (in arrivo)'),
+                      ),
+                    );
+                  },
+                  icon: Icon(Icons.edit, color: colorScheme.primary),
+                  label: Text('Manualmente', style: TextStyle(color: colorScheme.primary)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: colorScheme.primary,
+                    side: BorderSide(color: colorScheme.primary),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                  );
-                },
-                icon: const Icon(Icons.edit),
-                label: const Text('Manualmente'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.darkGreen,
-                  side: const BorderSide(color: AppColors.darkGreen),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -323,7 +358,7 @@ class AlimentazioneScreen extends ConsumerWidget {
                 '${meal.calories} kcal',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: AppColors.darkGreen,
+                      color: AppColors.primary,
                     ),
               ),
               if (meal.timestamp.isNotEmpty)
@@ -422,19 +457,15 @@ class _MealCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cardTheme = Theme.of(context).extension<AppCardTheme>()!;
+
     return Container(
-      decoration: BoxDecoration(
-        color: AppColors.darkGreen.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: AppColors.darkGreen.withValues(alpha: 0.4),
-        ),
-      ),
+      decoration: cardTheme.gradientDecoration,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Material(
-            color: AppColors.transparent,
+            color: Colors.transparent,
             child: InkWell(
               onTap: onTap,
               borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
@@ -446,7 +477,7 @@ class _MealCard extends StatelessWidget {
                       child: Text(
                         label,
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              color: AppColors.darkGreen,
+                              color: cardTheme.contentColor,
                               fontWeight: FontWeight.bold,
                             ),
                       ),
@@ -454,12 +485,12 @@ class _MealCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: AppColors.darkGreen.withValues(alpha: 0.2),
+                        color: cardTheme.contentColor.withValues(alpha: 0.3),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.add,
-                        color: AppColors.darkGreen,
+                        color: cardTheme.contentColor,
                         size: 24,
                       ),
                     ),
@@ -471,7 +502,7 @@ class _MealCard extends StatelessWidget {
           if (meals.isNotEmpty) ...[
             Divider(
               height: 1,
-              color: AppColors.darkGreen.withValues(alpha: 0.3),
+              color: cardTheme.contentColor.withValues(alpha: 0.4),
             ),
             ...meals.map((meal) => _MealTile(
                   meal: meal,
@@ -496,8 +527,10 @@ class _MealTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cardTheme = Theme.of(context).extension<AppCardTheme>()!;
+
     return Material(
-      color: AppColors.transparent,
+      color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
         child: Padding(
@@ -507,20 +540,22 @@ class _MealTile extends StatelessWidget {
               Expanded(
                 child: Text(
                   meal.displayTitle,
-                  style: Theme.of(context).textTheme.bodyLarge,
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: cardTheme.contentColor,
+                      ),
                 ),
               ),
               Text(
                 '${meal.calories} kcal',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w600,
-                      color: AppColors.darkGreen,
+                      color: cardTheme.contentColor,
                     ),
               ),
               const SizedBox(width: 8),
               Icon(
                 Icons.chevron_right,
-                color: AppColors.hintMedium,
+                color: cardTheme.contentColorMuted,
                 size: 20,
               ),
             ],

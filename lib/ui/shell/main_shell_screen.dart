@@ -32,7 +32,18 @@ class MainShellScreen extends ConsumerWidget {
           ImpostazioniScreen(),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white.withValues(alpha: 0.08)
+                  : Colors.black.withValues(alpha: 0.06),
+              width: 1,
+            ),
+          ),
+        ),
+        child: NavigationBar(
         selectedIndex: index,
         onDestinationSelected: (i) =>
             ref.read(selectedTabIndexProvider.notifier).state = i,
@@ -48,6 +59,7 @@ class MainShellScreen extends ConsumerWidget {
               ),
             )
             .toList(),
+        ),
       ),
     );
   }

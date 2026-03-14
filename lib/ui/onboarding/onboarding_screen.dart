@@ -1,6 +1,6 @@
 import 'package:fitai_analyzer/models/user_profile.dart';
 import 'package:fitai_analyzer/providers/user_profile_notifier.dart';
-import 'package:fitai_analyzer/ui/theme/app_colors.dart';
+import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/utils/goal_options.dart';
 import 'package:flutter/material.dart';

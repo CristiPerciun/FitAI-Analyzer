@@ -1,5 +1,6 @@
 import 'package:fitai_analyzer/services/strava_service.dart';
-import 'package:fitai_analyzer/ui/theme/app_colors.dart';
+import 'package:fitai_analyzer/theme/app_card_theme.dart';
+import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -39,10 +40,14 @@ class StravaActivityCard extends StatelessWidget {
             .toStringAsFixed(1)
         : '—';
 
-    return Card(
+    final cardTheme = Theme.of(context).extension<AppCardTheme>()!;
+
+    return Container(
       margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
-      elevation: 2,
-      child: InkWell(
+      decoration: cardTheme.gradientDecoration,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
@@ -66,6 +71,7 @@ class StravaActivityCard extends StatelessWidget {
                           activity.name,
                           style: theme.textTheme.titleMedium?.copyWith(
                                 fontWeight: FontWeight.bold,
+                                color: cardTheme.contentColor,
                               ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
@@ -73,7 +79,7 @@ class StravaActivityCard extends StatelessWidget {
                         Text(
                           DateFormat('dd MMM yyyy • HH:mm').format(date),
                           style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
+                                color: cardTheme.contentColorMuted,
                               ),
                         ),
                       ],
@@ -83,12 +89,12 @@ class StravaActivityCard extends StatelessWidget {
                     '${(activity.distance / 1000).toStringAsFixed(2)} km',
                     style: theme.textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.primary,
+                          color: cardTheme.contentColor,
                         ),
                   ),
                 ],
               ),
-              const Divider(height: 24),
+              Divider(height: 24, color: cardTheme.contentColor.withValues(alpha: 0.3)),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
@@ -113,12 +119,14 @@ class StravaActivityCard extends StatelessWidget {
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    Icon(Icons.favorite, color: theme.colorScheme.error, size: 18),
+                    Icon(Icons.favorite, color: AppColors.stravaOrange, size: 18),
                     const SizedBox(width: 8),
                     Text(
                       '${activity.avgHeartrate!.toInt()} bpm'
                       '${activity.maxHeartrate != null ? ' (max ${activity.maxHeartrate!.toInt()})' : ''}',
-                      style: theme.textTheme.bodyMedium,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                            color: cardTheme.contentColor,
+                          ),
                     ),
                   ],
                 ),
@@ -127,12 +135,12 @@ class StravaActivityCard extends StatelessWidget {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    Icon(Icons.watch, size: 16, color: theme.colorScheme.outline),
+                    Icon(Icons.watch, size: 16, color: cardTheme.contentColorMuted),
                     const SizedBox(width: 8),
                     Text(
                       'Registrato con ${activity.deviceName}',
                       style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
+                            color: cardTheme.contentColorMuted,
                           ),
                     ),
                   ],
@@ -143,12 +151,13 @@ class StravaActivityCard extends StatelessWidget {
                 Row(
                   children: [
                     Icon(Icons.local_fire_department,
-                        size: 18, color: theme.colorScheme.tertiary),
+                        size: 18, color: AppColors.stravaOrange),
                     const SizedBox(width: 8),
                     Text(
                       '${activity.calories!.toInt()} kcal',
                       style: theme.textTheme.bodyMedium?.copyWith(
                             fontWeight: FontWeight.w600,
+                            color: cardTheme.contentColor,
                           ),
                     ),
                   ],
@@ -158,6 +167,7 @@ class StravaActivityCard extends StatelessWidget {
           ),
         ),
       ),
+    ),
     );
   }
 }
@@ -176,16 +186,23 @@ class _InfoColumn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final cardTheme = Theme.of(context).extension<AppCardTheme>()!;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 20, color: theme.colorScheme.primary),
+        Icon(icon, size: 20, color: cardTheme.contentColorMuted),
         const SizedBox(height: 4),
-        Text(label, style: theme.textTheme.labelSmall),
+        Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+                color: cardTheme.contentColorMuted,
+              ),
+        ),
         Text(
           value,
           style: theme.textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.bold,
+                color: cardTheme.contentColor,
               ),
         ),
       ],

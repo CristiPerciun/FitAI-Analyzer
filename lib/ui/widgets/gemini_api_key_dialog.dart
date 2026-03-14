@@ -1,6 +1,6 @@
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/services/gemini_service.dart';
-import 'package:fitai_analyzer/ui/theme/app_colors.dart';
+import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -38,7 +38,7 @@ Future<bool> showGeminiApiKeyDialog(BuildContext context, WidgetRef ref) async {
           Text(
             'Ottienila da aistudio.google.com/apikey',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppColors.hint,
+                  color: AppColors.textMuted,
                 ),
           ),
         ],

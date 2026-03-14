@@ -1,5 +1,6 @@
 import 'package:fitai_analyzer/models/fitness_data.dart';
-import 'package:fitai_analyzer/ui/theme/app_colors.dart';
+import 'package:fitai_analyzer/theme/app_card_theme.dart';
+import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -52,16 +53,14 @@ class CompactActivityCard extends StatelessWidget {
     final distanceKm = activity.distanceKm;
     final hasDistance = distanceKm != null && distanceKm > 0;
 
-    return Card(
+    final cardTheme = Theme.of(context).extension<AppCardTheme>()!;
+
+    return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: theme.colorScheme.outline.withValues(alpha: 0.15),
-        ),
-      ),
-      child: InkWell(
+      decoration: cardTheme.gradientDecoration,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Padding(
@@ -90,7 +89,7 @@ class CompactActivityCard extends StatelessWidget {
                       _formatType(type),
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w600,
-                        color: theme.colorScheme.onSurface,
+                        color: cardTheme.contentColor,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -99,26 +98,26 @@ class CompactActivityCard extends StatelessWidget {
                         Icon(
                           Icons.schedule,
                           size: 14,
-                          color: theme.colorScheme.onSurfaceVariant,
+                          color: cardTheme.contentColorMuted,
                         ),
                         const SizedBox(width: 4),
                         Text(
                           '$startTime • $durationMin min',
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
+                            color: cardTheme.contentColorMuted,
                           ),
                         ),
                         if (hasDistance) ...[
                           Text(
                             ' • ',
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
+                              color: cardTheme.contentColorMuted,
                             ),
                           ),
                           Text(
                             '${distanceKm.toStringAsFixed(2)} km',
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.primary,
+                              color: cardTheme.contentColor,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -130,13 +129,14 @@ class CompactActivityCard extends StatelessWidget {
               ),
               Icon(
                 Icons.chevron_right,
-                color: theme.colorScheme.outline,
+                color: cardTheme.contentColorMuted,
                 size: 24,
               ),
             ],
           ),
         ),
       ),
+    ),
     );
   }
 }

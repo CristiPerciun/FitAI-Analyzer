@@ -1,3 +1,4 @@
+import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 
 /// Placeholder per la sezione Home (funzionalità futura).
@@ -17,7 +18,7 @@ class HomeScreen extends StatelessWidget {
             Icon(
               Icons.fitness_center,
               size: 64,
-              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.6),
+              color: AppColors.cardGrey,
             ),
             const SizedBox(height: 16),
             Text(

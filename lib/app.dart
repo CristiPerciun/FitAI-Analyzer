@@ -1,9 +1,9 @@
 import 'package:app_links/app_links.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
+import 'package:fitai_analyzer/providers/theme_mode_provider.dart';
 import 'package:fitai_analyzer/routes/app_router.dart';
 import 'package:fitai_analyzer/services/strava_oauth_callback.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
-import 'package:fitai_analyzer/ui/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -50,7 +50,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         scaffoldMessengerKey.currentState?.showSnackBar(
           SnackBar(
             content: Text(next),
-            backgroundColor: AppColors.errorRed,
+            backgroundColor: AppColors.error,
             duration: const Duration(seconds: 8),
             action: SnackBarAction(
               label: 'OK',
@@ -63,12 +63,14 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       }
     });
 
+    final themeMode = ref.watch(themeModeProvider);
+
     return MaterialApp.router(
       scaffoldMessengerKey: scaffoldMessengerKey,
       title: 'FitAI Analyzer',
       theme: appLightTheme,
       darkTheme: appDarkTheme,
-      themeMode: ThemeMode.system,
+      themeMode: themeMode,
       routerConfig: router,
     );
   }

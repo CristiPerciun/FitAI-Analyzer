@@ -1,5 +1,4 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:fitai_analyzer/models/fitness_data.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
@@ -7,12 +6,11 @@ import 'package:fitai_analyzer/services/ai_prompt_service.dart';
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/services/gemini_service.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
-import 'package:fitai_analyzer/ui/theme/app_colors.dart';
+import 'package:fitai_analyzer/theme/app_card_theme.dart';
 import 'package:fitai_analyzer/ui/widgets/compact_activity_card.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/strava_activity_card.dart';
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -95,8 +93,6 @@ class DashboardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final authState = ref.watch(authNotifierProvider);
-    final healthAsync = ref.watch(healthDataStreamProvider);
     final stravaConnected = ref.watch(stravaConnectedProvider).valueOrNull ?? false;
 
     ref.listen(healthDataStreamProvider, (prev, next) {
@@ -120,8 +116,6 @@ class DashboardScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _WelcomeCard(userName: authState.user?.email ?? 'Utente'),
-                    const SizedBox(height: 16),
                     _AnalisiAIButton(
                       onTap: () => _onAnalisiAI(context, ref),
                     ),
@@ -129,21 +123,6 @@ class DashboardScreen extends ConsumerWidget {
                 ),
               ),
             ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
-                child: healthAsync.when(
-                  data: (data) => _CaloriesChartCard(
-                    data: data,
-                    isStravaConnected: stravaConnected,
-                    onSyncTap: () => _onSyncStrava(context, ref),
-                  ),
-                  loading: () => const _ChartSkeleton(),
-                  error: (e, _) => _ErrorCard(message: e.toString()),
-                ),
-              ),
-            ),
-            const SliverToBoxAdapter(child: SizedBox(height: 8)),
             SliverToBoxAdapter(
               child: _ActivitiesSection(
                 stravaConnected: stravaConnected,
@@ -395,211 +374,55 @@ class _AnalisiAIButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Theme.of(context).colorScheme.primary,
-                Theme.of(context).colorScheme.primary.withValues(alpha: 0.8),
+    final cardTheme = Theme.of(context).extension<AppCardTheme>()!;
+
+    return Container(
+      decoration: cardTheme.gradientDecoration,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.auto_awesome,
+                  color: cardTheme.contentColor,
+                  size: 32,
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Analisi AI',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              color: cardTheme.contentColor,
+                              fontWeight: FontWeight.bold,
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Piano settimanale personalizzato con Gemini',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: cardTheme.contentColorMuted,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.arrow_forward_ios,
+                  color: cardTheme.contentColorMuted,
+                  size: 18,
+                ),
               ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
             ),
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Icon(
-                Icons.auto_awesome,
-                color: Theme.of(context).colorScheme.onPrimary,
-                size: 32,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Analisi AI',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            color: Theme.of(context).colorScheme.onPrimary,
-                            fontWeight: FontWeight.bold,
-                          ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Piano settimanale personalizzato con Gemini',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.9),
-                          ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                Icons.arrow_forward_ios,
-                color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.8),
-                size: 18,
-              ),
-            ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _WelcomeCard extends StatelessWidget {
-  const _WelcomeCard({required this.userName});
-
-  final String userName;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 400),
-      curve: Curves.easeOut,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primaryContainer,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.shadowLight(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Benvenuto!',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            userName,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onPrimaryContainer,
-                ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CaloriesChartCard extends StatelessWidget {
-  const _CaloriesChartCard({
-    required this.data,
-    required this.isStravaConnected,
-    required this.onSyncTap,
-  });
-
-  final List<FitnessData> data;
-  final bool isStravaConnected;
-  final VoidCallback onSyncTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final barGroups = data
-        .asMap()
-        .entries
-        .map((e) => BarChartGroupData(
-              x: e.key,
-              barRods: [
-                BarChartRodData(
-                  toY: (e.value.calories ?? 0).toDouble(),
-                  color: Theme.of(context).colorScheme.secondary,
-                  width: 16,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(4),
-                  ),
-                ),
-              ],
-              showingTooltipIndicators: [0],
-            ))
-        .toList();
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeOut,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Calorie',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 200,
-            child: barGroups.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          isStravaConnected
-                              ? 'Nessun dato. Sincronizza per caricare le attività.'
-                              : 'Nessun dato. Connetti Strava per sincronizzare.',
-                          style: Theme.of(context).textTheme.bodySmall,
-                          textAlign: TextAlign.center,
-                        ),
-                        if (isStravaConnected) ...[
-                          const SizedBox(height: 12),
-                          FilledButton.icon(
-                            onPressed: onSyncTap,
-                            icon: const Icon(Icons.sync, size: 18),
-                            label: const Text('Sincronizza'),
-                          ),
-                        ],
-                      ],
-                    ),
-                  )
-                : BarChart(
-                    BarChartData(
-                      alignment: BarChartAlignment.spaceAround,
-                      maxY: data.isEmpty
-                          ? 100
-                          : (data
-                                  .map((d) => (d.calories ?? 0).toDouble())
-                                  .reduce((a, b) => a > b ? a : b) *
-                              1.2)
-                              .clamp(100.0, double.infinity),
-                      barTouchData: BarTouchData(enabled: true),
-                      titlesData: FlTitlesData(show: false),
-                      gridData: FlGridData(show: true),
-                      borderData: FlBorderData(show: false),
-                      barGroups: barGroups,
-                    ),
-                    duration: const Duration(milliseconds: 300),
-                  ),
-          ),
-        ],
       ),
     );
   }
@@ -704,44 +527,3 @@ class _StravaDetailLoadingDialogState
   }
 }
 
-class _ChartSkeleton extends StatelessWidget {
-  const _ChartSkeleton();
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      height: 200,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: const Center(
-        child: CircularProgressIndicator(),
-      ),
-    );
-  }
-}
-
-class _ErrorCard extends StatelessWidget {
-  const _ErrorCard({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.errorContainer,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Text(
-        message,
-        style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer),
-      ),
-    );
-  }
-}

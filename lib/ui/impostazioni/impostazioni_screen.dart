@@ -1,10 +1,11 @@
 import 'package:fitai_analyzer/app.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
+import 'package:fitai_analyzer/providers/theme_mode_provider.dart';
 import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/providers/strava_sync_status_notifier.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
-import 'package:fitai_analyzer/ui/theme/app_colors.dart';
+import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
 import 'package:flutter/material.dart';
@@ -40,6 +41,10 @@ class ImpostazioniScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
+          _ProfileTile(
+            userName: authState.user?.email ?? 'Utente',
+          ),
+          const Divider(height: 24),
           _SettingsTile(
             leading: Container(
               padding: const EdgeInsets.all(8),
@@ -68,6 +73,8 @@ class ImpostazioniScreen extends ConsumerWidget {
               subtitle: 'Scollega account',
               onTap: () => _onDisconnectStrava(context, ref),
             ),
+          const Divider(height: 24),
+          _ThemeModeTile(),
           const Divider(height: 24),
           _SettingsTile(
             leading: Icon(
@@ -123,6 +130,86 @@ class ImpostazioniScreen extends ConsumerWidget {
         const SnackBar(content: Text('Chiave Gemini salvata.')),
       );
     }
+  }
+}
+
+class _ProfileTile extends StatelessWidget {
+  const _ProfileTile({required this.userName});
+
+  final String userName;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+        child: Icon(
+          Icons.person,
+          color: Theme.of(context).colorScheme.onPrimaryContainer,
+          size: 24,
+        ),
+      ),
+      title: const Text(
+        'Profilo',
+        style: TextStyle(fontWeight: FontWeight.w500),
+      ),
+      subtitle: Text(
+        userName,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.outline,
+            ),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+    );
+  }
+}
+
+class _ThemeModeTile extends ConsumerWidget {
+  const _ThemeModeTile();
+
+  static String _label(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.light:
+        return 'Chiaro';
+      case ThemeMode.dark:
+        return 'Scuro';
+      case ThemeMode.system:
+        return 'Sistema';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeModeProvider);
+    final notifier = ref.read(themeModeProvider.notifier);
+
+    return ListTile(
+      leading: Icon(
+        themeMode == ThemeMode.dark ? Icons.dark_mode : Icons.light_mode,
+        color: Theme.of(context).colorScheme.primary,
+        size: 24,
+      ),
+      title: const Text(
+        'Tema',
+        style: TextStyle(fontWeight: FontWeight.w500),
+      ),
+      subtitle: Text(
+        _label(themeMode),
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.outline,
+            ),
+      ),
+      trailing: PopupMenuButton<ThemeMode>(
+        icon: const Icon(Icons.arrow_drop_down),
+        onSelected: (mode) => notifier.setThemeMode(mode),
+        itemBuilder: (context) => [
+          PopupMenuItem(value: ThemeMode.light, child: Text(_label(ThemeMode.light))),
+          PopupMenuItem(value: ThemeMode.dark, child: Text(_label(ThemeMode.dark))),
+          PopupMenuItem(value: ThemeMode.system, child: Text(_label(ThemeMode.system))),
+        ],
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+    );
   }
 }
 
