@@ -3,6 +3,8 @@ import 'package:fitai_analyzer/models/fitness_data.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+export 'package:fitai_analyzer/utils/date_utils.dart' show formatDateForDisplay;
+
 /// Stream provider per listen real-time ai dati Strava da Firestore.
 final healthDataStreamProvider = StreamProvider.autoDispose<List<FitnessData>>(
   (ref) {
@@ -41,14 +43,6 @@ final activitiesByDateProvider = Provider.autoDispose<Map<String, List<FitnessDa
     error: (_, __) => <String, List<FitnessData>>{},
   );
 });
-
-/// Date uniche con attività, ordinate dal più recente.
-/// Formato chiave: "YYYY-MM-DD" (per ordinamento).
-String formatDateForDisplay(String yyyyMmDd) {
-  final parts = yyyyMmDd.split('-');
-  if (parts.length != 3) return yyyyMmDd;
-  return '${parts[2]}/${parts[1]}'; // gg/mm
-}
 
 /// Lista date (YYYY-MM-DD) ordinate dal più recente.
 final activityDatesProvider = Provider.autoDispose<List<String>>((ref) {

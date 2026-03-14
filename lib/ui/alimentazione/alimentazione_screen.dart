@@ -4,11 +4,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitai_analyzer/models/meal_model.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
+import 'package:fitai_analyzer/utils/date_utils.dart' show dateFilterAll, formatDateForDisplay;
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/services/gemini_service.dart';
 import 'package:fitai_analyzer/services/nutrition_service.dart';
 import 'package:fitai_analyzer/theme/app_card_theme.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
+import 'package:fitai_analyzer/ui/widgets/date_filter_chips.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
 import 'package:flutter/material.dart';
@@ -47,6 +49,7 @@ class AlimentazioneScreen extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref, {
     String? mealLabel,
+    String? dateStr,
     ImageSource imageSource = ImageSource.camera,
   }) async {
     var uid = FirebaseAuth.instance.currentUser?.uid;
@@ -127,7 +130,8 @@ class AlimentazioneScreen extends ConsumerWidget {
       }
 
       if (context.mounted) {
-        _showNutritionDialog(context, ref, result, uid: uid!, mealLabel: mealLabel);
+        _showNutritionDialog(context, ref, result,
+            uid: uid!, mealLabel: mealLabel, dateStr: dateStr);
       }
     } catch (e) {
       if (context.mounted) {
@@ -143,6 +147,7 @@ class AlimentazioneScreen extends ConsumerWidget {
     Map<String, dynamic> nut, {
     required String uid,
     String? mealLabel,
+    String? dateStr,
   }) {
     final cal = nut['total_calories'] ?? nut['calories'] ?? 0;
     final p = nut['protein_g'] ?? nut['protein'] ?? 0;
@@ -229,6 +234,7 @@ class AlimentazioneScreen extends ConsumerWidget {
                       uid,
                       nut,
                       mealLabel: mealLabel,
+                      date: dateStr != null ? DateTime.parse(dateStr) : null,
                     );
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -254,6 +260,7 @@ class AlimentazioneScreen extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     String mealLabel,
+    String dateStr,
   ) {
     showModalBottomSheet(
       context: context,
@@ -284,7 +291,9 @@ class AlimentazioneScreen extends ConsumerWidget {
                     onPressed: () {
                       Navigator.of(ctx).pop();
                       _onAnalisiPiatto(context, ref,
-                          mealLabel: mealLabel, imageSource: ImageSource.camera);
+                          mealLabel: mealLabel,
+                          dateStr: dateStr,
+                          imageSource: ImageSource.camera);
                     },
                     icon: const Icon(Icons.camera_alt),
                     label: const Text('Scatta foto'),
@@ -302,7 +311,9 @@ class AlimentazioneScreen extends ConsumerWidget {
                   onPressed: () {
                     Navigator.of(ctx).pop();
                     _onAnalisiPiatto(context, ref,
-                        mealLabel: mealLabel, imageSource: ImageSource.gallery);
+                        mealLabel: mealLabel,
+                        dateStr: dateStr,
+                        imageSource: ImageSource.gallery);
                   },
                   icon: const Icon(Icons.photo_library),
                   label: Text(_galleryButtonLabel),
@@ -403,7 +414,15 @@ class AlimentazioneScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final mealsAsync = ref.watch(todayMealsByTypeProvider);
+    final datesAsync = ref.watch(mealDatesProvider);
+    final dates = datesAsync.valueOrNull ?? [];
+    final selectedDate = ref.watch(selectedMealDateFilterProvider);
+    final todayStr = DateTime.now().toIso8601String().split('T')[0];
+    final displayDates = selectedDate == null
+        ? [todayStr]
+        : selectedDate == dateFilterAll
+            ? (dates.isNotEmpty ? dates : [])
+            : [selectedDate];
 
     return Scaffold(
       appBar: AppBar(
@@ -414,29 +433,100 @@ class AlimentazioneScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _MealCard(
-              label: 'Colazione',
-              meals: mealsAsync.valueOrNull?['Colazione'] ?? [],
-              onTap: () => _showAggiungiPastoSheet(context, ref, 'colazione'),
-              onMealTap: (meal) => _showMealDetailDialog(context, meal),
+            Text(
+              'Date',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
             ),
-            const SizedBox(height: 16),
-            _MealCard(
-              label: 'Pranzo',
-              meals: mealsAsync.valueOrNull?['Pranzo'] ?? [],
-              onTap: () => _showAggiungiPastoSheet(context, ref, 'pranzo'),
-              onMealTap: (meal) => _showMealDetailDialog(context, meal),
+            const SizedBox(height: 8),
+            DateFilterChips(
+              selectedDate: selectedDate,
+              onDateSelected: (d) =>
+                  ref.read(selectedMealDateFilterProvider.notifier).state = d,
             ),
-            const SizedBox(height: 16),
-            _MealCard(
-              label: 'Cena',
-              meals: mealsAsync.valueOrNull?['Cena'] ?? [],
-              onTap: () => _showAggiungiPastoSheet(context, ref, 'cena'),
-              onMealTap: (meal) => _showMealDetailDialog(context, meal),
-            ),
+            const SizedBox(height: 20),
+            if (displayDates.isEmpty)
+              ..._buildMealCardsForDate(
+                context,
+                ref,
+                DateTime.now().toIso8601String().split('T')[0],
+              )
+            else
+              ...displayDates.expand((dateKey) => [
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        formatDateForDisplay(dateKey),
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ),
+                    ..._buildMealCardsForDate(context, ref, dateKey),
+                    const SizedBox(height: 24),
+                  ]),
           ],
         ),
       ),
+    );
+  }
+
+  List<Widget> _buildMealCardsForDate(
+    BuildContext context,
+    WidgetRef ref,
+    String dateStr,
+  ) {
+    return [
+      _MealCardForDate(
+        dateStr: dateStr,
+        label: 'Colazione',
+        onTap: () => _showAggiungiPastoSheet(context, ref, 'colazione', dateStr),
+        onMealTap: (meal) => _showMealDetailDialog(context, meal),
+      ),
+      const SizedBox(height: 16),
+      _MealCardForDate(
+        dateStr: dateStr,
+        label: 'Pranzo',
+        onTap: () => _showAggiungiPastoSheet(context, ref, 'pranzo', dateStr),
+        onMealTap: (meal) => _showMealDetailDialog(context, meal),
+      ),
+      const SizedBox(height: 16),
+      _MealCardForDate(
+        dateStr: dateStr,
+        label: 'Cena',
+        onTap: () => _showAggiungiPastoSheet(context, ref, 'cena', dateStr),
+        onMealTap: (meal) => _showMealDetailDialog(context, meal),
+      ),
+    ];
+  }
+}
+
+/// Card pasto per una data specifica, legge i pasti dal provider.
+class _MealCardForDate extends ConsumerWidget {
+  const _MealCardForDate({
+    required this.dateStr,
+    required this.label,
+    required this.onTap,
+    required this.onMealTap,
+  });
+
+  final String dateStr;
+  final String label;
+  final VoidCallback onTap;
+  final void Function(MealModel meal) onMealTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mealsAsync = ref.watch(mealsForDateByTypeProvider(dateStr));
+    final meals = mealsAsync.valueOrNull?[label] ?? [];
+    return _MealCard(
+      label: label,
+      meals: meals,
+      onTap: onTap,
+      onMealTap: onMealTap,
     );
   }
 }

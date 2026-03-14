@@ -8,13 +8,15 @@ import 'package:fitai_analyzer/services/gemini_service.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
 import 'package:fitai_analyzer/theme/app_card_theme.dart';
 import 'package:fitai_analyzer/ui/widgets/compact_activity_card.dart';
+import 'package:fitai_analyzer/ui/widgets/date_filter_chips.dart';
+import 'package:fitai_analyzer/utils/date_utils.dart' show dateFilterAll;
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/strava_activity_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Filtro data selezionata: null = tutte.
+/// Filtro data: null = Oggi, dateFilterAll = Tutti, altrimenti data.
 final selectedDateFilterProvider = StateProvider<String?>((ref) => null);
 
 class DashboardScreen extends ConsumerWidget {
@@ -161,7 +163,12 @@ class _ActivitiesSection extends ConsumerWidget {
       );
     }
 
-    final displayDates = selectedDate != null ? [selectedDate] : dates;
+    final todayStr = DateTime.now().toIso8601String().split('T')[0];
+    final displayDates = selectedDate == null
+        ? [todayStr]
+        : selectedDate == dateFilterAll
+            ? dates
+            : [selectedDate];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -177,37 +184,10 @@ class _ActivitiesSection extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 8),
-        SizedBox(
-          height: 44,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: _DateChip(
-                  label: 'Tutti',
-                  isSelected: selectedDate == null,
-                  onTap: () => ref.read(selectedDateFilterProvider.notifier).state = null,
-                ),
-              ),
-              ...dates.map((dateKey) {
-                final label = formatDateForDisplay(dateKey);
-                final isSelected = selectedDate == dateKey;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: _DateChip(
-                    label: label,
-                    isSelected: isSelected,
-                    onTap: () {
-                      ref.read(selectedDateFilterProvider.notifier).state =
-                          isSelected ? null : dateKey;
-                    },
-                  ),
-                );
-              }),
-            ],
-          ),
+        DateFilterChips(
+          selectedDate: selectedDate,
+          onDateSelected: (d) =>
+              ref.read(selectedDateFilterProvider.notifier).state = d,
         ),
         const SizedBox(height: 20),
         Padding(
@@ -261,54 +241,6 @@ class _ActivitiesSection extends ConsumerWidget {
       context: context,
       barrierDismissible: true,
       builder: (ctx) => _StravaDetailLoadingDialog(activityId: activityId),
-    );
-  }
-}
-
-class _DateChip extends StatelessWidget {
-  const _DateChip({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? theme.colorScheme.primary
-                : theme.colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: isSelected
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.outline.withValues(alpha: 0.3),
-            ),
-          ),
-          child: Text(
-            label,
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: isSelected
-                  ? theme.colorScheme.onPrimary
-                  : theme.colorScheme.onSurfaceVariant,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

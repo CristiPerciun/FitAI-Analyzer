@@ -134,6 +134,20 @@ class NutritionService {
         .toList();
   }
 
+  /// Stream delle date (YYYY-MM-DD) che hanno almeno un pasto.
+  Stream<List<String>> mealDatesStream(String uid) {
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('daily_logs')
+        .snapshots()
+        .map((snap) {
+          final dates = snap.docs.map((d) => d.id).toList();
+          dates.sort((a, b) => b.compareTo(a));
+          return dates;
+        });
+  }
+
   /// Stream dei pasti del giorno per aggiornamenti real-time.
   Stream<List<MealModel>> mealsForDayStream(String uid, String dateStr) {
     return FirebaseFirestore.instance
