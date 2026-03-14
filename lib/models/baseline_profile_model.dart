@@ -7,8 +7,9 @@ part 'baseline_profile_model.g.dart';
 /// Profilo evolutivo aggiornato ogni 10 giorni, pronto per prompt AI.
 @JsonSerializable()
 class BaselineProfileModel {
-  /// Obiettivo: "dimagrire" o "massa_muscolare".
-  final String goal;
+  /// Obiettivo prevalente creato dall'IA (derivato da goal_today_ia dei daily_logs).
+  @JsonKey(name: 'goal_ia', defaultValue: '')
+  final String goalIa;
 
   /// Statistiche annuali: total_km_2026, total_workouts, avg_weight, etc.
   @JsonKey(name: 'annual_stats')
@@ -37,7 +38,7 @@ class BaselineProfileModel {
   final List<String> references;
 
   const BaselineProfileModel({
-    required this.goal,
+    required this.goalIa,
     required this.annualStats,
     required this.monthlyTrends,
     required this.keyMetricsAttia,

@@ -36,7 +36,7 @@ class UserProfileNotifier extends Notifier<UserProfileState> {
   @override
   UserProfileState build() => UserProfileState.initial();
 
-  String? get _uid => ref.watch(authNotifierProvider).user?.uid;
+  String? get _uid => ref.read(authNotifierProvider).user?.uid;
 
   /// Carica il profilo da Firestore: users/{uid}/profile/profile
   Future<void> loadProfile() async {
@@ -111,9 +111,55 @@ class UserProfileNotifier extends Notifier<UserProfileState> {
       rethrow;
     }
   }
+
+  /// Stream real-time del profilo da Firestore: users/{uid}/profile/profile
+  Stream<UserProfile?> streamProfile() {
+    final uid = _uid;
+    if (uid == null) return Stream.value(null);
+
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('profile')
+        .doc('profile')
+        .snapshots()
+        .map((doc) {
+      if (doc.exists && doc.data() != null) {
+        try {
+          return UserProfile.fromJson(doc.data()!);
+        } catch (_) {
+          return null;
+        }
+      }
+      return null;
+    });
+  }
 }
 
 final userProfileNotifierProvider =
     NotifierProvider<UserProfileNotifier, UserProfileState>(
   UserProfileNotifier.new,
 );
+
+/// Stream real-time del profilo per ref.watch/ref.listen in UI.
+/// Si ricrea automaticamente quando cambia l'utente autenticato.
+final userProfileStreamProvider = StreamProvider<UserProfile?>((ref) {
+  final uid = ref.watch(authNotifierProvider).user?.uid;
+  if (uid == null) return Stream.value(null);
+  return FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection('profile')
+      .doc('profile')
+      .snapshots()
+      .map((doc) {
+    if (doc.exists && doc.data() != null) {
+      try {
+        return UserProfile.fromJson(doc.data()!);
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  });
+});

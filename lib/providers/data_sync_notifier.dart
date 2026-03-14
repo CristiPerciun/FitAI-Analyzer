@@ -18,3 +18,43 @@ final healthDataStreamProvider = StreamProvider.autoDispose<List<FitnessData>>(
             .toList());
   },
 );
+
+/// Attività Strava raggruppate per data (più recente prima).
+/// Chiave: "YYYY-MM-DD" per ordinamento, valore: lista ordinata per orario.
+final activitiesByDateProvider = Provider.autoDispose<Map<String, List<FitnessData>>>((ref) {
+  final healthAsync = ref.watch(healthDataStreamProvider);
+  return healthAsync.when(
+    data: (data) {
+      final strava = data.where((d) => d.source == 'strava').toList();
+      strava.sort((a, b) => b.date.compareTo(a.date)); // più recente prima
+      final byDate = <String, List<FitnessData>>{};
+      for (final a in strava) {
+        final key = '${a.date.year}-${a.date.month.toString().padLeft(2, '0')}-${a.date.day.toString().padLeft(2, '0')}';
+        byDate.putIfAbsent(key, () => []).add(a);
+      }
+      for (final list in byDate.values) {
+        list.sort((a, b) => b.date.compareTo(a.date));
+      }
+      return byDate;
+    },
+    loading: () => <String, List<FitnessData>>{},
+    error: (_, __) => <String, List<FitnessData>>{},
+  );
+});
+
+/// Date uniche con attività, ordinate dal più recente.
+/// Formato chiave: "YYYY-MM-DD" (per ordinamento).
+String formatDateForDisplay(String yyyyMmDd) {
+  final parts = yyyyMmDd.split('-');
+  if (parts.length != 3) return yyyyMmDd;
+  return '${parts[2]}/${parts[1]}'; // gg/mm
+}
+
+/// Lista date (YYYY-MM-DD) ordinate dal più recente.
+final activityDatesProvider = Provider.autoDispose<List<String>>((ref) {
+  final byDate = ref.watch(activitiesByDateProvider);
+  if (byDate.isEmpty) return [];
+  final dates = byDate.keys.toList();
+  dates.sort((a, b) => b.compareTo(a)); // YYYY-MM-DD ordina correttamente
+  return dates;
+});

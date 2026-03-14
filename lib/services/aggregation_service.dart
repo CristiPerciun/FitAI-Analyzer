@@ -37,7 +37,7 @@ class AggregationService {
       return DailyLogModel.fromJson({
         ...data,
         'date': d.id,
-        'goal_today': data['goal_today'] ?? 'dimagrire',
+        'goal_today_ia': data['goal_today_ia'] ?? data['goal_today'] ?? '',
         'timestamp': data['timestamp'] ?? Timestamp.now(),
       });
     }).toList();
@@ -218,23 +218,23 @@ class AggregationService {
       return DailyLogModel.fromJson({
         ...data,
         'date': d.id,
-        'goal_today': data['goal_today'] ?? 'dimagrire',
+        'goal_today_ia': data['goal_today_ia'] ?? data['goal_today'] ?? '',
         'timestamp': data['timestamp'] ?? Timestamp.now(),
       });
     }).toList();
     allLogs.sort((a, b) => a.date.compareTo(b.date));
 
-    // Goal: da daily_logs più frequente o default
-    String goal = 'dimagrire';
+    // Goal IA: da daily_logs più frequente (goal_today_ia creato dall'IA)
+    String goalIa = '';
     final goalCounts = <String, int>{};
     for (final log in allLogs) {
-      final g = log.goalToday;
+      final g = log.goalTodayIa;
       if (g.isNotEmpty) {
         goalCounts[g] = (goalCounts[g] ?? 0) + 1;
       }
     }
     if (goalCounts.isNotEmpty) {
-      goal = goalCounts.entries.reduce((a, b) => a.value > b.value ? a : b).key;
+      goalIa = goalCounts.entries.reduce((a, b) => a.value > b.value ? a : b).key;
     }
 
     // Annual stats
@@ -332,7 +332,7 @@ class AggregationService {
 
     // AI-ready summary (4000+ caratteri, riferimenti Attia)
     final aiReadySummary = _buildAiReadySummary(
-      goal: goal,
+      goalIa: goalIa,
       annualStats: annualStats,
       keyMetricsAttia: keyMetricsAttia,
       monthlyTrends: monthlyTrends,
@@ -341,7 +341,7 @@ class AggregationService {
     );
 
     return BaselineProfileModel(
-      goal: goal,
+      goalIa: goalIa,
       annualStats: annualStats,
       monthlyTrends: monthlyTrends,
       keyMetricsAttia: keyMetricsAttia,
@@ -382,7 +382,7 @@ class AggregationService {
   }
 
   String _buildAiReadySummary({
-    required String goal,
+    required String goalIa,
     required Map<String, dynamic> annualStats,
     required Map<String, dynamic> keyMetricsAttia,
     required List<Map<String, dynamic>> monthlyTrends,
@@ -398,7 +398,7 @@ class AggregationService {
     final sb = StringBuffer();
     sb.writeln('=== PROFILO FITNESS AI-READY (FitAI Analyzer) ===');
     sb.writeln();
-    sb.writeln('OBIETTIVO: $goal');
+    sb.writeln('OBIETTIVO: $goalIa');
     sb.writeln();
     sb.writeln('--- STATISTICHE ANNUALI $year ---');
     sb.writeln('Distanza totale: ${totalKm.toStringAsFixed(1)} km');

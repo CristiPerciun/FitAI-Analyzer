@@ -23,7 +23,7 @@ class AiPromptService {
         ? _dateFormat.format(baseline.lastBaselineUpdate)
         : 'non disponibile';
 
-    final goalStr = baseline?.goal ?? today?.goalToday ?? 'dimagrire';
+    final goalStr = baseline?.goalIa ?? today?.goalTodayIa ?? '';
 
     final baselineSummary = baseline?.aiReadySummary ?? 'Nessun baseline ancora. Esegui prima la sincronizzazione Strava.';
 
@@ -36,7 +36,7 @@ class AiPromptService {
     final todayNutrition = _formatNutrition(today?.nutritionForAi ?? {});
 
     return """
-Utente obiettivo: $goalStr (dimagrire o massa muscolare).
+Obiettivo giornaliero IA: $goalStr.
 
 BASELINE ANNUALE (aggiornata $baselineStr):
 $baselineSummary
@@ -98,7 +98,7 @@ Analizza in modo scientifico, personalizzato e approfondito. Dai piano settimana
     return DailyLogModel.fromJson({
       ...data,
       'date': doc.id,
-      'goal_today': data['goal_today'] ?? 'dimagrire',
+      'goal_today_ia': data['goal_today_ia'] ?? data['goal_today'] ?? '',
       'timestamp': data['timestamp'] ?? Timestamp.now(),
     });
   }

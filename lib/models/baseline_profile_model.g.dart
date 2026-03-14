@@ -9,7 +9,7 @@ part of 'baseline_profile_model.dart';
 BaselineProfileModel _$BaselineProfileModelFromJson(
   Map<String, dynamic> json,
 ) => BaselineProfileModel(
-  goal: json['goal'] as String,
+  goalIa: json['goal_ia'] as String? ?? '',
   annualStats: json['annual_stats'] as Map<String, dynamic>,
   monthlyTrends: (json['monthly_trends'] as List<dynamic>)
       .map((e) => e as Map<String, dynamic>)
@@ -30,7 +30,7 @@ BaselineProfileModel _$BaselineProfileModelFromJson(
 Map<String, dynamic> _$BaselineProfileModelToJson(
   BaselineProfileModel instance,
 ) => <String, dynamic>{
-  'goal': instance.goal,
+  'goal_ia': instance.goalIa,
   'annual_stats': instance.annualStats,
   'monthly_trends': instance.monthlyTrends,
   'key_metrics_attia': instance.keyMetricsAttia,

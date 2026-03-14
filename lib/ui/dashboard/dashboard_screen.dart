@@ -8,12 +8,16 @@ import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/services/gemini_service.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
 import 'package:fitai_analyzer/ui/theme/app_colors.dart';
+import 'package:fitai_analyzer/ui/widgets/compact_activity_card.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/strava_activity_card.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+/// Filtro data selezionata: null = tutte.
+final selectedDateFilterProvider = StateProvider<String?>((ref) => null);
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -107,39 +111,276 @@ class DashboardScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Allenamenti'),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _WelcomeCard(userName: authState.user?.email ?? 'Utente'),
-            const SizedBox(height: 16),
-            _AnalisiAIButton(
-              onTap: () => _onAnalisiAI(context, ref),
+      body: SafeArea(
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _WelcomeCard(userName: authState.user?.email ?? 'Utente'),
+                    const SizedBox(height: 16),
+                    _AnalisiAIButton(
+                      onTap: () => _onAnalisiAI(context, ref),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            const SizedBox(height: 24),
-            healthAsync.when(
-              data: (data) => _CaloriesChartCard(
-                data: data,
-                isStravaConnected: stravaConnected,
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+                child: healthAsync.when(
+                  data: (data) => _CaloriesChartCard(
+                    data: data,
+                    isStravaConnected: stravaConnected,
+                    onSyncTap: () => _onSyncStrava(context, ref),
+                  ),
+                  loading: () => const _ChartSkeleton(),
+                  error: (e, _) => _ErrorCard(message: e.toString()),
+                ),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 8)),
+            SliverToBoxAdapter(
+              child: _ActivitiesSection(
+                stravaConnected: stravaConnected,
                 onSyncTap: () => _onSyncStrava(context, ref),
               ),
-              loading: () => const _ChartSkeleton(),
-              error: (e, _) => _ErrorCard(message: e.toString()),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActivitiesSection extends ConsumerWidget {
+  const _ActivitiesSection({
+    required this.stravaConnected,
+    required this.onSyncTap,
+  });
+
+  final bool stravaConnected;
+  final VoidCallback onSyncTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final byDate = ref.watch(activitiesByDateProvider);
+    final dates = ref.watch(activityDatesProvider);
+    final selectedDate = ref.watch(selectedDateFilterProvider);
+
+    if (byDate.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: _EmptyActivitiesCard(
+          isStravaConnected: stravaConnected,
+          onSyncTap: onSyncTap,
+        ),
+      );
+    }
+
+    final displayDates = selectedDate != null ? [selectedDate] : dates;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            'Date',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 44,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: _DateChip(
+                  label: 'Tutti',
+                  isSelected: selectedDate == null,
+                  onTap: () => ref.read(selectedDateFilterProvider.notifier).state = null,
+                ),
+              ),
+              ...dates.map((dateKey) {
+                final label = formatDateForDisplay(dateKey);
+                final isSelected = selectedDate == dateKey;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: _DateChip(
+                    label: label,
+                    isSelected: isSelected,
+                    onTap: () {
+                      ref.read(selectedDateFilterProvider.notifier).state =
+                          isSelected ? null : dateKey;
+                    },
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            'Allenamenti',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        ...displayDates.map((dateKey) {
+          final activities = byDate[dateKey] ?? [];
+          if (activities.isEmpty) return const SizedBox.shrink();
+          final label = formatDateForDisplay(dateKey);
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    label,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                ...activities.map((a) {
+                  final activity = StravaActivity.fromFitnessData(a);
+                  return CompactActivityCard(
+                    activity: a,
+                    onTap: activity.id > 0
+                        ? () => _showStravaDetailDialog(context, activity.id)
+                        : null,
+                  );
+                }),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  void _showStravaDetailDialog(BuildContext context, int activityId) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => _StravaDetailLoadingDialog(activityId: activityId),
+    );
+  }
+}
+
+class _DateChip extends StatelessWidget {
+  const _DateChip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? theme.colorScheme.primary
+                : theme.colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isSelected
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.outline.withValues(alpha: 0.3),
+            ),
+          ),
+          child: Text(
+            label,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: isSelected
+                  ? theme.colorScheme.onPrimary
+                  : theme.colorScheme.onSurfaceVariant,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyActivitiesCard extends StatelessWidget {
+  const _EmptyActivitiesCard({
+    required this.isStravaConnected,
+    required this.onSyncTap,
+  });
+
+  final bool isStravaConnected;
+  final VoidCallback onSyncTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: theme.colorScheme.outline.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            Icon(
+              Icons.directions_bike_outlined,
+              size: 48,
+              color: theme.colorScheme.outline,
             ),
             const SizedBox(height: 16),
-            healthAsync.when(
-              data: (data) {
-                final stravaData = data.where((d) => d.source == 'strava').toList();
-                return _StravaActivitiesCard(
-                  data: stravaData,
-                  isStravaConnected: stravaConnected,
-                  onSyncTap: () => _onSyncStrava(context, ref),
-                );
-              },
-              loading: () => const _ChartSkeleton(),
-              error: (e, _) => _ErrorCard(message: e.toString()),
+            Text(
+              isStravaConnected
+                  ? 'Nessuna attività. Sincronizza per caricare gli allenamenti.'
+                  : 'Connetti Strava per sincronizzare le tue attività.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
             ),
+            if (isStravaConnected) ...[
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: onSyncTap,
+                icon: const Icon(Icons.sync, size: 18),
+                label: const Text('Sincronizza'),
+              ),
+            ],
           ],
         ),
       ),
@@ -360,153 +601,6 @@ class _CaloriesChartCard extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _StravaActivitiesCard extends StatelessWidget {
-  const _StravaActivitiesCard({
-    required this.data,
-    required this.isStravaConnected,
-    required this.onSyncTap,
-  });
-
-  final List<FitnessData> data;
-  final bool isStravaConnected;
-  final VoidCallback onSyncTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final stravaData = data.where((d) => d.source == 'strava').toList()
-      ..sort((a, b) => b.date.compareTo(a.date));
-    final stravaWithDistance =
-        stravaData.where((d) => (d.distanceKm ?? 0) > 0).toList();
-    final barGroups = stravaWithDistance
-        .asMap()
-        .entries
-        .map((e) => BarChartGroupData(
-              x: e.key,
-              barRods: [
-                BarChartRodData(
-                  toY: (e.value.distanceKm ?? 0).toDouble(),
-                  color: AppColors.stravaOrange,
-                  width: 16,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(4),
-                  ),
-                ),
-              ],
-              showingTooltipIndicators: [0],
-            ))
-        .toList();
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeOut,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.directions_bike,
-                  color: AppColors.stravaOrange, size: 24),
-              const SizedBox(width: 8),
-              Text(
-                'Attività Strava',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 200,
-            child: barGroups.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          isStravaConnected
-                              ? 'Nessuna attività. Sincronizza per caricare le attività.'
-                              : 'Nessuna attività. Connetti Strava per sincronizzare.',
-                          style: Theme.of(context).textTheme.bodySmall,
-                          textAlign: TextAlign.center,
-                        ),
-                        if (isStravaConnected) ...[
-                          const SizedBox(height: 12),
-                          FilledButton.icon(
-                            onPressed: onSyncTap,
-                            icon: const Icon(Icons.sync, size: 18),
-                            label: const Text('Sincronizza'),
-                          ),
-                        ],
-                      ],
-                    ),
-                  )
-                : BarChart(
-                    BarChartData(
-                      alignment: BarChartAlignment.spaceAround,
-                      maxY: stravaWithDistance.isEmpty
-                          ? 10
-                          : (stravaWithDistance
-                                  .map((d) => (d.distanceKm ?? 0).toDouble())
-                                  .reduce((a, b) => a > b ? a : b) *
-                              1.2)
-                              .clamp(10.0, double.infinity),
-                      barTouchData: BarTouchData(enabled: true),
-                      titlesData: FlTitlesData(show: false),
-                      gridData: FlGridData(show: true),
-                      borderData: FlBorderData(show: false),
-                      barGroups: barGroups,
-                    ),
-                    duration: const Duration(milliseconds: 300),
-                  ),
-          ),
-          if (stravaData.isNotEmpty) ...[
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                '${stravaData.length} attività • Totale ${(stravaData.fold<double>(0, (s, d) => s + (d.distanceKm ?? 0))).toStringAsFixed(1)} km',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Dettaglio attività',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-            ),
-            const SizedBox(height: 8),
-            ...stravaData.take(10).map((d) {
-              final activity = StravaActivity.fromFitnessData(d);
-              return StravaActivityCard(
-                activity: activity,
-                onTap: activity.id > 0
-                    ? () => _showStravaDetailDialog(context, activity.id)
-                    : null,
-              );
-            }),
-          ],
-        ],
-      ),
-    );
-  }
-
-  /// Carica dettaglio on-tap (calories, laps) — rispetta rate limit 100/15min
-  void _showStravaDetailDialog(BuildContext context, int activityId) {
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (ctx) => _StravaDetailLoadingDialog(activityId: activityId),
     );
   }
 }

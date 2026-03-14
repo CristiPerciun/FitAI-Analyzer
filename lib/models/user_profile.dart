@@ -1,58 +1,60 @@
 import 'package:json_annotation/json_annotation.dart';
 
-// Esegui: dart run build_runner build --delete-conflicting-outputs
-// per rigenerare user_profile.g.dart dopo modifiche a questa classe.
 part 'user_profile.g.dart';
 
-/// Profilo utente per personalizzazione piani AI (obiettivi, livello, preferenze).
+/// Profilo utente per onboarding e personalizzazione piani AI.
+/// Valori mainGoal: "weight_loss", "muscle_gain", "longevity", "strength"
 @JsonSerializable()
 class UserProfile {
   /// Obiettivo principale: "weight_loss", "muscle_gain", "longevity", "strength"
-  final String? mainGoal;
+  @JsonKey(name: 'main_goal')
+  final String mainGoal;
 
-  /// Livello esperienza: 1=principiante, 2=intermedio, 3=avanzato
-  final int? experienceLevel;
-
-  final int? age;
+  final int age;
 
   /// Genere: "male", "female", "other"
-  final String? gender;
+  final String gender;
 
-  final double? heightCm;
+  @JsonKey(name: 'height_cm')
+  final double heightCm;
 
-  final double? weightKg;
+  @JsonKey(name: 'weight_kg')
+  final double weightKg;
 
-  /// Infortuni o condizioni (testo libero)
-  final String? injuriesOrConditions;
+  @JsonKey(name: 'training_days_per_week')
+  final int trainingDaysPerWeek;
 
-  /// Giorni di allenamento a settimana (3-7)
-  final int? trainingDaysPerWeek;
+  /// Attrezzatura disponibile: "bodyweight", "home_gym", "full_gym", etc.
+  final String equipment;
 
-  /// Attrezzatura disponibile: "bodyweight", "home_gym", "full_gym"
-  final String? equipment;
+  @JsonKey(name: 'takes_medications')
+  final bool takesMedications;
 
-  /// Durata sessione preferita: "short", "medium", "long"
-  final String? preferredSessionDuration;
+  @JsonKey(name: 'medications_list')
+  final String medicationsList;
 
-  /// Preferenza dieta: "omnivore", "vegetarian", "vegan", "low_carb"
-  final String? dietPreference;
+  @JsonKey(name: 'health_conditions')
+  final String healthConditions;
 
-  /// Target specifico (es. "-8kg in 4 mesi", testo libero)
-  final String? goalSpecificTarget;
+  @JsonKey(name: 'avg_sleep_hours')
+  final double avgSleepHours;
+
+  @JsonKey(name: 'sleep_importance')
+  final int sleepImportance;
 
   const UserProfile({
-    this.mainGoal,
-    this.experienceLevel,
-    this.age,
-    this.gender,
-    this.heightCm,
-    this.weightKg,
-    this.injuriesOrConditions,
-    this.trainingDaysPerWeek,
-    this.equipment,
-    this.preferredSessionDuration,
-    this.dietPreference,
-    this.goalSpecificTarget,
+    required this.mainGoal,
+    required this.age,
+    required this.gender,
+    required this.heightCm,
+    required this.weightKg,
+    required this.trainingDaysPerWeek,
+    required this.equipment,
+    required this.takesMedications,
+    required this.medicationsList,
+    required this.healthConditions,
+    required this.avgSleepHours,
+    required this.sleepImportance,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) =>

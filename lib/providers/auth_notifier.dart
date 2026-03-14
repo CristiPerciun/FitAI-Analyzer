@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
+import 'package:fitai_analyzer/services/credential_storage_service.dart';
 import 'package:fitai_analyzer/providers/strava_sync_status_notifier.dart';
 import 'package:fitai_analyzer/services/aggregation_service.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
@@ -220,12 +221,124 @@ class AuthNotifier extends Notifier<AuthState> {
     try {
       await _runOnPlatformThread(() async {
         await ref.read(authServiceProvider).signOut();
+        await ref.read(credentialStorageServiceProvider).clearCredentials();
         state = AuthState();
       });
     } catch (e) {
       state = state.copyWith(error: e.toString(), isLoading: false);
       rethrow;
     }
+  }
+
+  /// Verifica se il token è ancora valido (es. utente non cancellato da Firebase).
+  /// Se invalido, esegue sign out. Esegue sempre sul platform thread (Windows).
+  Future<bool> verifyTokenAndSignOutIfInvalid(User user) async {
+    try {
+      await _runOnPlatformThread(() async {
+        await user.getIdToken(true);
+      });
+      return true;
+    } catch (_) {
+      await signOut();
+      return false;
+    }
+  }
+
+  /// Login con email e password. Se [rememberMe] è true, salva le credenziali per auto-login.
+  Future<void> signInWithEmailAndPassword({
+    required String email,
+    required String password,
+    required bool rememberMe,
+  }) async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      await _runOnPlatformThread(() async {
+        await ref.read(authServiceProvider).signInWithEmailAndPassword(
+              email.trim(),
+              password,
+            );
+        await ref.read(credentialStorageServiceProvider).saveCredentials(
+              email: email,
+              password: password,
+              rememberMe: rememberMe,
+            );
+        state = state.copyWith(
+          user: FirebaseAuth.instance.currentUser,
+          isLoading: false,
+          error: null,
+        );
+      });
+    } catch (e) {
+      state = state.copyWith(
+        error: _authErrorToMessage(e),
+        isLoading: false,
+      );
+      rethrow;
+    }
+  }
+
+  /// Registrazione con email e password. Se [rememberMe] è true, salva le credenziali.
+  Future<void> createAccountWithEmailAndPassword({
+    required String email,
+    required String password,
+    required bool rememberMe,
+  }) async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      await _runOnPlatformThread(() async {
+        await ref.read(authServiceProvider).createUserWithEmailAndPassword(
+              email.trim(),
+              password,
+            );
+        await ref.read(credentialStorageServiceProvider).saveCredentials(
+              email: email,
+              password: password,
+              rememberMe: rememberMe,
+            );
+        state = state.copyWith(
+          user: FirebaseAuth.instance.currentUser,
+          isLoading: false,
+          error: null,
+        );
+      });
+    } catch (e) {
+      state = state.copyWith(
+        error: _authErrorToMessage(e),
+        isLoading: false,
+      );
+      rethrow;
+    }
+  }
+
+  /// Auto-login con credenziali salvate. Usato all'avvio se "Ricordami" era attivo.
+  Future<bool> tryAutoLoginWithSavedCredentials() async {
+    final creds = await ref.read(credentialStorageServiceProvider).getCredentials();
+    if (creds == null) return false;
+
+    try {
+      await ref.read(authServiceProvider).signInWithEmailAndPassword(
+            creds.email,
+            creds.password,
+          );
+      state = state.copyWith(user: FirebaseAuth.instance.currentUser);
+      return true;
+    } catch (_) {
+      await ref.read(credentialStorageServiceProvider).clearCredentials();
+      return false;
+    }
+  }
+
+  static String _authErrorToMessage(Object e) {
+    final msg = e.toString().toLowerCase();
+    if (msg.contains('invalid-credential') || msg.contains('invalid_credential')) {
+      return 'Email o password non corretti.';
+    }
+    if (msg.contains('user-not-found')) return 'Utente non trovato.';
+    if (msg.contains('wrong-password')) return 'Password errata.';
+    if (msg.contains('email-already-in-use')) return 'Email già registrata.';
+    if (msg.contains('weak-password')) return 'Password troppo debole (min 6 caratteri).';
+    if (msg.contains('invalid-email')) return 'Email non valida.';
+    return e.toString();
   }
 }
 

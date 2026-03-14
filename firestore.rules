@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Accesso ai dati SOLO se l'UID del documento coincide con l'UID di chi ha fatto il login.
+    // Copre: users/{uid}/daily_logs, health_data, profile, rolling_10days, baseline_profile, ecc.
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}

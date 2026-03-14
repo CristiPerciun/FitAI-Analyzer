@@ -30,7 +30,7 @@ I dati vengono organizzati su tre livelli di granularità per ottimizzare:
 - `date`, `timestamp`
 - `strava_activities`: lista attività raw
 - `total_burned_kcal`
-- `weight_kg`, `goal_today`
+- `weight_kg`, `goal_today_ia` (obiettivo giornaliero creato dall'IA)
 - `nutrition_summary`: sintesi aggregata (vedi sotto)
 - `nutrition_gemini`: ultimo pasto (retrocompatibilità)
 
@@ -96,7 +96,7 @@ Ogni pasto: `dish_name`, `calories`, `macros`, `timestamp`, `meal_type`, `raw_ai
 ```
 
 **Campi** (BaselineProfileModel):
-- `goal`, `annual_stats`, `monthly_trends`
+- `goal_ia` (obiettivo prevalente da goal_today_ia), `annual_stats`, `monthly_trends`
 - `key_metrics_attia`, `evolution_notes`
 - `ai_ready_summary`: testo 4000+ caratteri pronto per prompt AI
 - `last_baseline_update`, `references`

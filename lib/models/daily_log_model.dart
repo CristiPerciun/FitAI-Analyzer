@@ -33,9 +33,9 @@ class DailyLogModel {
   @JsonKey(name: 'weight_kg')
   final double? weightKg;
 
-  /// Obiettivo del giorno: "dimagrire" o "massa_muscolare".
-  @JsonKey(name: 'goal_today')
-  final String goalToday;
+  /// Obiettivo del giorno creato dall'IA (L'app crea i goal giornalieri dal risultato AI).
+  @JsonKey(name: 'goal_today_ia', defaultValue: '')
+  final String goalTodayIa;
 
   @JsonKey(fromJson: _timestampFromJson, toJson: _timestampToJson)
   final DateTime timestamp;
@@ -47,7 +47,7 @@ class DailyLogModel {
     this.nutritionSummary = const {},
     required this.totalBurnedKcal,
     this.weightKg,
-    required this.goalToday,
+    required this.goalTodayIa,
     required this.timestamp,
   });
 

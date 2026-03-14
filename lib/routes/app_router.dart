@@ -1,7 +1,5 @@
-import 'package:fitai_analyzer/ui/auth/login_screen.dart';
-import 'package:fitai_analyzer/ui/onboarding/onboarding_details_screen.dart';
+import 'package:fitai_analyzer/ui/auth/auth_gateway.dart';
 import 'package:fitai_analyzer/ui/onboarding/onboarding_screen.dart';
-import 'package:fitai_analyzer/ui/shell/main_shell_screen.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,30 +13,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     refreshListenable: authRefresh,
     redirect: (context, state) {
       final isLoggedIn = ref.read(authNotifierProvider).user != null;
-      final isLoginRoute = state.uri.path == '/' || state.uri.path == '/login';
+      final path = state.uri.path;
 
-      if (!isLoggedIn && !isLoginRoute) return '/';
-      if (isLoggedIn && isLoginRoute) return '/';
+      // Non loggato: solo '/' (AuthGateway mostra Login)
+      if (!isLoggedIn && path != '/') return '/';
+      // Loggato su route pubblica: va alla home (AuthGateway mostra MainShell)
+      if (isLoggedIn && path == '/') return null;
       return null;
     },
     routes: [
       GoRoute(
         path: '/',
-        builder: (context, state) => const MainShellScreen(),
-      ),
-      GoRoute(
-        path: '/login',
-        builder: (context, state) => const LoginScreen(),
+        builder: (context, state) => const AuthGateway(),
       ),
       GoRoute(
         path: '/onboarding',
         builder: (context, state) => const OnboardingScreen(),
-        routes: [
-          GoRoute(
-            path: 'details',
-            builder: (context, state) => const OnboardingDetailsScreen(),
-          ),
-        ],
       ),
     ],
   );
