@@ -1,4 +1,5 @@
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
+import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/ui/home/widgets/longevity_header.dart';
@@ -20,89 +21,112 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final uid = ref.watch(authNotifierProvider).user?.uid;
     final packageAsync = ref.watch(longevityHomePackageProvider);
     final dailyGoals = ref.watch(dailyGoalsProvider);
     final weeklySprint = ref.watch(weeklySprintProvider);
     final strategicAdvice = ref.watch(strategicAdviceProvider);
     final isLoadingPlan = ref.watch(_longevityPlanLoadingProvider);
+    final isGarminSyncing =
+        ref.watch(garminSyncNotifierProvider.select((s) => s.isSyncing));
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Home'),
       ),
-      body: packageAsync.when(
-        data: (package) => CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: Column(
+        children: [
+          if (isGarminSyncing) const LinearProgressIndicator(minHeight: 2),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () => _onRefreshGarmin(ref, uid),
+              child: packageAsync.when(
+                data: (package) => CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const LongevityHeader(),
+                            const SizedBox(height: 24),
+                            Text(
+                              'Obiettivi giornalieri',
+                              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                            ),
+                            const SizedBox(height: 12),
+                            PillarGrid(
+                              isLoading: isLoadingPlan,
+                              pillarContents: dailyGoals,
+                              onGenerateTap: () => _onGeneratePlan(context, ref),
+                            ),
+                            const SizedBox(height: 24),
+                            Text(
+                              'Weekly & Long-Term',
+                              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                            ),
+                            const SizedBox(height: 12),
+                            WeeklySprintCard(
+                              content: weeklySprint,
+                              isLoading: isLoadingPlan,
+                              onGenerateTap: () => _onGeneratePlan(context, ref),
+                            ),
+                            const SizedBox(height: 24),
+                            LongevityPathSection(
+                              baseline: package.baseline,
+                              strategicAdvice: strategicAdvice,
+                              isLoading: isLoadingPlan,
+                              onGenerateTap: () => _onGeneratePlan(context, ref),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                loading: () => ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: const [
+                    SizedBox(height: 220),
+                    Center(child: CircularProgressIndicator()),
+                  ],
+                ),
+                error: (e, _) => ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
                   children: [
-                    const LongevityHeader(),
-                    const SizedBox(height: 24),
-                    Text(
-                      'Obiettivi giornalieri',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w600,
+                    Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 120),
+                          Icon(
+                            Icons.error_outline,
+                            size: 48,
+                            color: Theme.of(context).colorScheme.error,
                           ),
-                    ),
-                    const SizedBox(height: 12),
-                    PillarGrid(
-                      isLoading: isLoadingPlan,
-                      pillarContents: dailyGoals,
-                      onGenerateTap: () => _onGeneratePlan(context, ref),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      'Weekly & Long-Term',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w600,
+                          const SizedBox(height: 16),
+                          Text(
+                            e.toString(),
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodyMedium,
                           ),
-                    ),
-                    const SizedBox(height: 12),
-                    WeeklySprintCard(
-                      content: weeklySprint,
-                      isLoading: isLoadingPlan,
-                      onGenerateTap: () => _onGeneratePlan(context, ref),
-                    ),
-                    const SizedBox(height: 24),
-                    LongevityPathSection(
-                      baseline: package.baseline,
-                      strategicAdvice: strategicAdvice,
-                      isLoading: isLoadingPlan,
-                      onGenerateTap: () => _onGeneratePlan(context, ref),
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
-          ],
-        ),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.error_outline,
-                  size: 48,
-                  color: Theme.of(context).colorScheme.error,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  e.toString(),
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
-            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -130,6 +154,14 @@ class HomeScreen extends ConsumerWidget {
     } finally {
       ref.read(_longevityPlanLoadingProvider.notifier).state = false;
     }
+  }
+
+  Future<void> _onRefreshGarmin(WidgetRef ref, String? uid) async {
+    if (uid == null) return;
+    await ref.read(garminSyncNotifierProvider.notifier).syncNow(
+          uid: uid,
+          trigger: 'home_pull_to_refresh',
+        );
   }
 }
 

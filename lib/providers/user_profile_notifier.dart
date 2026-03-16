@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fitai_analyzer/models/user_profile.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
+import 'package:fitai_analyzer/utils/platform_firestore_fix.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Stato del profilo utente con loading e gestione errori.
@@ -113,17 +114,17 @@ class UserProfileNotifier extends Notifier<UserProfileState> {
   }
 
   /// Stream real-time del profilo da Firestore: users/{uid}/profile/profile
+  /// Su Windows usa polling per evitare errori "non-platform thread".
   Stream<UserProfile?> streamProfile() {
     final uid = _uid;
     if (uid == null) return Stream.value(null);
 
-    return FirebaseFirestore.instance
+    final docRef = FirebaseFirestore.instance
         .collection('users')
         .doc(uid)
         .collection('profile')
-        .doc('profile')
-        .snapshots()
-        .map((doc) {
+        .doc('profile');
+    return documentSnapshotStream(docRef).map((doc) {
       if (doc.exists && doc.data() != null) {
         try {
           return UserProfile.fromJson(doc.data()!);
@@ -143,16 +144,16 @@ final userProfileNotifierProvider =
 
 /// Stream real-time del profilo per ref.watch/ref.listen in UI.
 /// Si ricrea automaticamente quando cambia l'utente autenticato.
+/// Su Windows usa polling per evitare errori "non-platform thread".
 final userProfileStreamProvider = StreamProvider<UserProfile?>((ref) {
   final uid = ref.watch(authNotifierProvider).user?.uid;
   if (uid == null) return Stream.value(null);
-  return FirebaseFirestore.instance
+  final docRef = FirebaseFirestore.instance
       .collection('users')
       .doc(uid)
       .collection('profile')
-      .doc('profile')
-      .snapshots()
-      .map((doc) {
+      .doc('profile');
+  return documentSnapshotStream(docRef).map((doc) {
     if (doc.exists && doc.data() != null) {
       try {
         return UserProfile.fromJson(doc.data()!);

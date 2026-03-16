@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
+import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/services/ai_prompt_service.dart';
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
@@ -95,7 +96,10 @@ class DashboardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final uid = ref.watch(authNotifierProvider).user?.uid;
     final stravaConnected = ref.watch(stravaConnectedProvider).valueOrNull ?? false;
+    final isGarminSyncing =
+        ref.watch(garminSyncNotifierProvider.select((s) => s.isSyncing));
 
     ref.listen(healthDataStreamProvider, (prev, next) {
       next.whenOrNull(
@@ -110,31 +114,50 @@ class DashboardScreen extends ConsumerWidget {
         title: const Text('Allenamenti'),
       ),
       body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _AnalisiAIButton(
-                      onTap: () => _onAnalisiAI(context, ref),
+        child: Column(
+          children: [
+            if (isGarminSyncing) const LinearProgressIndicator(minHeight: 2),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: () => _onRefreshGarmin(ref, uid),
+                child: CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _AnalisiAIButton(
+                              onTap: () => _onAnalisiAI(context, ref),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SliverToBoxAdapter(
+                      child: _ActivitiesSection(
+                        stravaConnected: stravaConnected,
+                        onSyncTap: () => _onSyncStrava(context, ref),
+                      ),
                     ),
                   ],
                 ),
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: _ActivitiesSection(
-                stravaConnected: stravaConnected,
-                onSyncTap: () => _onSyncStrava(context, ref),
               ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _onRefreshGarmin(WidgetRef ref, String? uid) async {
+    if (uid == null) return;
+    await ref.read(garminSyncNotifierProvider.notifier).syncNow(
+          uid: uid,
+          trigger: 'dashboard_pull_to_refresh',
+        );
   }
 }
 
@@ -221,9 +244,10 @@ class _ActivitiesSection extends ConsumerWidget {
                 ),
                 ...activities.map((a) {
                   final activity = StravaActivity.fromFitnessData(a);
+                  final isStrava = a.source == 'strava';
                   return CompactActivityCard(
                     activity: a,
-                    onTap: activity.id > 0
+                    onTap: isStrava && activity.id > 0
                         ? () => _showStravaDetailDialog(context, activity.id)
                         : null,
                   );
@@ -277,8 +301,8 @@ class _EmptyActivitiesCard extends StatelessWidget {
             const SizedBox(height: 16),
             Text(
               isStravaConnected
-                  ? 'Nessuna attività. Sincronizza per caricare gli allenamenti.'
-                  : 'Connetti Strava per sincronizzare le tue attività.',
+                  ? 'Nessuna attività. Sincronizza Strava o attendi la sync Garmin dal server.'
+                  : 'Connetti Strava o attendi la sync Garmin (server fly.io).',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),

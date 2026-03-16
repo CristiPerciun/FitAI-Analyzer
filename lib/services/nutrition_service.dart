@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/meal_model.dart';
+import '../utils/platform_firestore_fix.dart';
 
 /// Servizio per salvataggio dati nutrizione (Gemini foto piatto) su Firestore.
 /// Strategia a Tre Livelli:
@@ -135,31 +136,31 @@ class NutritionService {
   }
 
   /// Stream delle date (YYYY-MM-DD) che hanno almeno un pasto.
+  /// Su Windows usa polling per evitare errori "non-platform thread".
   Stream<List<String>> mealDatesStream(String uid) {
-    return FirebaseFirestore.instance
+    final query = FirebaseFirestore.instance
         .collection('users')
         .doc(uid)
-        .collection('daily_logs')
-        .snapshots()
-        .map((snap) {
-          final dates = snap.docs.map((d) => d.id).toList();
-          dates.sort((a, b) => b.compareTo(a));
-          return dates;
-        });
+        .collection('daily_logs');
+    return querySnapshotStream(query).map((snap) {
+      final dates = snap.docs.map((d) => d.id).toList();
+      dates.sort((a, b) => b.compareTo(a));
+      return dates;
+    });
   }
 
   /// Stream dei pasti del giorno per aggiornamenti real-time.
+  /// Su Windows usa polling per evitare errori "non-platform thread".
   Stream<List<MealModel>> mealsForDayStream(String uid, String dateStr) {
-    return FirebaseFirestore.instance
+    final query = FirebaseFirestore.instance
         .collection('users')
         .doc(uid)
         .collection('daily_logs')
         .doc(dateStr)
         .collection('meals')
-        .orderBy('timestamp')
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((d) => MealModel.fromFirestore(d.data()))
-            .toList());
+        .orderBy('timestamp');
+    return querySnapshotStream(query).map((snapshot) => snapshot.docs
+        .map((d) => MealModel.fromFirestore(d.data()))
+        .toList());
   }
 }

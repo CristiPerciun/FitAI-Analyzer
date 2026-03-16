@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
+
+import '../utils/platform_firestore_fix.dart';
 
 /// Servizio per autenticazione Firebase.
 /// Estendere con Health OAuth quando necessario.
@@ -7,7 +11,24 @@ class AuthService {
 
   User? get currentUser => _auth.currentUser;
 
-  Stream<User?> get authStateChanges => _auth.authStateChanges();
+  /// Su Windows usa polling per evitare errori "non-platform thread" (flutterfire#11933).
+  /// Emette solo quando l'utente cambia (login/logout), non ogni N secondi.
+  Stream<User?> get authStateChanges {
+    if (!isWindows) return _auth.authStateChanges();
+    return _pollAuthState();
+  }
+
+  Stream<User?> _pollAuthState() async* {
+    User? last = _auth.currentUser;
+    yield last;
+    await for (final _ in Stream.periodic(const Duration(seconds: 5))) {
+      final current = _auth.currentUser;
+      if (current?.uid != last?.uid) {
+        last = current;
+        yield current;
+      }
+    }
+  }
 
   Future<UserCredential> signInAnonymously() async {
     return _auth.signInAnonymously();

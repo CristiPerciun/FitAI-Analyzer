@@ -9,11 +9,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Gateway reattivo che decide cosa mostrare in base allo stato di Firebase Auth.
+/// Usa authNotifier (non lo stream) per reagire subito al login (su Windows lo stream
+/// fa polling ogni 5s e non aggiornerebbe subito).
 ///
 /// Flusso:
-/// 1. Mai fatto login → LoginScreen (registrati o accedi)
-/// 2. Già loggato con email (Firebase persistence o Ricordami) → verifica profilo:
-///    - Profilo assente → Onboarding
+/// 1. Errore o utente non trovato → LoginScreen
+/// 2. Già loggato con email → verifica token → verifica profilo:
+///    - Profilo assente (nuovo utente) → Onboarding
 ///    - Profilo presente → MainShell (home)
 /// 3. Utente anonimo → sign out + LoginScreen (nessun onboarding senza account reale)
 class AuthGateway extends ConsumerStatefulWidget {
@@ -29,8 +31,6 @@ class _AuthGatewayState extends ConsumerState<AuthGateway> {
   @override
   void initState() {
     super.initState();
-    // Su Windows, ritarda l'accesso ad authStateChanges per ridurre errori
-    // "non-platform thread" del plugin firebase_auth.
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(() => _authReady = true);
@@ -47,29 +47,19 @@ class _AuthGatewayState extends ConsumerState<AuthGateway> {
         body: Center(child: CircularProgressIndicator()),
       );
     }
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-        final user = snapshot.data;
-        // Solo utenti con account reale (email/password) bypassano il login.
-        // Gli anonimi: sign out e mostra LoginScreen (nessun onboarding senza login).
-        if (user != null && user.isAnonymous) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            ref.read(authNotifierProvider.notifier).signOut();
-          });
-          return const LoginScreen();
-        }
-        if (user != null && !user.isAnonymous) {
-          return _VerifyUserGate(user: user);
-        }
-        return const LoginScreen();
-      },
-    );
+    final authState = ref.watch(authNotifierProvider);
+    final user = authState.user;
+
+    if (user != null && user.isAnonymous) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(authNotifierProvider.notifier).signOut();
+      });
+      return const LoginScreen();
+    }
+    if (user != null && !user.isAnonymous) {
+      return _VerifyUserGate(user: user);
+    }
+    return const LoginScreen();
   }
 }
 
@@ -107,10 +97,13 @@ class _VerifyUserGateState extends ConsumerState<_VerifyUserGate> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isVerifying || !_verified) {
+    if (_isVerifying) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
+    }
+    if (!_verified) {
+      return const LoginScreen();
     }
     return const _LoggedInGate();
   }
@@ -136,11 +129,16 @@ class _LoggedInGateState extends ConsumerState<_LoggedInGate> {
   @override
   Widget build(BuildContext context) {
     final profileState = ref.watch(userProfileNotifierProvider);
+    final uid = ref.watch(authNotifierProvider).user?.uid;
 
     if (profileState.isLoading) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
+    }
+
+    if (uid == null || profileState.error != null) {
+      return const LoginScreen();
     }
 
     if (profileState.profile == null) {

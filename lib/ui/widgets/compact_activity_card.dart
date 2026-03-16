@@ -67,18 +67,25 @@ class CompactActivityCard extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: AppColors.stravaOrange.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  _getIcon(type),
-                  color: AppColors.stravaOrange,
-                  size: 26,
-                ),
+              Builder(
+                builder: (context) {
+                  final isGarmin = activity.source == 'garmin';
+                  final accentColor =
+                      isGarmin ? AppColors.garminBlue : AppColors.stravaOrange;
+                  return Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: accentColor.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      _getIcon(type),
+                      color: accentColor,
+                      size: 26,
+                    ),
+                  );
+                },
               ),
               const SizedBox(width: 16),
               Expanded(

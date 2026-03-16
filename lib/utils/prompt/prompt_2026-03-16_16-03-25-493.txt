@@ -1,0 +1,24 @@
+Nessun baseline ancora. Sincronizza Strava e registra pasti per costruire il profilo.
+
+---
+LIVELLO 2: Nessun dato | Nutrizione: nessun dato
+LIVELLO 1 OGGI: Attività: 1, Bruciate: 0 kcal | nessun dato
+
+---
+Sei un esperto di longevità (Peter Attia, Outlive). Genera un piano di longevità composto da:
+
+1. 4 micro-obiettivi per OGGI (uno per pilastro: Cuore, Forza, Alimentazione, Recupero)
+2. 1 macro-obiettivo SETTIMANALE (obiettivo che dura 7 giorni)
+3. 1 consiglio STRATEGICO a lungo termine (basato su trend annuale e metriche Attia)
+
+Rispondi esclusivamente in formato JSON con esattamente questi campi (in italiano):
+{
+  "cuore": "micro-obiettivo Zona 2/VO2 Max per oggi (max 80 caratteri)",
+  "forza": "micro-obiettivo resistenza muscolare per oggi (max 80 caratteri)",
+  "alimentazione": "micro-obiettivo nutrizione per oggi (max 80 caratteri)",
+  "recupero": "micro-obiettivo recupero/HRV/sonno per oggi (max 80 caratteri)",
+  "weekly_sprint": "macro-obiettivo settimanale 7 giorni (max 120 caratteri)",
+  "strategic_advice": "consiglio strategico a lungo termine basato su dati (max 200 caratteri)"
+}
+
+Rispondi SOLO con il JSON, nessun altro testo.

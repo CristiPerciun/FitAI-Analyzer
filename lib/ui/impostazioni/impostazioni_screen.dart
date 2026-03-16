@@ -1,13 +1,14 @@
 import 'package:fitai_analyzer/app.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
-import 'package:fitai_analyzer/providers/theme_mode_provider.dart';
 import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/providers/strava_sync_status_notifier.dart';
+import 'package:fitai_analyzer/providers/theme_mode_provider.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
+import 'package:fitai_analyzer/ui/widgets/garmin_connect_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -19,6 +20,7 @@ class ImpostazioniScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authNotifierProvider);
     final stravaAsync = ref.watch(stravaConnectedProvider);
+    final garminAsync = ref.watch(garminConnectedProvider);
     final syncStatus = ref.watch(stravaSyncStatusProvider);
 
     ref.listen(authNotifierProvider, (prev, next) {
@@ -32,7 +34,8 @@ class ImpostazioniScreen extends ConsumerWidget {
 
     final isStravaLoading =
         authState.isLoading && authState.currentService == 'strava';
-    final isConnected = stravaAsync.valueOrNull ?? false;
+    final isStravaConnected = stravaAsync.valueOrNull ?? false;
+    final isGarminConnected = garminAsync.valueOrNull ?? false;
 
     return Scaffold(
       appBar: AppBar(
@@ -55,14 +58,14 @@ class ImpostazioniScreen extends ConsumerWidget {
               child: Icon(Icons.directions_bike,
                   color: AppColors.stravaOrange, size: 24),
             ),
-            title: isConnected ? 'Strava connesso' : 'Connect Strava',
+            title: isStravaConnected ? 'Strava connesso' : 'Connect Strava',
             subtitle: isStravaLoading
                 ? (syncStatus.message ?? 'Connessione...')
-                : (isConnected ? 'Tocca per sincronizzare' : 'Collega account Strava'),
+                : (isStravaConnected ? 'Tocca per sincronizzare' : 'Collega account Strava'),
             enabled: !isStravaLoading,
             onTap: () => _onConnectStrava(context, ref),
           ),
-          if (isConnected)
+          if (isStravaConnected)
             _SettingsTile(
               leading: Icon(
                 Icons.link_off,
@@ -73,6 +76,22 @@ class ImpostazioniScreen extends ConsumerWidget {
               subtitle: 'Scollega account',
               onTap: () => _onDisconnectStrava(context, ref),
             ),
+          const Divider(height: 24),
+          _SettingsTile(
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.garminBlue.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.watch, color: AppColors.garminBlue, size: 24),
+            ),
+            title: isGarminConnected ? 'Garmin Connect collegato' : 'Connect Garmin',
+            subtitle: isGarminConnected
+                ? 'Account collegato. Sync automatica dal server.'
+                : 'Collega account Garmin Connect',
+            onTap: () => _onConnectGarmin(context, ref),
+          ),
           const Divider(height: 24),
           _ThemeModeTile(),
           const Divider(height: 24),
@@ -121,6 +140,24 @@ class ImpostazioniScreen extends ConsumerWidget {
         content: Text('Strava disconnesso. Ricollega per sincronizzare.'),
       ),
     );
+  }
+
+  Future<void> _onConnectGarmin(BuildContext context, WidgetRef ref) async {
+    final uid = ref.read(authNotifierProvider).user?.uid;
+    if (uid == null) {
+      if (context.mounted) {
+        showErrorDialog(context, 'Utente non autenticato.');
+      }
+      return;
+    }
+    final result = await showGarminConnectDialog(context, ref, uid: uid);
+    if (result == true && context.mounted) {
+      ref.invalidate(garminConnectedProvider);
+      ref.invalidate(garminActivitiesStreamProvider);
+      scaffoldMessengerKey.currentState?.showSnackBar(
+        const SnackBar(content: Text('✅ Garmin collegato!')),
+      );
+    }
   }
 
   Future<void> _onAddGeminiKey(BuildContext context, WidgetRef ref) async {

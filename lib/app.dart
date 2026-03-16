@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:app_links/app_links.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
+import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/theme_mode_provider.dart';
 import 'package:fitai_analyzer/routes/app_router.dart';
 import 'package:fitai_analyzer/services/strava_oauth_callback.dart';
@@ -44,6 +47,14 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
 
+    ref.listen<String?>(authNotifierProvider.select((s) => s.user?.uid), (prev, next) {
+      if (next == null || next == prev) return;
+      unawaited(ref.read(garminSyncNotifierProvider.notifier).syncNow(
+            uid: next,
+            trigger: 'login',
+          ));
+    });
+
     // Mostra errori auth anche quando si è navigati via (es. redirect a dashboard)
     ref.listen<String?>(authNotifierProvider.select((s) => s.error), (prev, next) {
       if (next != null && next.isNotEmpty && next != prev) {
@@ -62,6 +73,21 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         );
       }
     });
+
+    ref.listen<String?>(
+      garminSyncNotifierProvider.select((s) => s.error),
+      (prev, next) {
+        if (next == null || next.isEmpty || next == prev) return;
+        scaffoldMessengerKey.currentState?.showSnackBar(
+          SnackBar(
+            content: Text(next),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 6),
+          ),
+        );
+        ref.read(garminSyncNotifierProvider.notifier).clearError();
+      },
+    );
 
     final themeMode = ref.watch(themeModeProvider);
 
