@@ -1,6 +1,7 @@
 import 'package:fitai_analyzer/models/fitness_data.dart';
 import 'package:fitai_analyzer/theme/app_card_theme.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
+import 'package:fitai_analyzer/utils/activity_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -16,48 +17,12 @@ class GarminActivityDetailCard extends StatelessWidget {
   final FitnessData activity;
   final VoidCallback? onTap;
 
-  static String _formatDuration(double minutes) {
-    final m = minutes.round();
-    final h = m ~/ 60;
-    final min = m % 60;
-    return h > 0 ? '$h h $min min' : '$min min';
-  }
-
-  static IconData _getIcon(String type) {
-    final t = type.toLowerCase();
-    if (t.contains('run') || t.contains('trail')) return Icons.directions_run;
-    if (t.contains('ride') || t.contains('bike') || t.contains('cycle')) {
-      return Icons.directions_bike;
-    }
-    if (t.contains('swim')) return Icons.pool;
-    if (t.contains('walk') || t.contains('hike')) return Icons.directions_walk;
-    if (t.contains('workout') || t.contains('weight') || t.contains('gym')) {
-      return Icons.fitness_center;
-    }
-    return Icons.fitness_center;
-  }
-
-  static String _formatType(String type) {
-    final t = type.toLowerCase();
-    if (t.contains('run')) return 'Run';
-    if (t.contains('ride') || t.contains('bike') || t.contains('cycle')) {
-      return 'Ride';
-    }
-    if (t.contains('swim')) return 'Swim';
-    if (t.contains('walk')) return 'Walk';
-    if (t.contains('hike')) return 'Hike';
-    if (t.contains('workout') || t.contains('weight') || t.contains('gym')) {
-      return 'Workout';
-    }
-    return type.isNotEmpty ? type : 'Attività';
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cardTheme = theme.extension<AppCardTheme>()!;
     final type = activity.stravaActivityType;
-    final name = activity.stravaActivityName ?? _formatType(type);
+    final name = activity.stravaActivityName ?? ActivityUtils.formatActivityType(type, fallback: 'Attività');
     final date = activity.date;
     final durationMin = activity.stravaElapsedMinutes;
     final distanceKm = activity.distanceKm ?? 0;
@@ -97,7 +62,7 @@ class GarminActivityDetailCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
-                        _getIcon(type),
+                        ActivityUtils.getActivityIcon(type),
                         size: 28,
                         color: AppColors.garminBlue,
                       ),
@@ -155,7 +120,7 @@ class GarminActivityDetailCard extends StatelessWidget {
                     _InfoColumn(
                       icon: Icons.timer_outlined,
                       label: 'Durata',
-                      value: _formatDuration(durationMin),
+                      value: ActivityUtils.formatDurationMinutes(durationMin),
                     ),
                     if (distanceKm > 0)
                       _InfoColumn(

@@ -1,11 +1,11 @@
 ---
-description: Struttura Firestore aggiornata - daily_health, activities, ai_insights (compatibilità dati)
+description: Struttura Firestore aggiornata - daily_health, activities, longevity_diary (compatibilità dati)
 alwaysApply: true
 ---
 
 # Struttura Firestore - Collezioni Aggiornate
 
-**OBBLIGATORIO**: Prima di scrivere su Firestore, rispetta questa struttura per mantenere compatibilità con i dati esistenti e la nuova architettura.
+**OBBLIGATORIO**: Prima di scrivere su Firestore, rispetta questa struttura. Per l'architettura completa vedi `docs/DATA_ARCHITECTURE.md`.
 
 ---
 

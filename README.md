@@ -10,14 +10,15 @@ App Flutter per analisi fitness e longevità: integrazione Strava, Garmin, nutri
 
 ## Documentazione
 
+Vedi [docs/README.md](docs/README.md) per l'indice completo.
+
 | Documento | Contenuto |
 |-----------|-----------|
 | [docs/DATA_ARCHITECTURE.md](docs/DATA_ARCHITECTURE.md) | Scrittura/lettura dati Firestore |
-| [docs/GARMIN_DATA_SCHEMA.md](docs/GARMIN_DATA_SCHEMA.md) | Schema dati Garmin API → Firebase |
-| [docs/GARMIN_INTEGRATION.md](docs/GARMIN_INTEGRATION.md) | Integrazione garmin-sync-server |
+| [docs/GARMIN_INTEGRATION.md](docs/GARMIN_INTEGRATION.md) | Integrazione Garmin (server, schema API→Firestore) |
 | [docs/FLUSSI_GARMIN_AI.md](docs/FLUSSI_GARMIN_AI.md) | Flussi Garmin e AI |
 | [.cursor/rules/three-levels-memory-strategy.mdc](.cursor/rules/three-levels-memory-strategy.mdc) | Strategia Tre Livelli |
-| [.cursor/rules/firestore-collections-structure.mdc](.cursor/rules/firestore-collections-structure.mdc) | Collezioni daily_health, activities, ai_insights |
+| [.cursor/rules/firestore-collections-structure.mdc](.cursor/rules/firestore-collections-structure.mdc) | Collezioni daily_health, activities, longevity_diary |
 
 ## Setup
 

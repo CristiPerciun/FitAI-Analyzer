@@ -1,6 +1,7 @@
 import 'package:fitai_analyzer/services/strava_service.dart';
 import 'package:fitai_analyzer/theme/app_card_theme.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
+import 'package:fitai_analyzer/utils/activity_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -13,23 +14,6 @@ class StravaActivityCard extends StatelessWidget {
 
   final StravaActivity activity;
   final VoidCallback? onTap;
-
-  static String _formatDuration(int seconds) {
-    final h = seconds ~/ 3600;
-    final m = (seconds % 3600) ~/ 60;
-    return h > 0 ? '$h h $m min' : '$m min';
-  }
-
-  static IconData _getIcon(String type) {
-    final t = type.toLowerCase();
-    if (t.contains('run') || t.contains('trail')) return Icons.directions_run;
-    if (t.contains('ride') || t.contains('bike') || t.contains('cycle')) {
-      return Icons.directions_bike;
-    }
-    if (t.contains('swim')) return Icons.pool;
-    if (t.contains('walk') || t.contains('hike')) return Icons.directions_walk;
-    return Icons.fitness_center;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -58,7 +42,7 @@ class StravaActivityCard extends StatelessWidget {
               Row(
                 children: [
                   Icon(
-                    _getIcon(activity.sportType),
+                    ActivityUtils.getActivityIcon(activity.sportType),
                     size: 32,
                     color: AppColors.stravaOrange,
                   ),
@@ -101,7 +85,7 @@ class StravaActivityCard extends StatelessWidget {
                   _InfoColumn(
                     icon: Icons.timer_outlined,
                     label: 'Durata',
-                    value: _formatDuration(activity.movingTime),
+                    value: ActivityUtils.formatDurationSeconds(activity.movingTime),
                   ),
                   _InfoColumn(
                     icon: Icons.speed,

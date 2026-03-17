@@ -1,3 +1,5 @@
+import 'package:fitai_analyzer/utils/meal_constants.dart';
+
 /// Documento pasto nella sottocollezione meals (Livello 1 - dettaglio).
 /// Percorso: /users/{uid}/daily_logs/{date}/meals/{mealId}
 ///
@@ -32,7 +34,8 @@ class MealModel {
 
   /// Titolo senza prefisso (es. "Pranzo: Pollo" → "Pollo").
   String get displayTitle {
-    for (final prefix in ['Colazione: ', 'Pranzo: ', 'Cena: ']) {
+    for (final t in MealConstants.mealTypes) {
+      final prefix = '$t: ';
       if (dishName.startsWith(prefix)) {
         return dishName.substring(prefix.length).trim();
       }

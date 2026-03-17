@@ -2,7 +2,9 @@ import 'dart:convert';
 
 import 'package:fitai_analyzer/models/longevity_home_package.dart';
 import 'package:fitai_analyzer/models/meal_model.dart';
+import 'package:fitai_analyzer/utils/meal_constants.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
+import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart';
 import 'package:fitai_analyzer/services/auth_service.dart';
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/services/gemini_service.dart';
@@ -126,14 +128,25 @@ final mealsForDateByTypeProvider =
   }
 });
 
+/// Esegue sync Garmin e invalida i provider dipendenti (pull-to-refresh).
+Future<void> refreshGarminSync(
+  WidgetRef ref,
+  String? uid, {
+  String trigger = 'pull_to_refresh',
+}) async {
+  if (uid == null) return;
+  await ref.read(garminSyncNotifierProvider.notifier).syncNow(
+        uid: uid,
+        trigger: trigger,
+      );
+}
+
 Map<String, List<MealModel>> _groupMealsByType(List<MealModel> meals) {
   final byType = <String, List<MealModel>>{
-    'Colazione': [],
-    'Pranzo': [],
-    'Cena': [],
+    for (final t in MealConstants.mealTypes) t: [],
   };
   for (final m in meals) {
-    final type = m.mealType.isNotEmpty ? m.mealType : _inferMealType(m);
+    final type = m.mealType.isNotEmpty ? m.mealType : MealConstants.inferMealType(m.dishName);
     if (byType.containsKey(type)) {
       byType[type]!.add(m);
     } else {
@@ -141,12 +154,4 @@ Map<String, List<MealModel>> _groupMealsByType(List<MealModel> meals) {
     }
   }
   return byType;
-}
-
-String _inferMealType(MealModel m) {
-  final d = m.dishName.toLowerCase();
-  if (d.startsWith('colazione')) return 'Colazione';
-  if (d.startsWith('pranzo')) return 'Pranzo';
-  if (d.startsWith('cena')) return 'Cena';
-  return 'Pranzo';
 }

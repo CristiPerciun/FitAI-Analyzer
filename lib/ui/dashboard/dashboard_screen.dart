@@ -2,7 +2,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitai_analyzer/models/fitness_data.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
-import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/services/ai_prompt_service.dart';
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
@@ -13,6 +12,7 @@ import 'package:fitai_analyzer/ui/widgets/compact_activity_card.dart';
 import 'package:fitai_analyzer/ui/widgets/date_filter_chips.dart';
 import 'package:fitai_analyzer/utils/date_utils.dart' show dateFilterAll;
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
+import 'package:fitai_analyzer/ui/widgets/loading_indicator.dart';
 import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/garmin_activity_detail_card.dart';
 import 'package:fitai_analyzer/ui/widgets/strava_activity_card.dart';
@@ -57,15 +57,8 @@ class DashboardScreen extends ConsumerWidget {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => const AlertDialog(
-        content: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(width: 16),
-            Text('Analisi AI in corso...'),
-          ],
-        ),
+      builder: (ctx) => AlertDialog(
+        content: const LoadingIndicator(message: 'Analisi AI in corso...'),
       ),
     );
 
@@ -160,10 +153,7 @@ class DashboardScreen extends ConsumerWidget {
   }
 
   Future<void> _onRefreshGarmin(WidgetRef ref, String? uid) async {
-    if (uid == null) return;
-    await ref
-        .read(garminSyncNotifierProvider.notifier)
-        .syncNow(uid: uid, trigger: 'dashboard_pull_to_refresh');
+    await refreshGarminSync(ref, uid, trigger: 'dashboard_pull_to_refresh');
   }
 }
 

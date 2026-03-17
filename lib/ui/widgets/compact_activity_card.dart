@@ -1,6 +1,7 @@
 import 'package:fitai_analyzer/models/fitness_data.dart';
 import 'package:fitai_analyzer/theme/app_card_theme.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
+import 'package:fitai_analyzer/utils/activity_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -14,35 +15,6 @@ class CompactActivityCard extends StatelessWidget {
 
   final FitnessData activity;
   final VoidCallback? onTap;
-
-  static IconData _getIcon(String type) {
-    final t = type.toLowerCase();
-    if (t.contains('run') || t.contains('trail')) return Icons.directions_run;
-    if (t.contains('ride') || t.contains('bike') || t.contains('cycle')) {
-      return Icons.directions_bike;
-    }
-    if (t.contains('swim')) return Icons.pool;
-    if (t.contains('walk') || t.contains('hike')) return Icons.directions_walk;
-    if (t.contains('workout') || t.contains('weight') || t.contains('gym')) {
-      return Icons.fitness_center;
-    }
-    return Icons.fitness_center;
-  }
-
-  static String _formatType(String type) {
-    final t = type.toLowerCase();
-    if (t.contains('run')) return 'Run';
-    if (t.contains('ride') || t.contains('bike') || t.contains('cycle')) {
-      return 'Ride';
-    }
-    if (t.contains('swim')) return 'Swim';
-    if (t.contains('walk')) return 'Walk';
-    if (t.contains('hike')) return 'Hike';
-    if (t.contains('workout') || t.contains('weight') || t.contains('gym')) {
-      return 'Workout';
-    }
-    return type.isNotEmpty ? type : 'Workout';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -80,7 +52,7 @@ class CompactActivityCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
-                      _getIcon(type),
+                      ActivityUtils.getActivityIcon(type),
                       color: accentColor,
                       size: 26,
                     ),
@@ -93,7 +65,7 @@ class CompactActivityCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _formatType(type),
+                      ActivityUtils.formatActivityType(type),
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                         color: cardTheme.contentColor,

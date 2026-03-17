@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Strategia a "Tre Livelli" di Memoria
 
-**VINCOLANTE**: Questa strategia NON deve essere modificata. Ogni nuovo dato deve integrarsi rispettandola.
+**VINCOLANTE**: Questa strategia NON deve essere modificata. Ogni nuovo dato deve integrarsi rispettandola. Per scrittori/lettori vedi `docs/DATA_ARCHITECTURE.md`.
 
 ## Principio
 

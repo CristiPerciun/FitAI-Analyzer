@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/user_profile_notifier.dart';
 import 'package:fitai_analyzer/ui/auth/login_screen.dart';
+import 'package:fitai_analyzer/ui/widgets/loading_indicator.dart';
 import 'package:fitai_analyzer/ui/onboarding/onboarding_screen.dart';
 import 'package:fitai_analyzer/ui/shell/main_shell_screen.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
@@ -43,9 +44,7 @@ class _AuthGatewayState extends ConsumerState<AuthGateway> {
   @override
   Widget build(BuildContext context) {
     if (!_authReady) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: LoadingScreen());
     }
     final authState = ref.watch(authNotifierProvider);
     final user = authState.user;
@@ -98,9 +97,7 @@ class _VerifyUserGateState extends ConsumerState<_VerifyUserGate> {
   @override
   Widget build(BuildContext context) {
     if (_isVerifying) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: LoadingScreen());
     }
     if (!_verified) {
       return const LoginScreen();
@@ -132,9 +129,7 @@ class _LoggedInGateState extends ConsumerState<_LoggedInGate> {
     final uid = ref.watch(authNotifierProvider).user?.uid;
 
     if (profileState.isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: LoadingScreen());
     }
 
     if (uid == null || profileState.error != null) {

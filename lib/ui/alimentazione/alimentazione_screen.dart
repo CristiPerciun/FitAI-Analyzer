@@ -12,6 +12,8 @@ import 'package:fitai_analyzer/theme/app_card_theme.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:fitai_analyzer/ui/widgets/date_filter_chips.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
+import 'package:fitai_analyzer/ui/widgets/loading_indicator.dart';
+import 'package:fitai_analyzer/utils/meal_constants.dart';
 import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
@@ -103,15 +105,8 @@ class AlimentazioneScreen extends ConsumerWidget {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => const AlertDialog(
-        content: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(width: 16),
-            Text('Analisi nutrizione in corso...'),
-          ],
-        ),
+      builder: (ctx) => AlertDialog(
+        content: const LoadingIndicator(message: 'Analisi nutrizione in corso...'),
       ),
     );
 
@@ -451,26 +446,20 @@ class AlimentazioneScreen extends ConsumerWidget {
     String dateStr,
   ) {
     return [
-      _MealCardForDate(
-        dateStr: dateStr,
-        label: 'Colazione',
-        onTap: () => _showAggiungiPastoSheet(context, ref, 'colazione', dateStr),
-        onMealTap: (meal) => _showMealDetailDialog(context, meal),
-      ),
-      const SizedBox(height: 16),
-      _MealCardForDate(
-        dateStr: dateStr,
-        label: 'Pranzo',
-        onTap: () => _showAggiungiPastoSheet(context, ref, 'pranzo', dateStr),
-        onMealTap: (meal) => _showMealDetailDialog(context, meal),
-      ),
-      const SizedBox(height: 16),
-      _MealCardForDate(
-        dateStr: dateStr,
-        label: 'Cena',
-        onTap: () => _showAggiungiPastoSheet(context, ref, 'cena', dateStr),
-        onMealTap: (meal) => _showMealDetailDialog(context, meal),
-      ),
+      for (var i = 0; i < MealConstants.mealTypes.length; i++) ...[
+        if (i > 0) const SizedBox(height: 16),
+        _MealCardForDate(
+          dateStr: dateStr,
+          label: MealConstants.mealTypes[i],
+          onTap: () => _showAggiungiPastoSheet(
+            context,
+            ref,
+            MealConstants.mealLabels[i],
+            dateStr,
+          ),
+          onMealTap: (meal) => _showMealDetailDialog(context, meal),
+        ),
+      ],
     ];
   }
 }

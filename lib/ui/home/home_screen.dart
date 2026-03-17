@@ -160,11 +160,7 @@ class HomeScreen extends ConsumerWidget {
   }
 
   Future<void> _onRefreshGarmin(WidgetRef ref, String? uid) async {
-    if (uid == null) return;
-    await ref.read(garminSyncNotifierProvider.notifier).syncNow(
-          uid: uid,
-          trigger: 'home_pull_to_refresh',
-        );
+    await refreshGarminSync(ref, uid, trigger: 'home_pull_to_refresh');
   }
 }
 
