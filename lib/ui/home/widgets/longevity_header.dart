@@ -95,29 +95,33 @@ class LongevityHeader extends ConsumerWidget {
             const SizedBox(height: 16),
             Row(
               children: [
-                _MetricChip(
-                  icon: Icons.directions_walk,
-                  label: 'Passi',
-                  value: steps > 0 ? steps.toStringAsFixed(0) : '—',
-                  color: cardTheme?.contentColor ?? theme.colorScheme.primary,
+                Expanded(
+                  child: _MetricChip(
+                    icon: Icons.directions_walk,
+                    label: 'Passi',
+                    value: steps > 0 ? steps.toStringAsFixed(0) : '—',
+                    color: cardTheme?.contentColor ?? theme.colorScheme.primary,
+                  ),
                 ),
-                const SizedBox(width: 16),
-                _MetricChip(
-                  icon: Icons.local_fire_department,
-                  label: 'Bruciate',
-                  value: caloriesBurned > 0
-                      ? '${caloriesBurned.toStringAsFixed(0)} kcal'
-                      : '—',
-                  color: cardTheme?.contentColor ?? theme.colorScheme.primary,
+                Expanded(
+                  child: _MetricChip(
+                    icon: Icons.local_fire_department,
+                    label: 'Bruciate',
+                    value: caloriesBurned > 0
+                        ? '${caloriesBurned.toStringAsFixed(0)} kcal'
+                        : '—',
+                    color: cardTheme?.contentColor ?? theme.colorScheme.primary,
+                  ),
                 ),
-                const SizedBox(width: 16),
-                _MetricChip(
-                  icon: Icons.restaurant,
-                  label: 'Assunte',
-                  value: caloriesIntake > 0
-                      ? '${caloriesIntake.toStringAsFixed(0)} kcal'
-                      : '—',
-                  color: cardTheme?.contentColor ?? theme.colorScheme.primary,
+                Expanded(
+                  child: _MetricChip(
+                    icon: Icons.restaurant,
+                    label: 'Assunte',
+                    value: caloriesIntake > 0
+                        ? '${caloriesIntake.toStringAsFixed(0)} kcal'
+                        : '—',
+                    color: cardTheme?.contentColor ?? theme.colorScheme.primary,
+                  ),
                 ),
               ],
             ),
@@ -144,10 +148,12 @@ class _MetricChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Row(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, size: 16, color: color),
             const SizedBox(width: 4),

@@ -44,15 +44,23 @@ alwaysApply: true
 
 ---
 
-### 3. `ai_insights/{date}`
+### 3. `longevity_diary/current`
 
-**Contenuto**: Responso di Gemini (analisi, suggerimenti, insight).
+**Contenuto**: **Diario evoluzione utente** – documento unico per utente. Stringa lunga con storia evolutiva: statistiche reali, andamento attività/nutrizione/biometrici, come sta evolvendo. Si aggiorna ad ogni analisi AI.
 
-**Scrittore**: FitAI (app Flutter).
+**Scrittore**: FitAI (LongevityEngine).
 
-**Campi tipici**:
-- `date`, `timestamp`
-- `insight_text`, `summary`, o campi specifici del prompt
+**Campi**:
+- `diary_text`: stringa lunga (storia evolutiva)
+- `last_updated`, `last_updated_date`
+
+**Generazione**: Se manca, viene creato da baseline_profile + rolling_10days.
+
+---
+
+### 4. `ai_insights/{date}` (opzionale, legacy)
+
+**Contenuto**: Responso Gemini per altri prompt. Non più usato per il diario longevità.
 
 ---
 
@@ -72,8 +80,8 @@ La strategia a Tre Livelli (`daily_logs`, `rolling_10days`, `baseline_profile`) 
 
 ## Chi scrive dove (riepilogo)
 
-| Collezione      | Scrittore   |
-|-----------------|-------------|
-| `daily_health`  | Server      |
-| `activities`    | Server + FitAI |
-| `ai_insights`   | FitAI       |
+| Collezione       | Scrittore   |
+|------------------|-------------|
+| `daily_health`   | Server      |
+| `activities`     | Server + FitAI |
+| `longevity_diary`| FitAI       |

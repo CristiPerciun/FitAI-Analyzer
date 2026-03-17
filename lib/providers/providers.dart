@@ -45,6 +45,7 @@ final strategicAdviceProvider = StateProvider<String?>((ref) => null);
 
 /// Carica il piano di longevità completo via prompt master.
 /// Popola: 4 micro-obiettivi (odierno), macro settimanale, consiglio strategico (visione).
+/// Salva database_update in ai_insights/{date} per il Diario della Longevità.
 Future<void> loadLongevityPlan(WidgetRef ref) async {
   final uid = ref.read(authNotifierProvider).user?.uid;
   if (uid == null) return;
@@ -80,6 +81,23 @@ Future<void> loadLongevityPlan(WidgetRef ref) async {
       if (strategic != null && strategic.isNotEmpty) {
         ref.read(strategicAdviceProvider.notifier).state = strategic;
       }
+
+      // Salva database_update per il Diario della Longevità (ai_insights/{date}).
+      // Se non presente nel DB, crea al prima richiesta di analisi con valori di default.
+      final dbUpdate = decoded['database_update'];
+      final todayStr = DateTime.now().toIso8601String().split('T')[0];
+      final toSave = dbUpdate is Map<String, dynamic> && dbUpdate.isNotEmpty
+          ? dbUpdate
+          : <String, dynamic>{
+              'historical_context_summary': 'Prima analisi di longevità.',
+              'detected_trends': '',
+              'status_score': 50,
+            };
+      await ref.read(longevityEngineProvider).saveLongevityDiaryUpdate(
+        uid,
+        todayStr,
+        toSave,
+      );
     }
   } catch (_) {}
 }

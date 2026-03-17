@@ -149,109 +149,37 @@ class AlimentazioneScreen extends ConsumerWidget {
     String? mealLabel,
     String? dateStr,
   }) {
-    final cal = nut['total_calories'] ?? nut['calories'] ?? 0;
-    final p = nut['protein_g'] ?? nut['protein'] ?? 0;
-    final c = nut['carbs_g'] ?? nut['carbs'] ?? 0;
-    final f = nut['fat_g'] ?? nut['fat'] ?? 0;
-    final fiber = nut['fiber_g'] ?? nut['fiber'] ?? 0;
-    final sugar = nut['sugar_g'] ?? nut['sugar'] ?? 0;
     final advice = nut['advice'] ?? '';
     final foods = nut['foods'] as List<dynamic>? ?? [];
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Analisi nutrizione'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${(cal as num).round()} kcal',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 12,
-                runSpacing: 4,
-                children: [
-                  _Chip(label: 'Proteine', value: '${(p as num).round()}g'),
-                  _Chip(label: 'Carbs', value: '${(c as num).round()}g'),
-                  _Chip(label: 'Grassi', value: '${(f as num).round()}g'),
-                  if (fiber > 0) _Chip(label: 'Fibre', value: '${(fiber as num).round()}g'),
-                  if (sugar > 0) _Chip(label: 'Zuccheri', value: '${(sugar as num).round()}g'),
-                ],
-              ),
-              if (foods.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Text(
-                  'Alimenti',
-                  style: Theme.of(context).textTheme.titleSmall,
+      builder: (ctx) => _NutritionEditDialog(
+        initialNut: nut,
+        advice: advice,
+        foods: foods,
+        onSave: (modifiedNut) async {
+          Navigator.of(ctx).pop();
+          try {
+            await ref.read(nutritionServiceProvider).saveToFirestore(
+                  uid,
+                  modifiedNut,
+                  mealLabel: mealLabel,
+                  date: dateStr != null ? DateTime.parse(dateStr) : null,
+                );
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Analisi salvata'),
                 ),
-                const SizedBox(height: 4),
-                ...foods.take(8).map((e) {
-                  final m = e is Map ? e as Map<String, dynamic> : <String, dynamic>{};
-                  final name = m['name'] ?? '?';
-                  final cals = m['calories'];
-                  final portion = m['portion'];
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text(
-                      '• $name${cals != null ? ' (${(cals as num).round()} kcal)' : ''}${portion != null ? ' - $portion' : ''}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  );
-                }),
-              ],
-              if (advice.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Text(
-                  'Consiglio',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  advice,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Annulla'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.of(ctx).pop();
-              try {
-                await ref.read(nutritionServiceProvider).saveToFirestore(
-                      uid,
-                      nut,
-                      mealLabel: mealLabel,
-                      date: dateStr != null ? DateTime.parse(dateStr) : null,
-                    );
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Analisi salvata'),
-                    ),
-                  );
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  showErrorDialog(context, e.toString());
-                }
-              }
-            },
-            child: const Text('Salva'),
-          ),
-        ],
+              );
+            }
+          } catch (e) {
+            if (context.mounted) {
+              showErrorDialog(context, e.toString());
+            }
+          }
+        },
       ),
     );
   }
@@ -424,6 +352,21 @@ class AlimentazioneScreen extends ConsumerWidget {
             ? (dates.isNotEmpty ? dates : [])
             : [selectedDate];
 
+    // Obiettivo calorico giornaliero (placeholder, da implementare)
+    const int obiettivoKcal = 3000;
+
+    // Somma calorie assunte per le date visualizzate
+    int calorieAssunte = 0;
+    for (final d in displayDates) {
+      final byType = ref.watch(mealsForDateByTypeProvider(d)).valueOrNull ?? {};
+      for (final list in byType.values) {
+        for (final m in list) {
+          calorieAssunte += m.calories;
+        }
+      }
+    }
+    final rimanenti = obiettivoKcal - calorieAssunte;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Alimentazione'),
@@ -433,6 +376,34 @@ class AlimentazioneScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Header obiettivo: 3000 - calorie assunte = rimanenti
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$obiettivoKcal − $calorieAssunte = $rimanenti',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          fontFeatures: [const FontFeature.tabularFigures()],
+                        ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Obiettivo − Calorie assunte = Rimanenti',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
             Text(
               'Date',
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
@@ -652,6 +623,170 @@ class _MealTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Dialog analisi nutrizione con controlli +/- per modificare i valori.
+class _NutritionEditDialog extends StatefulWidget {
+  const _NutritionEditDialog({
+    required this.initialNut,
+    required this.advice,
+    required this.foods,
+    required this.onSave,
+  });
+
+  final Map<String, dynamic> initialNut;
+  final String advice;
+  final List<dynamic> foods;
+  final void Function(Map<String, dynamic> modifiedNut) onSave;
+
+  @override
+  State<_NutritionEditDialog> createState() => _NutritionEditDialogState();
+}
+
+class _NutritionEditDialogState extends State<_NutritionEditDialog> {
+  late int _calories;
+  late int _protein;
+  late int _carbs;
+  late int _fat;
+  late int _sugar;
+
+  @override
+  void initState() {
+    super.initState();
+    _calories = _num(widget.initialNut['total_calories'] ?? widget.initialNut['calories'] ?? 0).round();
+    _protein = _num(widget.initialNut['protein_g'] ?? widget.initialNut['protein'] ?? 0).round();
+    _carbs = _num(widget.initialNut['carbs_g'] ?? widget.initialNut['carbs'] ?? 0).round();
+    _fat = _num(widget.initialNut['fat_g'] ?? widget.initialNut['fat'] ?? 0).round();
+    _sugar = _num(widget.initialNut['sugar_g'] ?? widget.initialNut['sugar'] ?? 0).round();
+  }
+
+  double _num(dynamic v) => (v is num) ? v.toDouble() : double.tryParse(v.toString()) ?? 0;
+
+  Map<String, dynamic> _buildModifiedNut() {
+    final m = Map<String, dynamic>.from(widget.initialNut);
+    m['total_calories'] = _calories;
+    m['protein_g'] = _protein;
+    m['carbs_g'] = _carbs;
+    m['fat_g'] = _fat;
+    m['sugar_g'] = _sugar;
+    return m;
+  }
+
+  Widget _buildStepper(String label, int value, ValueChanged<int> onChanged, {String suffix = 'g'}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 90,
+            child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
+          ),
+          IconButton.filled(
+            onPressed: () => onChanged(value - 1),
+            icon: const Icon(Icons.remove),
+            style: IconButton.styleFrom(
+              padding: const EdgeInsets.all(8),
+              minimumSize: const Size(36, 36),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: SizedBox(
+              width: 48,
+              child: Text(
+                '$value$suffix',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+            ),
+          ),
+          IconButton.filled(
+            onPressed: () => onChanged(value + 1),
+            icon: const Icon(Icons.add),
+            style: IconButton.styleFrom(
+              padding: const EdgeInsets.all(8),
+              minimumSize: const Size(36, 36),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Analisi nutrizione'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildStepper('Calorie', _calories.clamp(0, 9999), (v) {
+              setState(() => _calories = v.clamp(0, 9999));
+            }, suffix: ' kcal'),
+            _buildStepper('Proteine', _protein.clamp(0, 999), (v) {
+              setState(() => _protein = v.clamp(0, 999));
+            }),
+            _buildStepper('Carbs', _carbs.clamp(0, 999), (v) {
+              setState(() => _carbs = v.clamp(0, 999));
+            }),
+            _buildStepper('Grassi', _fat.clamp(0, 999), (v) {
+              setState(() => _fat = v.clamp(0, 999));
+            }),
+            _buildStepper('Zuccheri', _sugar.clamp(0, 999), (v) {
+              setState(() => _sugar = v.clamp(0, 999));
+            }),
+            if (widget.foods.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Text(
+                'Alimenti',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(height: 4),
+              ...widget.foods.take(8).map((e) {
+                final m = e is Map ? e as Map<String, dynamic> : <String, dynamic>{};
+                final name = m['name'] ?? '?';
+                final cals = m['calories'];
+                final portion = m['portion'];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    '• $name${cals != null ? ' (${(cals as num).round()} kcal)' : ''}${portion != null ? ' - $portion' : ''}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                );
+              }),
+            ],
+            if (widget.advice.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Text(
+                'Consiglio',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                widget.advice,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Annulla'),
+        ),
+        FilledButton(
+          onPressed: () => widget.onSave(_buildModifiedNut()),
+          child: const Text('Salva'),
+        ),
+      ],
     );
   }
 }

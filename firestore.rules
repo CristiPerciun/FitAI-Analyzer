@@ -3,7 +3,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
     // Accesso ai dati SOLO se l'UID del documento coincide con l'UID di chi ha fatto il login.
     // Copre: users/{uid}/daily_logs, profile, rolling_10days, baseline_profile,
-    // daily_health, meals, activities, ai_insights.
+    // daily_health, meals, activities, longevity_diary, ai_insights.
     // daily_health scritto da garmin-sync-server via Admin SDK.
     match /users/{userId}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == userId;

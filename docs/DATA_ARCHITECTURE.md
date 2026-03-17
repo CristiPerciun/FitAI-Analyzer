@@ -21,7 +21,7 @@ Riepilogo della gerarchia Firestore finale usata da FitAI Analyzer.
 |------------|----------|-----------|---------|
 | Daily health | `daily_health/{date}` | `garmin-sync-server` | `dailyHealthStreamProvider`, `LongevityEngine`, `GarminDailyStats`, `LongevityHeader`, `AggregationService` |
 | Activities | `activities/{id}` | `garmin-sync-server`, `StravaService` | `activitiesStreamProvider`, `GarminService`, `DashboardScreen`, `LongevityEngine`, `AggregationService` |
-| AI insights | `ai_insights/{date}` | FitAI | dedicato prompt/UI |
+| Longevity diary | `longevity_diary/current` | FitAI (LongevityEngine) | LongevityEngine (Diario evoluzione utente) |
 
 ### 1.3 Profilo
 
@@ -57,6 +57,14 @@ Documento attivita unificato. Campi principali:
 - `hasGarmin`, `hasStrava`
 - `garminActivityId`, `stravaActivityId`
 - `garmin_raw`, `strava_raw`
+
+### `longevity_diary/current`
+
+**Diario evoluzione utente** – documento unico per utente:
+- `diary_text`: stringa lunga con storia evolutiva (statistiche reali, andamento, progressi)
+- `last_updated`, `last_updated_date`
+- Si aggiorna ad ogni analisi AI (append)
+- Se manca: generato da baseline_profile + rolling_10days
 
 ### `daily_health/{date}`
 
@@ -133,7 +141,7 @@ LongevityEngine / AggregationService
 | `StravaService` | activities (match per slot) | activities, daily_logs.activity_ids |
 | `garmin-sync-server/main.py` | activities (match per slot) | daily_health, activities, daily_logs.activity_ids, daily_logs.health_ref |
 | `AggregationService` | daily_logs, activities, daily_health | rolling_10days, baseline_profile |
-| `LongevityEngine` | daily_logs, activities, daily_health, rolling_10days, baseline_profile, profile | — |
+| `LongevityEngine` | daily_logs, activities, daily_health, rolling_10days, baseline_profile, profile, longevity_diary | longevity_diary (append database_update) |
 | `GarminService` | activities | endpoint server |
 | `data_sync_notifier` | activities, daily_health | — |
 

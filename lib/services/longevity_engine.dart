@@ -53,29 +53,31 @@ class LongevityEngine {
     return _buildLongevityPlanPromptFromContext(context);
   }
 
-  /// Costruisce il contesto completo per Gemini: profilo, 2 mesi settimanali, 7 giorni dettagliati, note.
+  /// Costruisce il contesto completo per Gemini: profilo, 2 mesi settimanali, 7 giorni dettagliati, note, diario longevità.
   Future<GeminiHomeContext> buildGeminiHomeContext(String uid) async {
     final today = DateTime.now();
     final twoMonthsAgo = today.subtract(const Duration(days: 60));
+    final todayStr = today.toIso8601String().split('T')[0];
 
     final results = await Future.wait([
       _getUserProfile(uid),
       _getDailyLogsRange(
         uid,
         twoMonthsAgo.toIso8601String().split('T')[0],
-        today.toIso8601String().split('T')[0],
+        todayStr,
       ),
       _getActivitiesRange(
         uid,
         twoMonthsAgo.toIso8601String().split('T')[0],
-        today.toIso8601String().split('T')[0],
+        todayStr,
       ),
       _getDailyHealthRange(
         uid,
         twoMonthsAgo.toIso8601String().split('T')[0],
-        today.toIso8601String().split('T')[0],
+        todayStr,
       ),
       _getBaseline(uid),
+      _getLongevityDiary(uid),
     ]);
 
     final dailyLogs = results[1] as List<DailyLogModel>;
@@ -100,7 +102,156 @@ class LongevityEngine {
         dailyHealth: dailyHealth,
       ),
       baseline: results[4] as BaselineProfileModel?,
+      longevityDiary: results[5] as String,
     );
+  }
+
+  /// Legge il Diario della Longevità: documento unico per utente con la storia evolutiva.
+  /// Contiene statistiche reali, andamento, come sta evolvendo l'utente.
+  /// Se manca, genera da baseline_profile + rolling_10days e lo scrive.
+  Future<String> _getLongevityDiary(String uid) async {
+    final doc = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('longevity_diary')
+        .doc('current')
+        .get();
+
+    if (doc.exists) {
+      final text = doc.data()?['diary_text']?.toString();
+      if (text != null && text.isNotEmpty) return text;
+    }
+
+    return _generateAndSaveInitialDiary(uid);
+  }
+
+  /// Genera il diario iniziale da dati storici (baseline, rolling) e lo salva.
+  Future<String> _generateAndSaveInitialDiary(String uid) async {
+    final baseline = await _getBaseline(uid);
+    final rolling = await _getRolling10Days(uid);
+    final profile = await _getUserProfile(uid);
+
+    final sb = StringBuffer();
+    sb.writeln('# DIARIO EVOLUZIONE UTENTE');
+    sb.writeln();
+    sb.writeln('Questo diario contiene l\'andamento dell\'utente basato su dati reali:');
+    sb.writeln('statistiche, attività, nutrizione, biometrici (passi, sonno, VO2Max, Fitness Age).');
+    sb.writeln('Si aggiorna ad ogni analisi AI con l\'evoluzione del giorno.');
+    sb.writeln();
+    sb.writeln('---');
+    sb.writeln();
+
+    if (profile != null) {
+      sb.writeln('## Profilo');
+      sb.writeln(
+        'Obiettivo: ${_mainGoalLabel(profile.mainGoal)} | Età: ${profile.age} | '
+        'Peso: ${profile.weightKg} kg | Altezza: ${profile.heightCm} cm | '
+        'Allenamenti/sett: ${profile.trainingDaysPerWeek} | Sonno medio: ${profile.avgSleepHours}h',
+      );
+      sb.writeln();
+    }
+
+    if (baseline != null) {
+      sb.writeln('## Storico annuale');
+      sb.writeln('Obiettivo prevalente: ${baseline.goalIa}');
+      sb.writeln('Note evolutive: ${baseline.evolutionNotes}');
+      if (baseline.annualStats.isNotEmpty) {
+        sb.writeln(
+          'Statistiche: ${baseline.annualStats.entries.map((e) => '${e.key}=${e.value}').join(', ')}',
+        );
+      }
+      if (baseline.aiReadySummary.isNotEmpty) {
+        sb.writeln();
+        sb.writeln(baseline.aiReadySummary);
+      }
+      sb.writeln();
+    }
+
+    if (rolling != null) {
+      sb.writeln('## Ultimi 10 giorni');
+      sb.writeln(
+        'Distanza: ${rolling.totalDistanceKm.toStringAsFixed(1)} km | '
+        'Zone 2: ${rolling.totalZone2Minutes} min | '
+        'VO2 stimato: ${rolling.estimatedVo2Max.toStringAsFixed(1)}',
+      );
+      final macro = rolling.macroAverages;
+      if (macro.isNotEmpty) {
+        sb.writeln(
+          'Nutrizione media: ${macro['calories']?.round() ?? 0} kcal, '
+          'P: ${macro['protein_g']?.round() ?? 0}g, '
+          'C: ${macro['carbs_g']?.round() ?? 0}g, '
+          'F: ${macro['fat_g']?.round() ?? 0}g',
+        );
+      }
+      sb.writeln();
+    }
+
+    if (baseline == null && rolling == null) {
+      sb.writeln('Nessun dato storico ancora. Sincronizza Strava/Garmin e registra pasti.');
+    }
+
+    final text = sb.toString();
+    final todayStr = DateTime.now().toIso8601String().split('T')[0];
+    await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('longevity_diary')
+        .doc('current')
+        .set({
+      'diary_text': text,
+      'last_updated': FieldValue.serverTimestamp(),
+      'last_updated_date': todayStr,
+    }, SetOptions(merge: true));
+
+    return text;
+  }
+
+  /// Salva l'aggiornamento del Diario della Longevità in longevity_diary/current.
+  /// Appende historical_context_summary alla stringa esistente (evoluzione del giorno).
+  Future<void> saveLongevityDiaryUpdate(
+    String uid,
+    String dateStr,
+    Map<String, dynamic> databaseUpdate,
+  ) async {
+    final historical = databaseUpdate['historical_context_summary']?.toString();
+    final trends = databaseUpdate['detected_trends']?.toString();
+    final score = databaseUpdate['status_score'];
+
+    if (historical == null && trends == null && score == null) return;
+
+    final docRef = _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('longevity_diary')
+        .doc('current');
+
+    final doc = await docRef.get();
+    String currentText = doc.exists ? (doc.data()?['diary_text']?.toString() ?? '') : '';
+
+    final entries = <String>[];
+    if (historical != null && historical.isNotEmpty) {
+      entries.add('[${dateStr}] $historical');
+    }
+    if (trends != null && trends.isNotEmpty) {
+      entries.add('[${dateStr}] Trend: $trends');
+    }
+    if (score != null) {
+      final n = score is num ? score.toInt() : int.tryParse(score.toString());
+      if (n != null && n >= 1 && n <= 100) {
+        entries.add('[${dateStr}] Status score: $n/100');
+      }
+    }
+
+    if (entries.isEmpty) return;
+
+    final append = '\n\n' + entries.join('\n');
+    currentText = currentText.isEmpty ? entries.join('\n') : currentText + append;
+
+    await docRef.set({
+      'diary_text': currentText,
+      'last_updated': FieldValue.serverTimestamp(),
+      'last_updated_date': dateStr,
+    }, SetOptions(merge: true));
   }
 
   Future<UserProfile?> _getUserProfile(String uid) async {
@@ -257,6 +408,16 @@ class LongevityEngine {
     sb.writeln('## 4. NOTE E OBIETTIVI');
     sb.writeln(_formatNotes(ctx.baseline));
     sb.writeln();
+    sb.writeln('## 5. DIARIO EVOLUZIONE UTENTE (quadro generale)');
+    sb.writeln(
+      'Documento unico che contiene la storia evolutiva dell\'utente: statistiche reali, '
+      'andamento attività/nutrizione/biometrici, come sta evolvendo. Si aggiorna ad ogni analisi.',
+    );
+    sb.writeln();
+    sb.writeln(ctx.longevityDiary.isEmpty
+        ? 'Diario vuoto. Questa è la prima analisi.'
+        : ctx.longevityDiary);
+    sb.writeln();
     sb.writeln('---');
     sb.writeln(
       'OBIETTIVO PRINCIPALE DA RISPETTARE: ${_mainGoalLabel(ctx.userProfile?.mainGoal ?? '')}',
@@ -271,11 +432,31 @@ class LongevityEngine {
     );
     sb.writeln('3. 1 macro-obiettivo SETTIMANALE (7 giorni)');
     sb.writeln('4. 1 consiglio STRATEGICO a lungo termine');
-    sb.writeln();
-    sb.writeln('Rispondi SOLO in JSON:');
     sb.writeln(
-      '{"cuore":"...","forza":"...","alimentazione":"...","recupero":"...","weekly_sprint":"...","strategic_advice":"..."}',
+      '5. database_update: sintesi dell\'EVOLUZIONE di oggi (dati reali, trend, progressi) '
+      'da appendere al diario. NON consigli AI, ma cosa è successo concretamente.',
     );
+    sb.writeln();
+    sb.writeln(
+      'Rispondi ESCLUSIVAMENTE in formato JSON con questa struttura:',
+    );
+    sb.writeln('{');
+    sb.writeln('  "cuore": "...",');
+    sb.writeln('  "forza": "...",');
+    sb.writeln('  "alimentazione": "...",');
+    sb.writeln('  "recupero": "...",');
+    sb.writeln('  "weekly_sprint": "...",');
+    sb.writeln('  "strategic_advice": "...",');
+    sb.writeln('  "database_update": {');
+    sb.writeln(
+      '    "historical_context_summary": "Sintesi evoluzione di oggi: cosa è successo (attività, nutrizione, metriche), trend rilevati, progressi. Max 300 caratteri.",',
+    );
+    sb.writeln(
+      '    "detected_trends": "Esempio: calo VO2Max, deficit proteico, miglioramento sonno",',
+    );
+    sb.writeln('    "status_score": 1-100');
+    sb.writeln('  }');
+    sb.writeln('}');
     return sb.toString();
   }
 
@@ -414,18 +595,21 @@ class LongevityEngine {
   }
 }
 
-/// Contesto completo per prompt Gemini: profilo + 2 mesi + 7 giorni + note.
+/// Contesto completo per prompt Gemini: profilo + 2 mesi + 7 giorni + note + diario longevità.
 class GeminiHomeContext {
   final UserProfile? userProfile;
   final List<DayDetail> detailed7Days;
   final List<WeeklySummary> weeklySummary;
   final BaselineProfileModel? baseline;
+  /// Diario della Longevità precedente (da ai_insights) per aggiornare lo storico.
+  final String longevityDiary;
 
   const GeminiHomeContext({
     this.userProfile,
     required this.detailed7Days,
     required this.weeklySummary,
     this.baseline,
+    this.longevityDiary = '',
   });
 }
 
