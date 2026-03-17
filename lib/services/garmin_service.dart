@@ -100,13 +100,14 @@ class GarminService {
   }
 
   /// Richiede una sync immediata al mini-server usando i token Garmin gia' salvati.
+  /// Usa /garmin/sync-vitals (oggi + ieri) per pull-to-refresh leggero.
   Future<Map<String, dynamic>> syncNow({
     required String uid,
   }) async {
     try {
       final response = await http
           .post(
-            Uri.parse('$garminServerUrl/garmin/sync'),
+            Uri.parse('$garminServerUrl/garmin/sync-vitals'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({'uid': uid}),
           )

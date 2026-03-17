@@ -28,6 +28,40 @@ class AggregationService {
 
   static const int _baselineUpdateIntervalDays = 10;
 
+  /// Estrae campi da attività Strava o Garmin (formati nativi, nessuna conversione).
+  static double _actDistanceM(Map<String, dynamic> act) {
+    final d = (act['distance'] as num?)?.toDouble() ?? 0;
+    if (d > 0 && d < 100) return d * 1000; // Garmin a volte in km
+    return d;
+  }
+
+  static int _actElapsedSec(Map<String, dynamic> act) {
+    final e = act['elapsed_time'] ?? act['moving_time'];
+    if (e != null) return (e as num).toInt();
+    final d = act['duration'] ?? act['movingDuration'];
+    return (d as num?)?.toInt() ?? 0;
+  }
+
+  static double? _actAvgHr(Map<String, dynamic> act) {
+    final v = act['average_heartrate'] ?? act['averageHR'] ?? act['averageHeartRate'];
+    return (v as num?)?.toDouble();
+  }
+
+  static double? _actMaxHr(Map<String, dynamic> act) {
+    final v = act['max_heartrate'] ?? act['maxHR'] ?? act['maxHeartRate'];
+    return (v as num?)?.toDouble();
+  }
+
+  static String _actSportType(Map<String, dynamic> act) {
+    final t = act['sport_type'] ?? act['type'];
+    if (t != null) return t.toString().toLowerCase();
+    final tk = act['activityTypeKey']?.toString();
+    if (tk != null && tk.isNotEmpty) return tk.toLowerCase();
+    final g = act['activityType'];
+    if (g is Map) return ((g['typeKey'] ?? g['typeId'])?.toString() ?? '').toLowerCase();
+    return (g?.toString() ?? '').toLowerCase();
+  }
+
   /// Aggiorna Livello 2 (rolling_10days) e, se necessario, Livello 3 (baseline_profile).
   Future<void> updateRolling10DaysAndBaseline(String uid) async {
     final firestore = FirebaseFirestore.instance;
@@ -115,18 +149,17 @@ class AggregationService {
       double? dayAvgHr;
       double? dayMaxHr;
 
-      for (final act in log.stravaActivities) {
-        final distM = (act['distance'] as num?)?.toDouble() ?? 0;
+      final activities = log.activitiesForAggregation;
+      for (final act in activities) {
+        final distM = _actDistanceM(act);
         final distKm = distM / 1000;
         dayDistance += distKm;
 
-        final elapsedSec = (act['elapsed_time'] as num?)?.toInt() ??
-            (act['moving_time'] as num?)?.toInt() ??
-            0;
+        final elapsedSec = _actElapsedSec(act);
         final elapsedMin = elapsedSec / 60;
 
-        final avgHr = (act['average_heartrate'] as num?)?.toDouble();
-        final maxHr = (act['max_heartrate'] as num?)?.toDouble();
+        final avgHr = _actAvgHr(act);
+        final maxHr = _actMaxHr(act);
 
         if (avgHr != null) {
           dayAvgHr ??= 0;
@@ -152,11 +185,11 @@ class AggregationService {
       totalZone2Minutes += dayZone2Min;
 
       // VO2max stimato da pace corsa (formula semplificata: pace 5 min/km ≈ 50 VO2)
-      for (final act in log.stravaActivities) {
-        final sport = (act['sport_type'] ?? act['type'] ?? '').toString().toLowerCase();
-        if (sport.contains('run') || sport == 'run') {
-          final distM = (act['distance'] as num?)?.toDouble() ?? 0;
-          final movingSec = (act['moving_time'] as num?)?.toInt() ?? 0;
+      for (final act in activities) {
+        final sport = _actSportType(act);
+        if (sport.contains('run')) {
+          final distM = _actDistanceM(act);
+          final movingSec = _actElapsedSec(act);
           if (distM > 0 && movingSec > 0) {
             final paceMinPerKm = (movingSec / 60) / (distM / 1000);
             // Formula semplificata: VO2 ≈ 2.8 + 3.5 * (1000/pace_sec_per_km)
@@ -173,7 +206,7 @@ class AggregationService {
         'date': log.date,
         'distance_km': dayDistance,
         'zone2_minutes': dayZone2Min,
-        'total_burned_kcal': log.totalBurnedKcal,
+        'total_burned_kcal': log.totalBurnedKcalForAggregation,
       });
 
       // Macro: preferisce nutrition_summary (Livello 2), fallback a nutrition_gemini
@@ -264,7 +297,7 @@ class AggregationService {
     double nutritionLongevitySum = 0;
     int nutritionDaysCount = 0;
     for (final log in allLogs) {
-      for (final act in log.stravaActivities) {
+      for (final act in log.activitiesForAggregation) {
         totalKm += ((act['distance'] as num?)?.toDouble() ?? 0) / 1000;
         totalWorkouts++;
       }
@@ -306,7 +339,7 @@ class AggregationService {
       double mLongevity = 0;
       int mNutDays = 0;
       for (final log in monthLogs) {
-        for (final act in log.stravaActivities) {
+        for (final act in log.activitiesForAggregation) {
           mKm += ((act['distance'] as num?)?.toDouble() ?? 0) / 1000;
           mWorkouts++;
         }

@@ -24,15 +24,24 @@ class GarminActivityModel {
   });
 
   factory GarminActivityModel.fromFirestore(Map<String, dynamic> data, String docId) {
+    final typeStr = data['activityTypeKey']?.toString() ??
+        (data['activityType'] is Map
+            ? (data['activityType']['typeKey'] ?? data['activityType']['typeId'])?.toString()
+            : data['activityType']?.toString());
     return GarminActivityModel(
-      activityId: data['activityId']?.toString() ?? docId,
-      startTime: data['startTime']?.toString() ?? '',
-      activityType: data['activityType']?.toString() ?? 'unknown',
+      activityId: data['activityId']?.toString() ?? data['activityID']?.toString() ?? docId,
+      startTime: data['startTime']?.toString() ??
+          data['startTimeGMT']?.toString() ??
+          data['startTimeLocal']?.toString() ??
+          '',
+      activityType: typeStr ?? 'unknown',
       distance: (data['distance'] as num?)?.toDouble(),
-      duration: (data['duration'] as num?)?.toDouble(),
-      averageHR: (data['averageHR'] as num?)?.toDouble(),
+      duration: (data['duration'] as num?)?.toDouble() ??
+          (data['movingDuration'] as num?)?.toDouble(),
+      averageHR: (data['averageHR'] as num?)?.toDouble() ??
+          (data['averageHeartRate'] as num?)?.toDouble(),
       calories: (data['calories'] as num?)?.toDouble(),
-      rawData: data['rawData'] as Map<String, dynamic>?,
+      rawData: data['rawData'] as Map<String, dynamic>? ?? data,
       syncedAt: data['syncedAt']?.toString(),
     );
   }

@@ -1,0 +1,70 @@
+---
+description: Struttura Firestore aggiornata - daily_health, activities, ai_insights (compatibilità dati)
+alwaysApply: true
+---
+
+# Struttura Firestore - Collezioni Aggiornate
+
+**OBBLIGATORIO**: Prima di scrivere su Firestore, rispetta questa struttura per mantenere compatibilità con i dati esistenti e la nuova architettura.
+
+---
+
+## Collezioni principali (sotto `/users/{uid}/`)
+
+### 1. `daily_health/{date}`
+
+**Contenuto**: Passi, sonno, HRV, Body Battery.
+
+**Scrittore**: Server (garmin-sync-server o equivalente).
+
+**Campi tipici**:
+- `stats`, `sleep`, `hrv`, `body_battery`
+- `max_metrics` (VO2Max, se disponibile)
+- `fitness_age` (Fitness Age Garmin, se disponibile)
+- `date` (YYYY-MM-DD)
+
+---
+
+### 2. `activities/{id}`
+
+**Contenuto**: Unione Garmin + Strava (attività unificate).
+
+**Scrittori**: Entrambi (Server Garmin e app FitAI per Strava).
+
+**Regola**: Un solo documento per attività; merge quando la stessa attività arriva da entrambe le fonti.
+
+---
+
+### 3. `ai_insights/{date}`
+
+**Contenuto**: Responso di Gemini (analisi, suggerimenti, insight).
+
+**Scrittore**: FitAI (app Flutter).
+
+**Campi tipici**:
+- `date`, `timestamp`
+- `insight_text`, `summary`, o campi specifici del prompt
+
+---
+
+## Relazione con la struttura esistente
+
+La strategia a Tre Livelli (`daily_logs`, `rolling_10days`, `baseline_profile`) resta valida per nutrizione, pasti e aggregazioni. Le nuove collezioni **coesistono** e si integrano:
+
+| Dato           | Vecchia posizione        | Nuova posizione      |
+|----------------|--------------------------|----------------------|
+| Passi, sonno   | (assente o in daily_log) | `daily_health/{date}`|
+| Attività       | `daily_logs.strava_activities`, `garmin_activities` | `activities/{id}` |
+| Insight Gemini | (in daily_log o meals)   | `ai_insights/{date}` |
+
+**Compatibilità**: Il codice deve leggere da entrambe le strutture durante la transizione; preferire la nuova quando disponibile.
+
+---
+
+## Chi scrive dove (riepilogo)
+
+| Collezione      | Scrittore   |
+|-----------------|-------------|
+| `daily_health`  | Server      |
+| `activities`    | Server + FitAI |
+| `ai_insights`   | FitAI       |

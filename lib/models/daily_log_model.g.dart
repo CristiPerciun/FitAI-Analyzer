@@ -14,6 +14,11 @@ DailyLogModel _$DailyLogModelFromJson(Map<String, dynamic> json) =>
               ?.map((e) => e as Map<String, dynamic>)
               .toList() ??
           [],
+      garminActivities:
+          (json['garmin_activities'] as List<dynamic>?)
+              ?.map((e) => e as Map<String, dynamic>)
+              .toList() ??
+          [],
       nutritionGemini: json['nutrition_gemini'] as Map<String, dynamic>? ?? {},
       nutritionSummary:
           json['nutrition_summary'] as Map<String, dynamic>? ?? {},
@@ -27,6 +32,7 @@ Map<String, dynamic> _$DailyLogModelToJson(DailyLogModel instance) =>
     <String, dynamic>{
       'date': instance.date,
       'strava_activities': instance.stravaActivities,
+      'garmin_activities': instance.garminActivities,
       'nutrition_gemini': instance.nutritionGemini,
       'nutrition_summary': instance.nutritionSummary,
       'total_burned_kcal': instance.totalBurnedKcal,

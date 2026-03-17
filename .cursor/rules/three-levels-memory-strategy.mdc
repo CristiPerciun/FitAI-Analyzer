@@ -28,7 +28,8 @@ I dati vengono organizzati su tre livelli di granularità per ottimizzare:
 
 **Documento principale** (daily_log):
 - `date`, `timestamp`
-- `strava_activities`: lista attività raw
+- `strava_activities`: lista attività raw (Strava)
+- `garmin_activities`: lista attività Garmin in formato nativo (da garmin-sync-server)
 - `total_burned_kcal`
 - `weight_kg`, `goal_today_ia` (obiettivo giornaliero creato dall'IA)
 - `nutrition_summary`: sintesi aggregata (vedi sotto)
@@ -143,33 +144,55 @@ Ogni pasto: `dish_name`, `calories`, `macros`, `timestamp`, `meal_type`, `raw_ai
 
 ---
 
+## Dati biometrici (daily_health)
+
+Passi, sonno, HRV, Body Battery, VO2Max, Fitness Age sono in **`daily_health/{date}`** (scritti da garmin-sync-server). Non in daily_logs.
+
+- **Lettura**: `dailyHealthStreamProvider`, `LongevityEngine.buildGeminiHomeContext`
+- **Prompt AI**: LongevityEngine legge `daily_health` per 7 giorni dettagliati + 8 settimane aggregate
+- Vedi `.cursor/rules/firestore-collections-structure.mdc`
+
+---
+
 ## Regole per nuovi dati
 
 Se aggiungi un nuovo tipo di dato (es. sonno, HRV, peso):
 
-1. **Livello 1**: Salva il dettaglio in `daily_logs/{date}` o in una sottocollezione sotto daily_log
-2. **Campo di sintesi**: Aggiungi un campo `*_summary` sul documento daily_log (es. `sleep_summary: { hours: 7.5, quality: 8 }`) per evitare che Livello 2/3 debba leggere i dettagli
-3. **Livello 2**: In `_computeRolling10Days` aggrega da `*_summary` (o dal campo sul daily_log)
+1. **Livello 1**: Salva il dettaglio in `daily_logs/{date}` o in una sottocollezione sotto daily_log. Per biometrici Garmin usa `daily_health/{date}`.
+2. **Campo di sintesi**: Aggiungi un campo `*_summary` sul documento daily_log (es. `sleep_summary`) per evitare che Livello 2/3 debba leggere i dettagli
+3. **Livello 2**: In `_computeRolling10Days` aggrega da `*_summary` o da `daily_health`
 4. **Livello 3**: In `_computeBaselineProfile` includi le medie in `annual_stats` e `monthly_trends`
 5. **Getter unificato**: Se il dato ha fallback (vecchio formato), usa un getter tipo `nutritionForAi` che preferisce il summary
 
-### Esempio struttura per sonno
+### Esempio struttura per sonno (Garmin)
 
 ```
-Livello 1: daily_logs/{date} → sleep_sessions/{id} (dettaglio)
-           daily_logs/{date} → sleep_summary: { hours: 7.5, quality: 8 }
-Livello 2: rolling_10days → avg_sleep_hours, avg_quality
-Livello 3: baseline_profile → annual_stats.avg_sleep, monthly_trends[].avg_sleep
+daily_health/{date} → sleep: { sleepScore, overallSleepScore, sleepTimeSeconds }
+LongevityEngine → legge daily_health per prompt AI (7 gg + 8 sett)
 ```
 
 ---
 
+## Attività (Strava + Garmin)
+
+**Chi scrive dove** (NON confondere):
+- **Strava** → sync dall'**app FitAI** (StravaService): `health_data`, `daily_logs/{date}.strava_activities`
+- **Garmin** → sync dal **server Python** (garmin-sync-server): `garmin_activities`, `daily_logs/{date}.garmin_activities`
+
+Entrambi usano merge: Strava NON tocca garmin_activities, Garmin NON tocca strava_activities.
+
+**Verifica duplicati** (Garmin sync su Strava → stessa attività in entrambi):
+- **Dove**: `activitiesByDateProvider` (UI), `DailyLogModel.activitiesForAggregation` (rolling/baseline)
+- **Logica 1:1**: stessa data + stesso tipo + ora ±15 min + distanza ±15% → escludi Strava, tieni Garmin
+- **Match fuzzy tipo**: run/running, ride/cycling/bike, walk/walking/hike
+
 ## File di riferimento
 
-- `lib/models/daily_log_model.dart` – nutritionForAi, nutrition_summary
+- `lib/models/daily_log_model.dart` – nutritionForAi, activitiesForAggregation, garmin_activities
 - `lib/models/meal_model.dart` – sottocollezione meals
 - `lib/models/longevity_home_package.dart` – pacchetto unificato per Home AI
 - `lib/services/nutrition_service.dart` – salvataggio Livello 1 + aggregation summary
 - `lib/services/aggregation_service.dart` – Livello 2 (rolling), Livello 3 (baseline)
 - `lib/services/ai_prompt_service.dart` – costruzione contesto da tutti e tre i livelli
-- `lib/services/longevity_engine.dart` – pacchetto informativo Home (Livello 1+2+3)
+- `lib/services/longevity_engine.dart` – buildGeminiHomeContext (7 gg + 8 sett da daily_logs + daily_health), buildLongevityPlanPrompt
+- `lib/providers/data_sync_notifier.dart` – dailyHealthStreamProvider (lettura daily_health)

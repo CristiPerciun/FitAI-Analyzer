@@ -2,6 +2,7 @@ import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
+import 'package:fitai_analyzer/ui/home/widgets/garmin_daily_stats.dart';
 import 'package:fitai_analyzer/ui/home/widgets/longevity_header.dart';
 import 'package:fitai_analyzer/ui/home/widgets/longevity_path_section.dart';
 import 'package:fitai_analyzer/ui/home/widgets/pillar_grid.dart';
@@ -65,6 +66,8 @@ class HomeScreen extends ConsumerWidget {
                               pillarContents: dailyGoals,
                               onGenerateTap: () => _onGeneratePlan(context, ref),
                             ),
+                            const SizedBox(height: 16),
+                            const GarminDailyStats(),
                             const SizedBox(height: 24),
                             Text(
                               'Weekly & Long-Term',

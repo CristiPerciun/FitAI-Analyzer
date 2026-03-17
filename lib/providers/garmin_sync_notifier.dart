@@ -95,6 +95,7 @@ class GarminSyncNotifier extends Notifier<GarminSyncState> {
 void _invalidateGarminDependentProviders(Ref ref) {
   ref.invalidate(garminConnectedProvider);
   ref.invalidate(garminActivitiesStreamProvider);
+  ref.invalidate(dailyHealthStreamProvider);
   ref.invalidate(activitiesByDateProvider);
   ref.invalidate(activityDatesProvider);
   ref.invalidate(longevityHomePackageProvider);

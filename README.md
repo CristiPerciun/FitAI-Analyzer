@@ -1,16 +1,37 @@
-# fitai_analyzer
+# FitAI Analyzer
 
-A new Flutter project.
+App Flutter per analisi fitness e longevità: integrazione Strava, Garmin, nutrizione (Gemini) e piano AI personalizzato.
+
+## Architettura dati
+
+- **Firebase**: Firestore + Auth
+- **Strategia Tre Livelli**: daily_logs (dettaglio) → rolling_10days (trend) → baseline_profile (annuale)
+- **Collezioni aggiornate**: `daily_health` (Garmin biometrici), `activities`, `ai_insights`
+
+## Documentazione
+
+| Documento | Contenuto |
+|-----------|-----------|
+| [docs/DATA_ARCHITECTURE.md](docs/DATA_ARCHITECTURE.md) | Scrittura/lettura dati Firestore |
+| [docs/GARMIN_DATA_SCHEMA.md](docs/GARMIN_DATA_SCHEMA.md) | Schema dati Garmin API → Firebase |
+| [docs/GARMIN_INTEGRATION.md](docs/GARMIN_INTEGRATION.md) | Integrazione garmin-sync-server |
+| [docs/FLUSSI_GARMIN_AI.md](docs/FLUSSI_GARMIN_AI.md) | Flussi Garmin e AI |
+| [.cursor/rules/three-levels-memory-strategy.mdc](.cursor/rules/three-levels-memory-strategy.mdc) | Strategia Tre Livelli |
+| [.cursor/rules/firestore-collections-structure.mdc](.cursor/rules/firestore-collections-structure.mdc) | Collezioni daily_health, activities, ai_insights |
+
+## Setup
+
+1. **Firebase**: [docs/FIREBASE_AUTH_SETUP.md](docs/FIREBASE_AUTH_SETUP.md)
+2. **Strava**: [docs/STRAVA_SETUP.md](docs/STRAVA_SETUP.md)
+3. **Garmin**: [docs/GARMIN_INTEGRATION.md](docs/GARMIN_INTEGRATION.md)
+4. **iOS**: [docs/IOS_SETUP.md](docs/IOS_SETUP.md)
+5. **Deploy Firestore**: [docs/FIREBASE_DEPLOY.md](docs/FIREBASE_DEPLOY.md)
 
 ## Getting Started
 
-This project is a starting point for a Flutter application.
+```bash
+flutter pub get
+flutter run
+```
 
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Per la chiave Gemini: vedi [TODO-SECURE-API-KEY.md](TODO-SECURE-API-KEY.md).

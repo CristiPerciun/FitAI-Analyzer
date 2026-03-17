@@ -390,7 +390,7 @@ class StravaService {
     }
     await batch.commit().timeout(const Duration(seconds: 30));
 
-    // Salvataggio Livello 1 - daily_logs (merge: non sovrascrive nutrition_gemini)
+    // Salvataggio Livello 1 - daily_logs (merge: non sovrascrive garmin_activities scritti dal server)
     for (final entry in byDate.entries) {
       final dateStr = entry.key;
       final acts = entry.value;

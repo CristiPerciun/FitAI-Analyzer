@@ -13,21 +13,33 @@ class LongevityHeader extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final package = ref.watch(longevityHomePackageProvider).valueOrNull;
     final healthData = ref.watch(healthDataStreamProvider).valueOrNull ?? [];
+    final dailyHealth = ref.watch(dailyHealthStreamProvider).valueOrNull ?? [];
     final todayStr = DateTime.now().toIso8601String().split('T')[0];
 
-    // Passi e calorie di oggi da health_data
+    // Passi: preferisci daily_health (Garmin sync-vitals), altrimenti health_data (Strava)
     final todayHealth = healthData.where((d) {
       final key = '${d.date.year}-${d.date.month.toString().padLeft(2, '0')}-${d.date.day.toString().padLeft(2, '0')}';
       return key == todayStr;
     }).toList();
 
-    final steps = todayHealth.fold<double>(0, (s, d) => s + (d.steps ?? 0));
+    double steps = 0;
+    final todayDailyHealth = dailyHealth.where((d) => (d['date'] as String?) == todayStr).firstOrNull;
+    if (todayDailyHealth != null) {
+      final stats = todayDailyHealth['stats'] as Map<String, dynamic>?;
+      if (stats != null) {
+        final s = stats['totalSteps'] ?? stats['userSteps'];
+        if (s != null) steps = (s as num).toDouble();
+      }
+    }
+    if (steps == 0) {
+      steps = todayHealth.fold<double>(0, (s, d) => s + (d.steps ?? 0));
+    }
     final caloriesFromActivities = todayHealth.fold<double>(0, (s, d) => s + (d.calories ?? 0));
 
     // Fallback: calorie da daily_logs se health_data vuoto
     final caloriesBurned = caloriesFromActivities > 0
         ? caloriesFromActivities
-        : (package?.today?.totalBurnedKcal ?? 0);
+        : (package?.today?.totalBurnedKcalForAggregation ?? 0);
     double caloriesIntake = 0;
     final todayNut = package?.today?.nutritionForAi;
     if (todayNut != null && todayNut.isNotEmpty) {

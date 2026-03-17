@@ -43,6 +43,24 @@ final garminConnectedProvider = StreamProvider.autoDispose<bool>((ref) {
   return documentSnapshotStream(docRef).map((doc) => doc.data()?['garmin_linked'] == true);
 });
 
+/// Dati biometrici daily_health (passi, sonno, HRV, Body Battery) scritti da garmin-sync-server.
+/// Usa daily_health/{date} - invalidare dopo sync-vitals.
+final dailyHealthStreamProvider = StreamProvider.autoDispose<List<Map<String, dynamic>>>(
+  (ref) {
+    final uid = ref.watch(authNotifierProvider).user?.uid;
+    if (uid == null) return Stream.value([]);
+    final query = FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('daily_health');
+    return querySnapshotStream(query).map((snap) {
+      final docs = snap.docs.map((d) => {...d.data(), 'date': d.id}).toList();
+      docs.sort((a, b) => (b['date'] as String).compareTo(a['date'] as String));
+      return docs;
+    });
+  },
+);
+
 /// Dati giornalieri Garmin per una data specifica.
 final garminDailyProvider =
     FutureProvider.autoDispose.family<GarminDailyModel?, String>((ref, date) {
@@ -51,8 +69,43 @@ final garminDailyProvider =
   return ref.read(garminServiceProvider).getDailyGarminData(uid, date);
 });
 
+/// Tipo normalizzato per confronto.
+String _normalizedActivityType(FitnessData d) {
+  final t = d.activityType ?? d.raw?['sport_type'] ?? d.raw?['type'] ?? '';
+  return t.toString().toLowerCase();
+}
+
+/// True se stesso tipo (run/running, ride/cycling, ecc.).
+bool _sameActivityType(String ts, String tg) {
+  const runLike = ['run', 'running'];
+  const rideLike = ['ride', 'cycling', 'bike', 'virtualride'];
+  const walkLike = ['walk', 'walking', 'hike', 'hiking'];
+  if (runLike.contains(ts) && runLike.contains(tg)) return true;
+  if (rideLike.contains(ts) && rideLike.contains(tg)) return true;
+  if (walkLike.contains(ts) && walkLike.contains(tg)) return true;
+  return ts == tg;
+}
+
+/// True se Strava [s] è duplicato di Garmin [g]: stessa data + stesso tipo + ora/distanza simili.
+bool _isStravaDuplicateOfGarmin(FitnessData s, FitnessData g) {
+  if (s.source != 'strava' || g.source != 'garmin') return false;
+  final keyS = '${s.date.year}-${s.date.month}-${s.date.day}';
+  final keyG = '${g.date.year}-${g.date.month}-${g.date.day}';
+  if (keyS != keyG) return false;
+  final ts = _normalizedActivityType(s);
+  final tg = _normalizedActivityType(g);
+  if (ts.isEmpty || tg.isEmpty) return false;
+  if (!_sameActivityType(ts, tg)) return false;
+  if (s.date.difference(g.date).abs().inMinutes > 15) return false;
+  if (s.distanceKm != null && g.distanceKm != null && g.distanceKm! > 0) {
+    final ratio = s.distanceKm! / g.distanceKm!;
+    if (ratio < 0.85 || ratio > 1.15) return false;
+  }
+  return true;
+}
+
 /// Attività Strava + Garmin unificate, raggruppate per data (più recente prima).
-/// Chiave: "YYYY-MM-DD", valore: lista ordinata per orario.
+/// Deduplicazione 1:1: stessa data + tipo + ora/distanza simili → solo Garmin.
 final activitiesByDateProvider =
     Provider.autoDispose<Map<String, List<FitnessData>>>((ref) {
   final healthAsync = ref.watch(healthDataStreamProvider);
@@ -60,7 +113,18 @@ final activitiesByDateProvider =
 
   final strava = (healthAsync.valueOrNull ?? []).where((d) => d.source == 'strava').toList();
   final garmin = garminAsync.valueOrNull ?? [];
-  final all = [...strava, ...garmin];
+  final usedGarmin = List.filled(garmin.length, false);
+  final stravaFiltered = strava.where((s) {
+    for (var i = 0; i < garmin.length; i++) {
+      if (usedGarmin[i]) continue;
+      if (_isStravaDuplicateOfGarmin(s, garmin[i])) {
+        usedGarmin[i] = true;
+        return false;
+      }
+    }
+    return true;
+  }).toList();
+  final all = [...garmin, ...stravaFiltered];
   all.sort((a, b) => b.date.compareTo(a.date));
 
   final byDate = <String, List<FitnessData>>{};

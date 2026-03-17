@@ -53,8 +53,8 @@ class LongevityHomePackage {
     final rollingNutrition = _formatMacroAverages(rolling?.macroAverages ?? {});
 
     final todayActivity = today != null
-        ? 'Attività: ${today!.stravaActivities.length} | '
-            'Calorie bruciate: ${today!.totalBurnedKcal.toStringAsFixed(0)} kcal'
+        ? 'Attività: ${today!.activitiesForAggregation.length} | '
+            'Calorie bruciate: ${today!.totalBurnedKcalForAggregation.toStringAsFixed(0)} kcal'
         : 'Nessuna attività registrata oggi.';
 
     final todayNutrition = _formatNutrition(today?.nutritionForAi ?? {});
@@ -96,7 +96,7 @@ Usa questi dati per generare un messaggio di benvenuto personalizzato per la Hom
         : 'Nessun dato';
     final rollingNut = _formatMacroAverages(rolling?.macroAverages ?? {});
     final todayAct = today != null
-        ? 'Attività: ${today!.stravaActivities.length}, Bruciate: ${today!.totalBurnedKcal.toStringAsFixed(0)} kcal'
+        ? 'Attività: ${today!.activitiesForAggregation.length}, Bruciate: ${today!.totalBurnedKcalForAggregation.toStringAsFixed(0)} kcal'
         : 'Nessun dato';
     final todayNut = _formatNutrition(today?.nutritionForAi ?? {});
 

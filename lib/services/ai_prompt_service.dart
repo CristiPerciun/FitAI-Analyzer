@@ -31,8 +31,8 @@ class AiPromptService {
         ? 'Distanza: ${rolling.totalDistanceKm.toStringAsFixed(1)} km | Zone 2: ${rolling.totalZone2Minutes} min | VO2 stimato: ${rolling.estimatedVo2Max.toStringAsFixed(1)}'
         : 'Nessun dato rolling ultimi 10 giorni.';
 
-    final todayActivities = today?.stravaActivities.length ?? 0;
-    final todayBurned = today?.totalBurnedKcal ?? 0.0;
+    final todayActivities = today?.activitiesForAggregation.length ?? 0;
+    final todayBurned = today?.totalBurnedKcalForAggregation ?? 0.0;
     final todayNutrition = _formatNutrition(today?.nutritionForAi ?? {});
 
     return """
