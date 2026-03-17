@@ -5,25 +5,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Header dinamico che mostra il "Carico di Longevità" odierno.
-/// Passi e calorie sincronizzati da Health/Strava (health_data).
+/// Passi da `daily_health` e calorie attività da `activities`.
 class LongevityHeader extends ConsumerWidget {
   const LongevityHeader({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final package = ref.watch(longevityHomePackageProvider).valueOrNull;
-    final healthData = ref.watch(healthDataStreamProvider).valueOrNull ?? [];
+    final activities = ref.watch(activitiesStreamProvider).valueOrNull ?? [];
     final dailyHealth = ref.watch(dailyHealthStreamProvider).valueOrNull ?? [];
     final todayStr = DateTime.now().toIso8601String().split('T')[0];
 
-    // Passi: preferisci daily_health (Garmin sync-vitals), altrimenti health_data (Strava)
-    final todayHealth = healthData.where((d) {
-      final key = '${d.date.year}-${d.date.month.toString().padLeft(2, '0')}-${d.date.day.toString().padLeft(2, '0')}';
+    final todayActivities = activities.where((d) {
+      final key =
+          '${d.date.year}-${d.date.month.toString().padLeft(2, '0')}-${d.date.day.toString().padLeft(2, '0')}';
       return key == todayStr;
     }).toList();
 
     double steps = 0;
-    final todayDailyHealth = dailyHealth.where((d) => (d['date'] as String?) == todayStr).firstOrNull;
+    final todayDailyHealth = dailyHealth
+        .where((d) => (d['date'] as String?) == todayStr)
+        .firstOrNull;
     if (todayDailyHealth != null) {
       final stats = todayDailyHealth['stats'] as Map<String, dynamic>?;
       if (stats != null) {
@@ -31,12 +33,12 @@ class LongevityHeader extends ConsumerWidget {
         if (s != null) steps = (s as num).toDouble();
       }
     }
-    if (steps == 0) {
-      steps = todayHealth.fold<double>(0, (s, d) => s + (d.steps ?? 0));
-    }
-    final caloriesFromActivities = todayHealth.fold<double>(0, (s, d) => s + (d.calories ?? 0));
+    final caloriesFromActivities = todayActivities.fold<double>(
+      0,
+      (s, d) => s + (d.calories ?? 0),
+    );
 
-    // Fallback: calorie da daily_logs se health_data vuoto
+    // Fallback: calorie aggregate da daily_logs se lo stream attività è ancora vuoto.
     final caloriesBurned = caloriesFromActivities > 0
         ? caloriesFromActivities
         : (package?.today?.totalBurnedKcalForAggregation ?? 0);
@@ -52,7 +54,8 @@ class LongevityHeader extends ConsumerWidget {
 
     return Container(
       width: double.infinity,
-      decoration: cardTheme?.gradientDecoration ??
+      decoration:
+          cardTheme?.gradientDecoration ??
           BoxDecoration(
             color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(16),
@@ -74,7 +77,8 @@ class LongevityHeader extends ConsumerWidget {
                   'Oggi',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
-                    color: cardTheme?.contentColor ?? theme.colorScheme.onSurface,
+                    color:
+                        cardTheme?.contentColor ?? theme.colorScheme.onSurface,
                   ),
                 ),
               ],
@@ -83,7 +87,9 @@ class LongevityHeader extends ConsumerWidget {
             Text(
               'Carico di Longevità',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: cardTheme?.contentColorMuted ?? theme.colorScheme.onSurfaceVariant,
+                color:
+                    cardTheme?.contentColorMuted ??
+                    theme.colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 16),
@@ -148,8 +154,8 @@ class _MetricChip extends StatelessWidget {
             Text(
               label,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: color.withValues(alpha: 0.9),
-                  ),
+                color: color.withValues(alpha: 0.9),
+              ),
             ),
           ],
         ),
@@ -157,9 +163,9 @@ class _MetricChip extends StatelessWidget {
         Text(
           value,
           style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: color,
-              ),
+            fontWeight: FontWeight.w600,
+            color: color,
+          ),
         ),
       ],
     );

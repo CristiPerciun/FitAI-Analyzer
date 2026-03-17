@@ -6,8 +6,9 @@ import '../models/baseline_profile_model.dart';
 import '../models/daily_log_model.dart';
 import '../models/rolling_10days_model.dart';
 
-final aiPromptServiceProvider =
-    Provider<AiPromptService>((ref) => AiPromptService());
+final aiPromptServiceProvider = Provider<AiPromptService>(
+  (ref) => AiPromptService(),
+);
 
 class AiPromptService {
   static final _dateFormat = DateFormat('d MMM yyyy', 'it');
@@ -25,13 +26,15 @@ class AiPromptService {
 
     final goalStr = baseline?.goalIa ?? today?.goalTodayIa ?? '';
 
-    final baselineSummary = baseline?.aiReadySummary ?? 'Nessun baseline ancora. Esegui prima la sincronizzazione Strava.';
+    final baselineSummary =
+        baseline?.aiReadySummary ??
+        'Nessun baseline ancora. Esegui prima la sincronizzazione Strava.';
 
     final rollingStr = rolling != null
         ? 'Distanza: ${rolling.totalDistanceKm.toStringAsFixed(1)} km | Zone 2: ${rolling.totalZone2Minutes} min | VO2 stimato: ${rolling.estimatedVo2Max.toStringAsFixed(1)}'
         : 'Nessun dato rolling ultimi 10 giorni.';
 
-    final todayActivities = today?.activitiesForAggregation.length ?? 0;
+    final todayActivities = today?.activityCountForAi ?? 0;
     final todayBurned = today?.totalBurnedKcalForAggregation ?? 0.0;
     final todayNutrition = _formatNutrition(today?.nutritionForAi ?? {});
 

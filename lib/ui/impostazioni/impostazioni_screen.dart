@@ -39,15 +39,11 @@ class ImpostazioniScreen extends ConsumerWidget {
     final isGarminConnected = garminAsync.valueOrNull ?? false;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Impostazioni'),
-      ),
+      appBar: AppBar(title: const Text('Impostazioni')),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
-          _ProfileTile(
-            userName: authState.user?.email ?? 'Utente',
-          ),
+          _ProfileTile(userName: authState.user?.email ?? 'Utente'),
           const Divider(height: 24),
           _SettingsTile(
             leading: Container(
@@ -56,13 +52,18 @@ class ImpostazioniScreen extends ConsumerWidget {
                 color: AppColors.stravaOrange.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(Icons.directions_bike,
-                  color: AppColors.stravaOrange, size: 24),
+              child: Icon(
+                Icons.directions_bike,
+                color: AppColors.stravaOrange,
+                size: 24,
+              ),
             ),
             title: isStravaConnected ? 'Strava connesso' : 'Connect Strava',
             subtitle: isStravaLoading
                 ? (syncStatus.message ?? 'Connessione...')
-                : (isStravaConnected ? 'Tocca per sincronizzare' : 'Collega account Strava'),
+                : (isStravaConnected
+                      ? 'Tocca per sincronizzare'
+                      : 'Collega account Strava'),
             enabled: !isStravaLoading,
             onTap: () => _onConnectStrava(context, ref),
           ),
@@ -87,7 +88,9 @@ class ImpostazioniScreen extends ConsumerWidget {
               ),
               child: Icon(Icons.watch, color: AppColors.garminBlue, size: 24),
             ),
-            title: isGarminConnected ? 'Garmin Connect collegato' : 'Connect Garmin',
+            title: isGarminConnected
+                ? 'Garmin Connect collegato'
+                : 'Connect Garmin',
             subtitle: isGarminConnected
                 ? 'Account collegato. Sync automatica dal server.'
                 : 'Collega account Garmin Connect',
@@ -126,8 +129,7 @@ class ImpostazioniScreen extends ConsumerWidget {
             ),
             title: 'Esci',
             subtitle: 'Disconnetti sessione',
-            onTap: () =>
-                ref.read(authNotifierProvider.notifier).signOut(),
+            onTap: () => ref.read(authNotifierProvider.notifier).signOut(),
           ),
         ],
       ),
@@ -135,13 +137,16 @@ class ImpostazioniScreen extends ConsumerWidget {
   }
 
   Future<void> _onConnectStrava(BuildContext context, WidgetRef ref) async {
-    await ref.read(authNotifierProvider.notifier).startOAuth(
-      'strava',
-      onSuccess: () {
-        ref.invalidate(healthDataStreamProvider);
-        ref.read(selectedTabIndexProvider.notifier).state = 1; // Allenamenti
-      },
-    );
+    await ref
+        .read(authNotifierProvider.notifier)
+        .startOAuth(
+          'strava',
+          onSuccess: () {
+            ref.invalidate(activitiesStreamProvider);
+            ref.read(selectedTabIndexProvider.notifier).state =
+                1; // Allenamenti
+          },
+        );
   }
 
   Future<void> _onDisconnectStrava(BuildContext context, WidgetRef ref) async {
@@ -165,7 +170,7 @@ class ImpostazioniScreen extends ConsumerWidget {
     final result = await showGarminConnectDialog(context, ref, uid: uid);
     if (result == true && context.mounted) {
       ref.invalidate(garminConnectedProvider);
-      ref.invalidate(garminActivitiesStreamProvider);
+      ref.invalidate(activitiesStreamProvider);
       ref.invalidate(dailyHealthStreamProvider);
       scaffoldMessengerKey.currentState?.showSnackBar(
         const SnackBar(content: Text('✅ Garmin collegato!')),
@@ -204,15 +209,17 @@ class ImpostazioniScreen extends ConsumerWidget {
     final result = await ref.read(garminServiceProvider).disconnect(uid: uid);
     if (context.mounted) {
       ref.invalidate(garminConnectedProvider);
-      ref.invalidate(garminActivitiesStreamProvider);
+      ref.invalidate(activitiesStreamProvider);
       ref.invalidate(dailyHealthStreamProvider);
       ref.invalidate(activitiesByDateProvider);
       ref.invalidate(longevityHomePackageProvider);
       scaffoldMessengerKey.currentState?.showSnackBar(
         SnackBar(
-          content: Text(result['success'] == true
-              ? '✅ Garmin scollegato.'
-              : '❌ ${result['message']}'),
+          content: Text(
+            result['success'] == true
+                ? '✅ Garmin scollegato.'
+                : '❌ ${result['message']}',
+          ),
           backgroundColor: result['success'] == true
               ? null
               : Theme.of(context).colorScheme.error,
@@ -254,8 +261,8 @@ class _ProfileTile extends StatelessWidget {
       subtitle: Text(
         userName,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.outline,
-            ),
+          color: Theme.of(context).colorScheme.outline,
+        ),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
     );
@@ -287,23 +294,29 @@ class _ThemeModeTile extends ConsumerWidget {
         color: Theme.of(context).colorScheme.primary,
         size: 24,
       ),
-      title: const Text(
-        'Tema',
-        style: TextStyle(fontWeight: FontWeight.w500),
-      ),
+      title: const Text('Tema', style: TextStyle(fontWeight: FontWeight.w500)),
       subtitle: Text(
         _label(themeMode),
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.outline,
-            ),
+          color: Theme.of(context).colorScheme.outline,
+        ),
       ),
       trailing: PopupMenuButton<ThemeMode>(
         icon: const Icon(Icons.arrow_drop_down),
         onSelected: (mode) => notifier.setThemeMode(mode),
         itemBuilder: (context) => [
-          PopupMenuItem(value: ThemeMode.light, child: Text(_label(ThemeMode.light))),
-          PopupMenuItem(value: ThemeMode.dark, child: Text(_label(ThemeMode.dark))),
-          PopupMenuItem(value: ThemeMode.system, child: Text(_label(ThemeMode.system))),
+          PopupMenuItem(
+            value: ThemeMode.light,
+            child: Text(_label(ThemeMode.light)),
+          ),
+          PopupMenuItem(
+            value: ThemeMode.dark,
+            child: Text(_label(ThemeMode.dark)),
+          ),
+          PopupMenuItem(
+            value: ThemeMode.system,
+            child: Text(_label(ThemeMode.system)),
+          ),
         ],
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
@@ -332,16 +345,16 @@ class _SettingsTile extends StatelessWidget {
       leading: leading,
       title: Text(
         title,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w500,
-            ),
+        style: Theme.of(
+          context,
+        ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w500),
       ),
       subtitle: subtitle != null
           ? Text(
               subtitle!,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
+                color: Theme.of(context).colorScheme.outline,
+              ),
             )
           : null,
       enabled: enabled,

@@ -19,11 +19,7 @@ class LongevityHomePackage {
   /// Contiene annual_stats, monthly_trends, key_metrics_attia, ai_ready_summary.
   final BaselineProfileModel? baseline;
 
-  const LongevityHomePackage({
-    this.today,
-    this.rolling,
-    this.baseline,
-  });
+  const LongevityHomePackage({this.today, this.rolling, this.baseline});
 
   static final _dateFormat = DateFormat('d MMM yyyy', 'it');
 
@@ -46,15 +42,15 @@ class LongevityHomePackage {
 
     final rollingActivity = rolling != null
         ? 'Distanza: ${rolling!.totalDistanceKm.toStringAsFixed(1)} km | '
-            'Zone 2: ${rolling!.totalZone2Minutes} min | '
-            'VO2 stimato: ${rolling!.estimatedVo2Max.toStringAsFixed(1)}'
+              'Zone 2: ${rolling!.totalZone2Minutes} min | '
+              'VO2 stimato: ${rolling!.estimatedVo2Max.toStringAsFixed(1)}'
         : 'Nessun dato attività ultimi 10 giorni.';
 
     final rollingNutrition = _formatMacroAverages(rolling?.macroAverages ?? {});
 
     final todayActivity = today != null
-        ? 'Attività: ${today!.activitiesForAggregation.length} | '
-            'Calorie bruciate: ${today!.totalBurnedKcalForAggregation.toStringAsFixed(0)} kcal'
+        ? 'Attività: ${today!.activityCountForAi} | '
+              'Calorie bruciate: ${today!.totalBurnedKcalForAggregation.toStringAsFixed(0)} kcal'
         : 'Nessuna attività registrata oggi.';
 
     final todayNutrition = _formatNutrition(today?.nutritionForAi ?? {});
@@ -96,7 +92,7 @@ Usa questi dati per generare un messaggio di benvenuto personalizzato per la Hom
         : 'Nessun dato';
     final rollingNut = _formatMacroAverages(rolling?.macroAverages ?? {});
     final todayAct = today != null
-        ? 'Attività: ${today!.activitiesForAggregation.length}, Bruciate: ${today!.totalBurnedKcalForAggregation.toStringAsFixed(0)} kcal'
+        ? 'Attività: ${today!.activityCountForAi}, Bruciate: ${today!.totalBurnedKcalForAggregation.toStringAsFixed(0)} kcal'
         : 'Nessun dato';
     final todayNut = _formatNutrition(today?.nutritionForAi ?? {});
 
@@ -146,7 +142,9 @@ Rispondi SOLO con il JSON, nessun altro testo.
     sb.writeln();
     sb.writeln('monthly_trends:');
     for (final m in b.monthlyTrends) {
-      sb.writeln('  Mese ${m['month']}: km=${m['total_km']}, workouts=${m['workouts']}, avg_kcal=${m['avg_kcal']}, avg_protein=${m['avg_protein']}');
+      sb.writeln(
+        '  Mese ${m['month']}: km=${m['total_km']}, workouts=${m['workouts']}, avg_kcal=${m['avg_kcal']}, avg_protein=${m['avg_protein']}',
+      );
     }
     sb.writeln();
     sb.writeln('ai_ready_summary (testo completo 4000+ caratteri):');

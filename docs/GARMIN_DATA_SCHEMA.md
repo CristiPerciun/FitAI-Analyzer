@@ -1,24 +1,25 @@
-# Schema dati Garmin – API → Firebase
+# Schema dati Garmin – API -> Firestore unificato
 
-Studio dei dati che arrivano dalle chiamate Garmin al server e come salvarli in modo coerente su Firebase.
+Mappa tra i dati ricevuti dalle API Garmin e la gerarchia Firestore finale usata dal progetto.
 
 ---
 
 ## 1. Dati in ingresso (API Garmin)
 
-### 1.1 Attività – `get_activities(0, 20)`
+### 1.1 Attivita – `get_activities(0, 20)`
 
-L'endpoint restituisce una lista di attività in **camelCase**. Struttura tipica:
+L'endpoint restituisce una lista di attivita in camelCase. Campi piu utili:
 
 | Campo API | Tipo | Descrizione | Esempio |
 |-----------|------|-------------|---------|
 | `activityId` | int/string | ID univoco Garmin | `10472655210` |
-| `activityName` | string | Nome attività | `"Morning Run"` |
+| `activityName` | string | Nome attivita | `"Morning Run"` |
 | `startTimeGMT` | string | Inizio UTC (ISO 8601) | `"2024-03-16T07:30:00.0"` |
 | `activityType` | object | `{typeId, typeKey, parentTypeId}` | `{"typeKey": "running"}` |
-| `distance` | float | Distanza in **metri** | `5000.0` |
-| `duration` | float | Durata in **secondi** | `1800.0` |
+| `distance` | float | Distanza in metri | `5000.0` |
+| `duration` | float | Durata in secondi | `1800.0` |
 | `averageHR` | int | Frequenza cardiaca media | `145` |
+| `maxHR` | int | Frequenza cardiaca massima | `171` |
 | `calories` | int | Calorie attive (kcal) | `320` |
 | `elevationGain` | float | Dislivello positivo (m) | `45.0` |
 
@@ -26,7 +27,7 @@ L'endpoint restituisce una lista di attività in **camelCase**. Struttura tipica
 
 | Metodo | Contenuto | Destinazione Firestore |
 |--------|-----------|------------------------|
-| `get_stats(date)` | Passi, calorie, riepilogo giornaliero | `daily_health/{date}.stats` |
+| `get_stats(date)` | Passi, riepilogo giornaliero | `daily_health/{date}.stats` |
 | `get_sleep_data(date)` | Sonno (sleepScore, durata, fasi) | `daily_health/{date}.sleep` |
 | `get_hrv_data(date)` | HRV | `daily_health/{date}.hrv` |
 | `get_body_battery(date, date)` | Body Battery | `daily_health/{date}.body_battery` |
@@ -35,73 +36,89 @@ L'endpoint restituisce una lista di attività in **camelCase**. Struttura tipica
 
 ---
 
-## 2. Struttura Firebase
+## 2. Struttura Firestore finale
 
-### 2.1 `users/{uid}/garmin_activities/{activityId}`
+### 2.1 `users/{uid}/activities/{id}`
 
-Attività raw con merge. Campi aggiunti dal server: `syncedAt`, `startTime`, `dateKey`, `activityTypeKey`, `source: "garmin"`.
+Collezione canonica per le attivita.
 
-### 2.2 `users/{uid}/daily_logs/{YYYY-MM-DD}` (campo `garmin_activities`)
+Campi scritti dal server Garmin:
+- `source: "garmin"` oppure `source: "dual"` se viene trovato uno slot gia occupato da Strava
+- `date`, `startTime`, `dateKey`
+- `activityType`, `activityName`
+- `distanceKm`, `activeMinutes`, `elapsedMinutes`, `calories`
+- `avgHeartrate`, `maxHeartrate`, `elevationGainM`
+- `hasGarmin`, `hasStrava`
+- `garminActivityId`, `stravaActivityId`
+- `garmin_raw`, `strava_raw`, `raw`
 
-Lista di attività Garmin in formato nativo + `source: "garmin"` per deduplicazione con Strava.
+Regola di merge:
+- lookup per `dateKey`
+- match fuzzy su `startTime +/- 2 min`
+- se il match esiste, il server mantiene il doc ID esistente e imposta `source: "dual"`
 
-### 2.3 `users/{uid}/garmin_daily/{YYYY-MM-DD}`
+### 2.2 `users/{uid}/daily_logs/{YYYY-MM-DD}`
 
-`date`, `syncedAt`. Usato come marker di sync. I dati biometrici dettagliati sono in `daily_health`.
+Documento indice giornaliero aggiornato dal server Garmin:
+- `date`
+- `activity_ids`
+- `health_ref`
+- `total_burned_kcal`
+- `timestamp`
 
-### 2.4 `users/{uid}/daily_health/{YYYY-MM-DD}`
+Il server non scrive piu `garmin_activities` o `garmin_daily`.
 
-**Scrittore**: garmin-sync-server. **Lettore**: FitAI App (LongevityHeader, GarminDailyStats, LongevityEngine).
+### 2.3 `users/{uid}/daily_health/{YYYY-MM-DD}`
+
+Scrittore: `garmin-sync-server`.
 
 | Campo | Tipo | Fonte API | Descrizione |
 |-------|------|-----------|-------------|
-| `date` | string | — | YYYY-MM-DD (anche come doc ID) |
-| `syncedAt` | string | — | Timestamp sync |
-| `stats` | object | get_stats | totalSteps, userSteps, bodyBatteryMostRecentValue, ecc. |
-| `sleep` | object | get_sleep_data | sleepScore, overallSleepScore, sleepTimeSeconds, ecc. |
-| `hrv` | object | get_hrv_data | Dati HRV |
-| `body_battery` | array/object | get_body_battery | Valori Body Battery |
-| `max_metrics` | object | get_max_metrics | vo2Max, maxVo2, ecc. |
-| `fitness_age` | object | get_fitnessage_data | fitnessAge, age |
+| `date` | string | — | YYYY-MM-DD |
+| `syncedAt` | string/timestamp | — | Timestamp sync |
+| `stats` | object | `get_stats` | totalSteps, userSteps, bodyBatteryMostRecentValue, ecc. |
+| `sleep` | object | `get_sleep_data` | sleepScore, overallSleepScore, sleepTimeSeconds, ecc. |
+| `hrv` | object | `get_hrv_data` | Dati HRV |
+| `body_battery` | array/object | `get_body_battery` | Valori Body Battery |
+| `max_metrics` | object | `get_max_metrics` | vo2Max, maxVo2, ecc. |
+| `fitness_age` | object | `get_fitnessage_data` | fitnessAge, age |
 
 ---
 
-## 3. Flusso scrittura (garmin-sync-server)
+## 3. Flusso di scrittura del server
 
-```
+```text
 [Garmin API]
-    ↓
-get_activities(0, 20)  →  garmin_activities/{id}, daily_logs/{date}.garmin_activities
-get_stats(date)        →  daily_health/{date}.stats
-get_sleep_data(date)   →  daily_health/{date}.sleep
-get_hrv_data(date)    →  daily_health/{date}.hrv
-get_body_battery(...)  →  daily_health/{date}.body_battery
-get_max_metrics(date)  →  daily_health/{date}.max_metrics
-get_fitnessage_data()  →  daily_health/{date}.fitness_age
-    ↓
-[Firestore] users/{uid}/...
+    -> get_activities(0, 20)
+        -> activities/{id}
+        -> daily_logs/{date}.activity_ids
+    -> get_stats / get_sleep_data / get_hrv_data / get_body_battery / get_max_metrics / get_fitnessage_data
+        -> daily_health/{date}
+        -> daily_logs/{date}.health_ref
 ```
 
-**Endpoint**:
-- `POST /garmin/sync` – sync completa (attività + 14 giorni daily_health)
-- `POST /garmin/sync-vitals` – solo oggi e ieri (pull-to-refresh mobile)
+Endpoint:
+- `POST /garmin/connect` -> login Garmin + sync iniziale
+- `POST /garmin/sync` -> sync completa (attivita + ultimi 14 giorni di `daily_health`)
+- `POST /garmin/sync-vitals` -> sync leggera (oggi + ieri) solo biometrici
 
 ---
 
-## 4. Flusso lettura (FitAI App)
+## 4. Flusso di lettura nell'app Flutter
 
 | Dato | Provider/Service | Collezione |
 |------|------------------|------------|
-| Attività Garmin | `garminActivitiesStreamProvider` | `garmin_activities` |
-| Dati giornalieri | `garminDailyProvider(date)` | `garmin_daily` |
-| Biometrici (passi, sonno, BB) | `dailyHealthStreamProvider` | `daily_health` |
-| Per prompt AI (7 gg + 8 sett) | `LongevityEngine.buildGeminiHomeContext` | `daily_health` + `daily_logs` |
+| Attivita unificate | `activitiesStreamProvider`, `GarminService.activitiesStream` | `activities` |
+| Biometrici Garmin | `dailyHealthStreamProvider` | `daily_health` |
+| Prompt AI e aggregazioni | `LongevityEngine`, `AggregationService` | `activities` + `daily_health` + `daily_logs` |
 
 ---
 
-## 5. Compatibilità e unità
+## 5. Unita e compatibilita
 
-- **Distanza**: metri (API e Firestore)
-- **Durata**: secondi
-- **Calorie**: kcal
-- **Timestamp**: stringa ISO o Firestore Timestamp
+- `distance` Garmin raw resta in metri
+- `distanceKm` nel documento unificato e in chilometri
+- `duration` Garmin raw resta in secondi
+- `activeMinutes` / `elapsedMinutes` nel documento unificato sono in minuti
+- `calories` e in kcal
+- `date` e `startTime` possono essere Firestore Timestamp

@@ -4,18 +4,30 @@ import 'package:json_annotation/json_annotation.dart';
 part 'daily_log_model.g.dart';
 
 /// Livello 1 - Log giornaliero (daily_logs/{YYYY-MM-DD}).
-/// Dati raw da Strava + Gemini (foto piatto) + peso opzionale.
+/// Indice giornaliero per UI/AI: activity_ids, health_ref, nutrition_summary, note.
 /// Strategia Tre Livelli: nutrition_summary per Livello 2/3, meals subcollection per Livello 1.
 @JsonSerializable()
 class DailyLogModel {
   /// Data in formato YYYY-MM-DD (usata come doc ID).
   final String date;
 
-  /// Attività Strava del giorno.
+  /// ID attività unificate del giorno (`users/{uid}/activities/{activityId}`).
+  @JsonKey(name: 'activity_ids', defaultValue: [])
+  final List<String> activityIds;
+
+  /// Riferimento logico a `daily_health/{date}`.
+  @JsonKey(name: 'health_ref')
+  final String? healthRef;
+
+  /// Note utente opzionali per il giorno.
+  @JsonKey(name: 'user_notes', defaultValue: '')
+  final String userNotes;
+
+  /// Campi legacy embedded, mantenuti solo per retrocompatibilità in lettura.
   @JsonKey(name: 'strava_activities', defaultValue: [])
   final List<Map<String, dynamic>> stravaActivities;
 
-  /// Attività Garmin del giorno (formato nativo Garmin, da garmin-sync-server).
+  /// Campi legacy embedded, mantenuti solo per retrocompatibilità in lettura.
   @JsonKey(name: 'garmin_activities', defaultValue: [])
   final List<Map<String, dynamic>> garminActivities;
 
@@ -46,6 +58,9 @@ class DailyLogModel {
 
   const DailyLogModel({
     required this.date,
+    this.activityIds = const [],
+    this.healthRef,
+    this.userNotes = '',
     required this.stravaActivities,
     this.garminActivities = const [],
     required this.nutritionGemini,
@@ -61,9 +76,13 @@ class DailyLogModel {
     final src = act['source']?.toString();
     if (src == 'garmin') {
       final tk = act['activityTypeKey']?.toString();
-      if (tk != null && tk.isNotEmpty) return tk.toLowerCase().replaceAll(' ', '_');
+      if (tk != null && tk.isNotEmpty) {
+        return tk.toLowerCase().replaceAll(' ', '_');
+      }
       final t = act['activityType'];
-      if (t is Map) return ((t['typeKey'] ?? t['typeId'])?.toString() ?? '').toLowerCase();
+      if (t is Map) {
+        return ((t['typeKey'] ?? t['typeId'])?.toString() ?? '').toLowerCase();
+      }
       return (t?.toString() ?? '').toLowerCase().replaceAll(' ', '_');
     }
     final t = (act['sport_type'] ?? act['type'] ?? '').toString().toLowerCase();
@@ -71,11 +90,20 @@ class DailyLogModel {
   }
 
   /// True se Strava [s] è duplicato di Garmin [g]: stessa data, stesso tipo, ora/distanza simili.
-  static bool _isStravaDuplicateOf(Map<String, dynamic> s, Map<String, dynamic> g) {
+  static bool _isStravaDuplicateOf(
+    Map<String, dynamic> s,
+    Map<String, dynamic> g,
+  ) {
     if (_normalizedType(s).isEmpty || _normalizedType(g).isEmpty) return false;
-    if (!_sameActivityType(_normalizedType(s), _normalizedType(g))) return false;
+    if (!_sameActivityType(_normalizedType(s), _normalizedType(g))) {
+      return false;
+    }
     final startS = s['start_date'] ?? s['start_date_local']?.toString() ?? '';
-    final startG = g['startTimeGMT'] ?? g['startTime'] ?? g['startTimeLocal']?.toString() ?? '';
+    final startG =
+        g['startTimeGMT'] ??
+        g['startTime'] ??
+        g['startTimeLocal']?.toString() ??
+        '';
     if (startS.isEmpty || startG.isEmpty) return false;
     try {
       final dtS = DateTime.parse(startS.toString().replaceFirst('Z', ''));
@@ -104,7 +132,8 @@ class DailyLogModel {
   }
 
   /// Attività unificate per aggregazione (Strava + Garmin).
-  /// Deduplicazione 1:1: stessa data + stesso tipo + ora/distanza simili → solo Garmin.
+  /// Se il documento è già migrato, l'elenco vero sta in `activity_ids` e viene
+  /// letto dalla collection `activities`; questo getter resta solo come fallback.
   List<Map<String, dynamic>> get activitiesForAggregation {
     if (garminActivities.isEmpty) return stravaActivities;
     final usedGarmin = List<bool>.filled(garminActivities.length, false);
@@ -123,10 +152,16 @@ class DailyLogModel {
 
   /// Calorie bruciate da attività unificate (con deduplicazione).
   double get totalBurnedKcalForAggregation {
+    if (totalBurnedKcal > 0) return totalBurnedKcal;
     return activitiesForAggregation.fold<double>(
       0,
       (s, a) => s + ((a['calories'] as num?)?.toDouble() ?? 0),
     );
+  }
+
+  int get activityCountForAi {
+    if (activityIds.isNotEmpty) return activityIds.length;
+    return activitiesForAggregation.length;
   }
 
   /// Nutrizione per prompt AI: preferisce nutrition_summary (Livello 2/3), fallback a nutrition_gemini.

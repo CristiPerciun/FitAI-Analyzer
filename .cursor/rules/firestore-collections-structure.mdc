@@ -33,6 +33,15 @@ alwaysApply: true
 
 **Regola**: Un solo documento per attività; merge quando la stessa attività arriva da entrambe le fonti.
 
+**Campi attesi**:
+- `source`: `garmin`, `strava`, `dual`
+- `date`, `startTime`, `dateKey`
+- `activityType`, `activityName`
+- `distanceKm`, `activeMinutes`, `elapsedMinutes`, `calories`
+- `hasGarmin`, `hasStrava`
+- `garminActivityId`, `stravaActivityId`
+- `garmin_raw`, `strava_raw`
+
 ---
 
 ### 3. `ai_insights/{date}`
@@ -47,9 +56,9 @@ alwaysApply: true
 
 ---
 
-## Relazione con la struttura esistente
+## Relazione con la struttura finale
 
-La strategia a Tre Livelli (`daily_logs`, `rolling_10days`, `baseline_profile`) resta valida per nutrizione, pasti e aggregazioni. Le nuove collezioni **coesistono** e si integrano:
+La strategia a Tre Livelli (`daily_logs`, `rolling_10days`, `baseline_profile`) resta valida per nutrizione, pasti e aggregazioni. Le collezioni operative si integrano cosi:
 
 | Dato           | Vecchia posizione        | Nuova posizione      |
 |----------------|--------------------------|----------------------|
@@ -57,7 +66,7 @@ La strategia a Tre Livelli (`daily_logs`, `rolling_10days`, `baseline_profile`) 
 | Attività       | `daily_logs.strava_activities`, `garmin_activities` | `activities/{id}` |
 | Insight Gemini | (in daily_log o meals)   | `ai_insights/{date}` |
 
-**Compatibilità**: Il codice deve leggere da entrambe le strutture durante la transizione; preferire la nuova quando disponibile.
+**Indice giornaliero**: `daily_logs/{date}` deve contenere `activity_ids` e `health_ref`; non deve essere usato come archivio canonico delle attività.
 
 ---
 

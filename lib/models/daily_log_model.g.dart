@@ -9,6 +9,13 @@ part of 'daily_log_model.dart';
 DailyLogModel _$DailyLogModelFromJson(Map<String, dynamic> json) =>
     DailyLogModel(
       date: json['date'] as String,
+      activityIds:
+          (json['activity_ids'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [],
+      healthRef: json['health_ref'] as String?,
+      userNotes: json['user_notes'] as String? ?? '',
       stravaActivities:
           (json['strava_activities'] as List<dynamic>?)
               ?.map((e) => e as Map<String, dynamic>)
@@ -31,6 +38,9 @@ DailyLogModel _$DailyLogModelFromJson(Map<String, dynamic> json) =>
 Map<String, dynamic> _$DailyLogModelToJson(DailyLogModel instance) =>
     <String, dynamic>{
       'date': instance.date,
+      'activity_ids': instance.activityIds,
+      'health_ref': instance.healthRef,
+      'user_notes': instance.userNotes,
       'strava_activities': instance.stravaActivities,
       'garmin_activities': instance.garminActivities,
       'nutrition_gemini': instance.nutritionGemini,

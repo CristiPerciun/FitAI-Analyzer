@@ -20,8 +20,8 @@ class AggregationService {
   AggregationService({
     required GeminiService geminiService,
     required GeminiApiKeyService geminiApiKeyService,
-  })  : _geminiService = geminiService,
-        _geminiApiKeyService = geminiApiKeyService;
+  }) : _geminiService = geminiService,
+       _geminiApiKeyService = geminiApiKeyService;
 
   final GeminiService _geminiService;
   final GeminiApiKeyService _geminiApiKeyService;
@@ -30,12 +30,22 @@ class AggregationService {
 
   /// Estrae campi da attività Strava o Garmin (formati nativi, nessuna conversione).
   static double _actDistanceM(Map<String, dynamic> act) {
+    final distanceKm = (act['distanceKm'] as num?)?.toDouble();
+    if (distanceKm != null && distanceKm > 0) return distanceKm * 1000;
     final d = (act['distance'] as num?)?.toDouble() ?? 0;
-    if (d > 0 && d < 100) return d * 1000; // Garmin a volte in km
+    if (d > 0 && d < 100) return d * 1000; // Garmin legacy a volte in km
     return d;
   }
 
   static int _actElapsedSec(Map<String, dynamic> act) {
+    final elapsedMinutes = (act['elapsedMinutes'] as num?)?.toDouble();
+    if (elapsedMinutes != null && elapsedMinutes > 0) {
+      return (elapsedMinutes * 60).round();
+    }
+    final activeMinutes = (act['activeMinutes'] as num?)?.toDouble();
+    if (activeMinutes != null && activeMinutes > 0) {
+      return (activeMinutes * 60).round();
+    }
     final e = act['elapsed_time'] ?? act['moving_time'];
     if (e != null) return (e as num).toInt();
     final d = act['duration'] ?? act['movingDuration'];
@@ -43,23 +53,110 @@ class AggregationService {
   }
 
   static double? _actAvgHr(Map<String, dynamic> act) {
-    final v = act['average_heartrate'] ?? act['averageHR'] ?? act['averageHeartRate'];
+    final v =
+        act['avgHeartrate'] ??
+        act['average_heartrate'] ??
+        act['averageHR'] ??
+        act['averageHeartRate'];
     return (v as num?)?.toDouble();
   }
 
   static double? _actMaxHr(Map<String, dynamic> act) {
-    final v = act['max_heartrate'] ?? act['maxHR'] ?? act['maxHeartRate'];
+    final v =
+        act['maxHeartrate'] ??
+        act['max_heartrate'] ??
+        act['maxHR'] ??
+        act['maxHeartRate'];
     return (v as num?)?.toDouble();
   }
 
   static String _actSportType(Map<String, dynamic> act) {
+    final unified = act['activityType'];
+    if (unified != null) {
+      return unified.toString().toLowerCase();
+    }
     final t = act['sport_type'] ?? act['type'];
-    if (t != null) return t.toString().toLowerCase();
+    if (t != null) {
+      return t.toString().toLowerCase();
+    }
     final tk = act['activityTypeKey']?.toString();
-    if (tk != null && tk.isNotEmpty) return tk.toLowerCase();
+    if (tk != null && tk.isNotEmpty) {
+      return tk.toLowerCase();
+    }
     final g = act['activityType'];
-    if (g is Map) return ((g['typeKey'] ?? g['typeId'])?.toString() ?? '').toLowerCase();
+    if (g is Map) {
+      return ((g['typeKey'] ?? g['typeId'])?.toString() ?? '').toLowerCase();
+    }
     return (g?.toString() ?? '').toLowerCase();
+  }
+
+  static double? _extractHealthVo2Max(Map<String, dynamic> health) {
+    final maxMetrics = health['max_metrics'] as Map<String, dynamic>?;
+    final stats = health['stats'] as Map<String, dynamic>?;
+    final value =
+        maxMetrics?['vo2Max'] ?? maxMetrics?['maxVo2'] ?? stats?['vo2Max'];
+    return (value as num?)?.toDouble();
+  }
+
+  static double? _extractFitnessAge(Map<String, dynamic> health) {
+    final fitnessAge = health['fitness_age'] as Map<String, dynamic>?;
+    final value = fitnessAge?['fitnessAge'] ?? fitnessAge?['age'];
+    return (value as num?)?.toDouble();
+  }
+
+  static DailyLogModel _dailyLogFromDoc(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data();
+    return DailyLogModel.fromJson({
+      ...data,
+      'date': doc.id,
+      'goal_today_ia': data['goal_today_ia'] ?? data['goal_today'] ?? '',
+      'timestamp': data['timestamp'] ?? Timestamp.now(),
+    });
+  }
+
+  Future<Map<String, List<Map<String, dynamic>>>> _getActivitiesRange({
+    required FirebaseFirestore firestore,
+    required String uid,
+    required String startDate,
+    required String endDate,
+  }) async {
+    final snapshot = await firestore
+        .collection('users')
+        .doc(uid)
+        .collection('activities')
+        .where('dateKey', isGreaterThanOrEqualTo: startDate)
+        .where('dateKey', isLessThanOrEqualTo: endDate)
+        .get();
+
+    final byDate = <String, List<Map<String, dynamic>>>{};
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      final dateKey = data['dateKey']?.toString();
+      if (dateKey == null || dateKey.isEmpty) continue;
+      byDate.putIfAbsent(dateKey, () => []).add({'id': doc.id, ...data});
+    }
+    return byDate;
+  }
+
+  Future<Map<String, Map<String, dynamic>>> _getDailyHealthRange({
+    required FirebaseFirestore firestore,
+    required String uid,
+    required String startDate,
+    required String endDate,
+  }) async {
+    final snapshot = await firestore
+        .collection('users')
+        .doc(uid)
+        .collection('daily_health')
+        .where(FieldPath.documentId, isGreaterThanOrEqualTo: startDate)
+        .where(FieldPath.documentId, isLessThanOrEqualTo: endDate)
+        .get();
+
+    return {
+      for (final doc in snapshot.docs) doc.id: {...doc.data(), 'date': doc.id},
+    };
   }
 
   /// Aggiorna Livello 2 (rolling_10days) e, se necessario, Livello 3 (baseline_profile).
@@ -83,21 +180,29 @@ class AggregationService {
         .limit(10)
         .get();
 
-    final dailyLogs = snapshot.docs.map((d) {
-      final data = d.data();
-      return DailyLogModel.fromJson({
-        ...data,
-        'date': d.id,
-        'goal_today_ia': data['goal_today_ia'] ?? data['goal_today'] ?? '',
-        'timestamp': data['timestamp'] ?? Timestamp.now(),
-      });
-    }).toList();
+    final dailyLogs = snapshot.docs.map(_dailyLogFromDoc).toList();
 
     // Ordina per data crescente (dal più vecchio al più recente)
     dailyLogs.sort((a, b) => a.date.compareTo(b.date));
 
-    // 2. Calcola aggregati
-    final rolling = _computeRolling10Days(dailyLogs);
+    // 2. Calcola aggregati da collection unificate
+    final activitiesByDate = await _getActivitiesRange(
+      firestore: firestore,
+      uid: uid,
+      startDate: startDateStr,
+      endDate: endDateStr,
+    );
+    final dailyHealthByDate = await _getDailyHealthRange(
+      firestore: firestore,
+      uid: uid,
+      startDate: startDateStr,
+      endDate: endDateStr,
+    );
+    final rolling = _computeRolling10Days(
+      dailyLogs,
+      activitiesByDate: activitiesByDate,
+      dailyHealthByDate: dailyHealthByDate,
+    );
 
     // 3. Salva in rolling_10days/current
     await firestore
@@ -119,37 +224,45 @@ class AggregationService {
         ? (baselineDoc.data()?['last_baseline_update'] as Timestamp?)?.toDate()
         : null;
 
-    final shouldUpdateBaseline = lastBaseline == null ||
+    final shouldUpdateBaseline =
+        lastBaseline == null ||
         today.difference(lastBaseline).inDays >= _baselineUpdateIntervalDays;
 
     if (shouldUpdateBaseline) {
       final baseline = await _computeBaselineProfile(
         uid: uid,
         firestore: firestore,
-        dailyLogs: dailyLogs,
         rolling: rolling,
       );
       await baselineRef.set(baseline.toJson());
     }
   }
 
-  Rolling10DaysModel _computeRolling10Days(List<DailyLogModel> dailyLogs) {
+  Rolling10DaysModel _computeRolling10Days(
+    List<DailyLogModel> dailyLogs, {
+    required Map<String, List<Map<String, dynamic>>> activitiesByDate,
+    required Map<String, Map<String, dynamic>> dailyHealthByDate,
+  }) {
     double totalDistanceKm = 0;
     int totalZone2Minutes = 0;
     double sumHr = 0;
     int hrCount = 0;
     double? bestVo2FromPace;
+    double? latestHealthVo2;
     final activitiesSummary = <Map<String, dynamic>>[];
-    final macroSums = <String, double>{'protein_g': 0, 'carbs_g': 0, 'fat_g': 0, 'calories': 0};
+    final macroSums = <String, double>{
+      'protein_g': 0,
+      'carbs_g': 0,
+      'fat_g': 0,
+      'calories': 0,
+    };
     int macroDays = 0;
 
     for (final log in dailyLogs) {
       double dayDistance = 0;
       int dayZone2Min = 0;
-      double? dayAvgHr;
-      double? dayMaxHr;
 
-      final activities = log.activitiesForAggregation;
+      final activities = activitiesByDate[log.date] ?? const [];
       for (final act in activities) {
         final distM = _actDistanceM(act);
         final distKm = distM / 1000;
@@ -162,12 +275,9 @@ class AggregationService {
         final maxHr = _actMaxHr(act);
 
         if (avgHr != null) {
-          dayAvgHr ??= 0;
-          dayAvgHr = (dayAvgHr * (hrCount > 0 ? 1 : 0) + avgHr) / (hrCount + 1);
           sumHr += avgHr;
           hrCount++;
         }
-        if (maxHr != null) dayMaxHr = dayMaxHr != null ? (dayMaxHr > maxHr ? dayMaxHr : maxHr) : maxHr;
 
         // Zone 2 stimato: 60-70% max HR (Peter Attia). Se avg in range, conta minuti.
         final maxForZone2 = maxHr ?? 180; // fallback
@@ -202,6 +312,10 @@ class AggregationService {
         }
       }
 
+      final health = dailyHealthByDate[log.date];
+      final healthVo2 = health != null ? _extractHealthVo2Max(health) : null;
+      if (healthVo2 != null) latestHealthVo2 = healthVo2;
+
       activitiesSummary.add({
         'date': log.date,
         'distance_km': dayDistance,
@@ -213,19 +327,33 @@ class AggregationService {
       final nut = log.nutritionForAi;
       if (nut.isNotEmpty) {
         macroDays++;
-        macroSums['protein_g'] = macroSums['protein_g']! +
-            ((nut['protein_g'] ?? nut['total_protein'] ?? nut['protein'] ?? 0) as num).toDouble();
-        macroSums['carbs_g'] = macroSums['carbs_g']! +
-            ((nut['carbs_g'] ?? nut['total_carbs'] ?? nut['carbs'] ?? 0) as num).toDouble();
-        macroSums['fat_g'] = macroSums['fat_g']! +
-            ((nut['fat_g'] ?? nut['total_fat'] ?? nut['fat'] ?? 0) as num).toDouble();
-        macroSums['calories'] = macroSums['calories']! +
-            ((nut['total_calories'] ?? nut['total_kcal'] ?? nut['calories'] ?? 0) as num).toDouble();
+        macroSums['protein_g'] =
+            macroSums['protein_g']! +
+            ((nut['protein_g'] ?? nut['total_protein'] ?? nut['protein'] ?? 0)
+                    as num)
+                .toDouble();
+        macroSums['carbs_g'] =
+            macroSums['carbs_g']! +
+            ((nut['carbs_g'] ?? nut['total_carbs'] ?? nut['carbs'] ?? 0) as num)
+                .toDouble();
+        macroSums['fat_g'] =
+            macroSums['fat_g']! +
+            ((nut['fat_g'] ?? nut['total_fat'] ?? nut['fat'] ?? 0) as num)
+                .toDouble();
+        macroSums['calories'] =
+            macroSums['calories']! +
+            ((nut['total_calories'] ??
+                        nut['total_kcal'] ??
+                        nut['calories'] ??
+                        0)
+                    as num)
+                .toDouble();
       }
     }
 
     final avgHr = hrCount > 0 ? sumHr / hrCount : 0.0;
-    final estimatedVo2 = bestVo2FromPace ?? 35.0 + (totalDistanceKm / 10);
+    final estimatedVo2 =
+        latestHealthVo2 ?? bestVo2FromPace ?? 35.0 + (totalDistanceKm / 10);
 
     final macroAverages = <String, double>{};
     if (macroDays > 0) {
@@ -248,7 +376,6 @@ class AggregationService {
   Future<BaselineProfileModel> _computeBaselineProfile({
     required String uid,
     required FirebaseFirestore firestore,
-    required List<DailyLogModel> dailyLogs,
     required Rolling10DaysModel rolling,
   }) async {
     final year = DateTime.now().year;
@@ -263,16 +390,21 @@ class AggregationService {
         .where(FieldPath.documentId, isLessThanOrEqualTo: todayStr)
         .get();
 
-    final allLogs = snapshot.docs.map((d) {
-      final data = d.data();
-      return DailyLogModel.fromJson({
-        ...data,
-        'date': d.id,
-        'goal_today_ia': data['goal_today_ia'] ?? data['goal_today'] ?? '',
-        'timestamp': data['timestamp'] ?? Timestamp.now(),
-      });
-    }).toList();
+    final allLogs = snapshot.docs.map(_dailyLogFromDoc).toList();
     allLogs.sort((a, b) => a.date.compareTo(b.date));
+
+    final activitiesByDate = await _getActivitiesRange(
+      firestore: firestore,
+      uid: uid,
+      startDate: startOfYear,
+      endDate: todayStr,
+    );
+    final dailyHealthByDate = await _getDailyHealthRange(
+      firestore: firestore,
+      uid: uid,
+      startDate: startOfYear,
+      endDate: todayStr,
+    );
 
     // Goal IA: da daily_logs più frequente (goal_today_ia creato dall'IA)
     String goalIa = '';
@@ -284,7 +416,9 @@ class AggregationService {
       }
     }
     if (goalCounts.isNotEmpty) {
-      goalIa = goalCounts.entries.reduce((a, b) => a.value > b.value ? a : b).key;
+      goalIa = goalCounts.entries
+          .reduce((a, b) => a.value > b.value ? a : b)
+          .key;
     }
 
     // Annual stats
@@ -296,11 +430,21 @@ class AggregationService {
     double nutritionProteinSum = 0;
     double nutritionLongevitySum = 0;
     int nutritionDaysCount = 0;
+    double? latestVo2Max;
+    double? latestFitnessAge;
     for (final log in allLogs) {
-      for (final act in log.activitiesForAggregation) {
-        totalKm += ((act['distance'] as num?)?.toDouble() ?? 0) / 1000;
+      for (final act
+          in (activitiesByDate[log.date] ?? const <Map<String, dynamic>>[])) {
+        totalKm += _actDistanceM(act) / 1000;
         totalWorkouts++;
       }
+      final health = dailyHealthByDate[log.date];
+      final healthVo2 = health != null ? _extractHealthVo2Max(health) : null;
+      final healthFitnessAge = health != null
+          ? _extractFitnessAge(health)
+          : null;
+      if (healthVo2 != null) latestVo2Max = healthVo2;
+      if (healthFitnessAge != null) latestFitnessAge = healthFitnessAge;
       if (log.weightKg != null) {
         weightSum += log.weightKg!;
         weightCount++;
@@ -309,8 +453,11 @@ class AggregationService {
       final nut = log.nutritionForAi;
       if (nut.isNotEmpty) {
         nutritionDaysCount++;
-        nutritionKcalSum += ((nut['total_calories'] ?? nut['total_kcal'] ?? 0) as num).toDouble();
-        nutritionProteinSum += ((nut['protein_g'] ?? nut['total_protein'] ?? 0) as num).toDouble();
+        nutritionKcalSum +=
+            ((nut['total_calories'] ?? nut['total_kcal'] ?? 0) as num)
+                .toDouble();
+        nutritionProteinSum +=
+            ((nut['protein_g'] ?? nut['total_protein'] ?? 0) as num).toDouble();
         final longevity = nut['avg_longevity_score'];
         if (longevity != null) {
           nutritionLongevitySum += (double.tryParse(longevity.toString()) ?? 0);
@@ -322,16 +469,26 @@ class AggregationService {
       'total_km_$year': totalKm,
       'total_workouts': totalWorkouts,
       'avg_weight': weightCount > 0 ? weightSum / weightCount : null,
-      'avg_daily_kcal': nutritionDaysCount > 0 ? nutritionKcalSum / nutritionDaysCount : null,
-      'avg_daily_protein': nutritionDaysCount > 0 ? nutritionProteinSum / nutritionDaysCount : null,
-      'avg_longevity_score': nutritionDaysCount > 0 ? nutritionLongevitySum / nutritionDaysCount : null,
+      'avg_daily_kcal': nutritionDaysCount > 0
+          ? nutritionKcalSum / nutritionDaysCount
+          : null,
+      'avg_daily_protein': nutritionDaysCount > 0
+          ? nutritionProteinSum / nutritionDaysCount
+          : null,
+      'avg_longevity_score': nutritionDaysCount > 0
+          ? nutritionLongevitySum / nutritionDaysCount
+          : null,
+      'latest_vo2max': latestVo2Max,
+      'latest_fitness_age': latestFitnessAge,
     };
 
     // Monthly trends (12 mesi) - incl. medie nutrition per Livello 3
     final monthlyTrends = <Map<String, dynamic>>[];
     for (var m = 1; m <= 12; m++) {
       final monthStr = m.toString().padLeft(2, '0');
-      final monthLogs = allLogs.where((l) => l.date.startsWith('$year-$monthStr')).toList();
+      final monthLogs = allLogs
+          .where((l) => l.date.startsWith('$year-$monthStr'))
+          .toList();
       double mKm = 0;
       int mWorkouts = 0;
       double mKcal = 0;
@@ -339,17 +496,22 @@ class AggregationService {
       double mLongevity = 0;
       int mNutDays = 0;
       for (final log in monthLogs) {
-        for (final act in log.activitiesForAggregation) {
-          mKm += ((act['distance'] as num?)?.toDouble() ?? 0) / 1000;
+        for (final act
+            in (activitiesByDate[log.date] ?? const <Map<String, dynamic>>[])) {
+          mKm += _actDistanceM(act) / 1000;
           mWorkouts++;
         }
         final nut = log.nutritionForAi;
         if (nut.isNotEmpty) {
           mNutDays++;
-          mKcal += ((nut['total_calories'] ?? nut['total_kcal'] ?? 0) as num).toDouble();
-          mProtein += ((nut['protein_g'] ?? nut['total_protein'] ?? 0) as num).toDouble();
+          mKcal += ((nut['total_calories'] ?? nut['total_kcal'] ?? 0) as num)
+              .toDouble();
+          mProtein += ((nut['protein_g'] ?? nut['total_protein'] ?? 0) as num)
+              .toDouble();
           final longevity = nut['avg_longevity_score'];
-          if (longevity != null) mLongevity += (double.tryParse(longevity.toString()) ?? 0);
+          if (longevity != null) {
+            mLongevity += (double.tryParse(longevity.toString()) ?? 0);
+          }
         }
       }
       monthlyTrends.add({
@@ -364,13 +526,16 @@ class AggregationService {
     }
 
     // Key metrics Attia (Outlive)
-    final zone2Weekly = (rolling.totalZone2Minutes / 10) * 7; // media settimanale
+    final zone2Weekly =
+        (rolling.totalZone2Minutes / 10) * 7; // media settimanale
     final keyMetricsAttia = <String, dynamic>{
-      'estimated_vo2': rolling.estimatedVo2Max,
+      'estimated_vo2': latestVo2Max ?? rolling.estimatedVo2Max,
       'zone2_volume_weekly_avg': zone2Weekly.round(),
       'strength_score': 75, // placeholder - da integrare con dati forza
-      'visceral_fat_estimate': 'basso', // placeholder - da composizione corporea
+      'visceral_fat_estimate':
+          'basso', // placeholder - da composizione corporea
       'hr_recovery_avg': 45, // placeholder - da dati HR
+      'fitness_age': latestFitnessAge,
     };
 
     // Evolution notes e ai_ready_summary: generati con AI ogni 10 giorni (strategia Tre Livelli)
@@ -438,7 +603,8 @@ class AggregationService {
   }
 
   /// Genera evolution_notes e ai_ready_summary con AI (baseline aggiornato ogni 10 gg con AI).
-  Future<({String evolutionNotes, String aiReadySummary})> _generateBaselineWithAi({
+  Future<({String evolutionNotes, String aiReadySummary})>
+  _generateBaselineWithAi({
     required String goalIa,
     required Map<String, dynamic> annualStats,
     required Map<String, dynamic> keyMetricsAttia,
@@ -461,7 +627,8 @@ class AggregationService {
       rolling: rolling,
     );
 
-    final prompt = '''
+    final prompt =
+        '''
 Sei un esperto di longevità (Peter Attia, Outlive). Genera il profilo baseline per un utente FitAI Analyzer.
 
 DATI RAW:
@@ -505,7 +672,9 @@ Rispondi SOLO con il JSON, nessun altro testo.
     required Map<String, dynamic> annualStats,
     required int year,
   }) {
-    if (allLogs.isEmpty) return 'Nessun dato sufficiente per analisi evolutiva.';
+    if (allLogs.isEmpty) {
+      return 'Nessun dato sufficiente per analisi evolutiva.';
+    }
 
     final totalKm = (annualStats['total_km_$year'] as num?)?.toDouble() ?? 0;
     final workouts = annualStats['total_workouts'] as int? ?? 0;
@@ -537,7 +706,8 @@ Rispondi SOLO con il JSON, nessun altro testo.
     final totalKm = (annualStats['total_km_$year'] as num?)?.toDouble() ?? 0;
     final workouts = annualStats['total_workouts'] as int? ?? 0;
     final vo2 = (keyMetricsAttia['estimated_vo2'] as num?)?.toDouble() ?? 0;
-    final zone2Weekly = (keyMetricsAttia['zone2_volume_weekly_avg'] as num?)?.toInt() ?? 0;
+    final zone2Weekly =
+        (keyMetricsAttia['zone2_volume_weekly_avg'] as num?)?.toInt() ?? 0;
 
     final sb = StringBuffer();
     sb.writeln('=== PROFILO FITNESS AI-READY (FitAI Analyzer) ===');
@@ -551,14 +721,22 @@ Rispondi SOLO con il JSON, nessun altro testo.
     final avgProtein = annualStats['avg_daily_protein'] as num?;
     final avgLongevity = annualStats['avg_longevity_score'] as num?;
     if (avgKcal != null || avgProtein != null) {
-      sb.writeln('Nutrizione media giornaliera: ${avgKcal?.toStringAsFixed(0) ?? '?'} kcal, ${avgProtein?.toStringAsFixed(0) ?? '?'} g proteine');
-      if (avgLongevity != null) sb.writeln('Score longevità medio: ${avgLongevity.toStringAsFixed(1)}/10');
+      sb.writeln(
+        'Nutrizione media giornaliera: ${avgKcal?.toStringAsFixed(0) ?? '?'} kcal, ${avgProtein?.toStringAsFixed(0) ?? '?'} g proteine',
+      );
+      if (avgLongevity != null) {
+        sb.writeln(
+          'Score longevità medio: ${avgLongevity.toStringAsFixed(1)}/10',
+        );
+      }
     }
     sb.writeln();
     sb.writeln('--- METRICHE LONGEVITÀ (riferimenti Peter Attia, Outlive) ---');
     sb.writeln('VO2max stimato: ${vo2.toStringAsFixed(1)} ml/kg/min');
     sb.writeln('Volume Zone 2 settimanale medio: $zone2Weekly minuti');
-    sb.writeln('Zone 2 (60-70% max HR) è fondamentale per salute mitocondriale e longevità.');
+    sb.writeln(
+      'Zone 2 (60-70% max HR) è fondamentale per salute mitocondriale e longevità.',
+    );
     sb.writeln();
     sb.writeln('--- ULTIMI 10 GIORNI ---');
     sb.writeln('Distanza: ${rolling.totalDistanceKm.toStringAsFixed(1)} km');
@@ -581,7 +759,9 @@ Rispondi SOLO con il JSON, nessun altro testo.
     sb.writeln(evolutionNotes);
     sb.writeln();
     sb.writeln('--- RIFERIMENTI ---');
-    sb.writeln('Peter Attia, Outlive: Zone 2, VO2max, forza, composizione corporea.');
+    sb.writeln(
+      'Peter Attia, Outlive: Zone 2, VO2max, forza, composizione corporea.',
+    );
     sb.writeln('Studi Stanford: correlazione VO2max e mortalità.');
 
     return sb.toString();

@@ -20,10 +20,9 @@ FitAI Analyzer legge i dati Garmin da Firestore scritti dal **garmin-sync-server
 
 | Collezione | Percorso | Scrittore | Contenuto |
 |------------|----------|-----------|-----------|
-| Attività | `users/{uid}/garmin_activities/{activityId}` | Server | Ultime attività (activityId, startTime, distance, duration, HR, calories) |
-| Daily log | `users/{uid}/daily_logs/{date}.garmin_activities` | Server | Lista attività Garmin per giorno (merge con Strava) |
+| Attività | `users/{uid}/activities/{id}` | Server + StravaService | Attività unificate Garmin/Strava con merge fuzzy e `source: garmin/strava/dual` |
+| Daily log | `users/{uid}/daily_logs/{date}` | Server + StravaService + NutritionService | Indice giornaliero con `activity_ids`, `health_ref`, nutrizione e metadati |
 | Daily health | `users/{uid}/daily_health/{date}` | Server | Passi, sonno, HRV, Body Battery, VO2Max, Fitness Age |
-| Garmin daily | `users/{uid}/garmin_daily/{date}` | Server | Marker sync (date, syncedAt) |
 
 ## Endpoint server
 
@@ -38,15 +37,14 @@ FitAI Analyzer legge i dati Garmin da Firestore scritti dal **garmin-sync-server
 
 | File | Collezione | Uso |
 |------|------------|-----|
-| `GarminService.garminActivitiesStream` | `garmin_activities` | Dashboard allenamenti |
-| `GarminService.getDailyGarminData` | `garmin_daily` | Dati giornalieri Garmin |
+| `GarminService.activitiesStream` | `activities` | Dashboard allenamenti |
 | `dailyHealthStreamProvider` | `daily_health` | LongevityHeader, GarminDailyStats |
-| `LongevityEngine.buildGeminiHomeContext` | `daily_health` + `daily_logs` | Prompt AI (7 giorni + 8 settimane) |
+| `LongevityEngine.buildGeminiHomeContext` | `daily_health` + `activities` + `daily_logs` | Prompt AI (7 giorni + 8 settimane) |
 
 ## Setup garmin-sync-server
 
 **IMPORTANTE**: Il server usa il `uid` passato nel body delle richieste (non `USER_ID` da env). L'UID deve corrispondere all'**UID Firebase** dell'utente.
 
 1. L'app invia `uid` (Firebase Auth) al login e al sync
-2. Il server scrive in `users/{uid}/garmin_activities`, `users/{uid}/daily_health`, ecc.
+2. Il server scrive in `users/{uid}/activities`, `users/{uid}/daily_health` e aggiorna `daily_logs/{date}`
 3. Le credenziali Firebase sono in `FIREBASE_CREDENTIALS` o `FIREBASE_CREDENTIALS_B64`

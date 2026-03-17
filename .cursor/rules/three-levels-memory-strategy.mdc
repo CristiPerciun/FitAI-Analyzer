@@ -28,10 +28,10 @@ I dati vengono organizzati su tre livelli di granularità per ottimizzare:
 
 **Documento principale** (daily_log):
 - `date`, `timestamp`
-- `strava_activities`: lista attività raw (Strava)
-- `garmin_activities`: lista attività Garmin in formato nativo (da garmin-sync-server)
+- `activity_ids`: lista di riferimenti a `activities/{id}`
+- `health_ref`: riferimento logico a `daily_health/{date}`
 - `total_burned_kcal`
-- `weight_kg`, `goal_today_ia` (obiettivo giornaliero creato dall'IA)
+- `weight_kg`, `goal_today_ia`, `user_notes`
 - `nutrition_summary`: sintesi aggregata (vedi sotto)
 - `nutrition_gemini`: ultimo pasto (retrocompatibilità)
 
@@ -69,12 +69,14 @@ Ogni pasto: `dish_name`, `calories`, `macros`, `timestamp`, `meal_type`, `raw_ai
 ### Regola critica
 
 **Livello 2 NON legge mai le sottocollezioni** (es. meals). Legge SOLO:
-- i documenti `daily_logs/{date}` 
+- i documenti `daily_logs/{date}`
 - i campi di sintesi sul documento (es. `nutrition_summary`)
+- la collection `activities` per allenamenti
+- `daily_health` per biometrici
 
 ### Aggregazione
 
-- `AggregationService.updateRolling10DaysAndBaseline()` calcola da `daily_logs`
+- `AggregationService.updateRolling10DaysAndBaseline()` calcola da `daily_logs` + `activities` + `daily_health`
 - Per nutrizione: usa `nutrition_summary` (o `nutrition_gemini` se assente) via `DailyLogModel.nutritionForAi`
 - Aggiornato dopo sync Strava e quando cambiano i daily_logs
 
@@ -105,7 +107,9 @@ Ogni pasto: `dish_name`, `calories`, `macros`, `timestamp`, `meal_type`, `raw_ai
 ### Regola critica
 
 **Livello 3 NON legge mai Livello 1** (meals, singoli daily_log raw). Legge:
-- `daily_logs` solo per campi di sintesi (`nutrition_summary`, `strava_activities` aggregati)
+- `daily_logs` solo per campi di sintesi (`nutrition_summary`, goal, peso, note)
+- `activities` per gli allenamenti aggregati
+- `daily_health` per i biometrici
 - oppure `rolling_10days/current` già calcolato
 
 ### Aggregazione
@@ -176,23 +180,22 @@ LongevityEngine → legge daily_health per prompt AI (7 gg + 8 sett)
 ## Attività (Strava + Garmin)
 
 **Chi scrive dove** (NON confondere):
-- **Strava** → sync dall'**app FitAI** (StravaService): `health_data`, `daily_logs/{date}.strava_activities`
-- **Garmin** → sync dal **server Python** (garmin-sync-server): `garmin_activities`, `daily_logs/{date}.garmin_activities`
+- **Strava** → sync dall'**app FitAI** (StravaService): `activities/{id}`, `daily_logs/{date}.activity_ids`
+- **Garmin** → sync dal **server Python** (garmin-sync-server): `activities/{id}`, `daily_logs/{date}.activity_ids`, `daily_logs/{date}.health_ref`
 
-Entrambi usano merge: Strava NON tocca garmin_activities, Garmin NON tocca strava_activities.
+Entrambi usano merge fuzzy lato scrittura: stessa finestra temporale `+/- 2 min` sul giorno -> un solo doc `activities/{id}` con `source: 'dual'`.
 
-**Verifica duplicati** (Garmin sync su Strava → stessa attività in entrambi):
-- **Dove**: `activitiesByDateProvider` (UI), `DailyLogModel.activitiesForAggregation` (rolling/baseline)
-- **Logica 1:1**: stessa data + stesso tipo + ora ±15 min + distanza ±15% → escludi Strava, tieni Garmin
-- **Match fuzzy tipo**: run/running, ride/cycling/bike, walk/walking/hike
+**Verifica duplicati**:
+- **Dove**: in scrittura su `StravaService` e `garmin-sync-server`
+- **Logica**: lookup stesso `dateKey` + `startTime +/- 2 min`; se compatibile, aggiornare il doc esistente e marcare `source: 'dual'`
 
 ## File di riferimento
 
-- `lib/models/daily_log_model.dart` – nutritionForAi, activitiesForAggregation, garmin_activities
+- `lib/models/daily_log_model.dart` – nutritionForAi, `activity_ids`, `health_ref`
 - `lib/models/meal_model.dart` – sottocollezione meals
 - `lib/models/longevity_home_package.dart` – pacchetto unificato per Home AI
 - `lib/services/nutrition_service.dart` – salvataggio Livello 1 + aggregation summary
 - `lib/services/aggregation_service.dart` – Livello 2 (rolling), Livello 3 (baseline)
 - `lib/services/ai_prompt_service.dart` – costruzione contesto da tutti e tre i livelli
-- `lib/services/longevity_engine.dart` – buildGeminiHomeContext (7 gg + 8 sett da daily_logs + daily_health), buildLongevityPlanPrompt
-- `lib/providers/data_sync_notifier.dart` – dailyHealthStreamProvider (lettura daily_health)
+- `lib/services/longevity_engine.dart` – buildGeminiHomeContext (7 gg + 8 sett da daily_logs + activities + daily_health), buildLongevityPlanPrompt
+- `lib/providers/data_sync_notifier.dart` – `activitiesStreamProvider`, `dailyHealthStreamProvider`

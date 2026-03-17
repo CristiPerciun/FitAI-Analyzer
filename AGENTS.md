@@ -16,6 +16,7 @@ Consulta `docs/DATA_ARCHITECTURE.md` per scrittura/lettura dati Firestore.
 - **DB**: Firebase (Firestore + Auth)
 - **Strategia Tre Livelli**: Livello 1 (dettaglio daily_logs/meals), Livello 2 (rolling_10days), Livello 3 (baseline_profile). Non modificare; nuovi dati devono integrarsi seguendo questa logica
 - **Collezioni aggiornate**: `daily_health` (Server), `activities` (Server+FitAI), `ai_insights` (FitAI) – vedi firestore-collections-structure.mdc
+- **Indice daily_logs**: usare `activity_ids` e `health_ref`; non salvare nuove attività raw embedded in `daily_logs`
 - **UI**: Material 3, responsive, fl_chart, go_router
 - **Sicurezza**: secure storage per API keys, try-catch, debounce
 - **Deploy**: Flutter build Android/iOS

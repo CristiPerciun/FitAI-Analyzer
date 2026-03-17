@@ -37,34 +37,24 @@ const _omit = Object();
 
 final garminSyncNotifierProvider =
     NotifierProvider<GarminSyncNotifier, GarminSyncState>(
-  GarminSyncNotifier.new,
-);
+      GarminSyncNotifier.new,
+    );
 
 class GarminSyncNotifier extends Notifier<GarminSyncState> {
   @override
   GarminSyncState build() => const GarminSyncState();
 
-  Future<bool> syncNow({
-    required String uid,
-    required String trigger,
-  }) async {
+  Future<bool> syncNow({required String uid, required String trigger}) async {
     if (state.isSyncing) return false;
 
     final service = ref.read(garminServiceProvider);
     final isConnected = await service.isConnected(uid);
     if (!isConnected) {
-      state = state.copyWith(
-        error: null,
-        trigger: trigger,
-      );
+      state = state.copyWith(error: null, trigger: trigger);
       return false;
     }
 
-    state = state.copyWith(
-      isSyncing: true,
-      error: null,
-      trigger: trigger,
-    );
+    state = state.copyWith(isSyncing: true, error: null, trigger: trigger);
 
     final result = await service.syncNow(uid: uid);
     if (result['success'] == true) {
@@ -94,7 +84,7 @@ class GarminSyncNotifier extends Notifier<GarminSyncState> {
 
 void _invalidateGarminDependentProviders(Ref ref) {
   ref.invalidate(garminConnectedProvider);
-  ref.invalidate(garminActivitiesStreamProvider);
+  ref.invalidate(activitiesStreamProvider);
   ref.invalidate(dailyHealthStreamProvider);
   ref.invalidate(activitiesByDateProvider);
   ref.invalidate(activityDatesProvider);

@@ -7,8 +7,9 @@ import '../models/longevity_home_package.dart';
 import '../models/rolling_10days_model.dart';
 import '../models/user_profile.dart';
 
-final longevityEngineProvider =
-    Provider<LongevityEngine>((ref) => LongevityEngine());
+final longevityEngineProvider = Provider<LongevityEngine>(
+  (ref) => LongevityEngine(),
+);
 
 /// Engine che aggrega dati da Livello 1 (daily_logs), Livello 2 (rolling_10days)
 /// e Livello 3 (baseline_profile) per creare un unico pacchetto informativo
@@ -55,21 +56,50 @@ class LongevityEngine {
   /// Costruisce il contesto completo per Gemini: profilo, 2 mesi settimanali, 7 giorni dettagliati, note.
   Future<GeminiHomeContext> buildGeminiHomeContext(String uid) async {
     final today = DateTime.now();
-    final sevenDaysAgo = today.subtract(const Duration(days: 7));
     final twoMonthsAgo = today.subtract(const Duration(days: 60));
 
     final results = await Future.wait([
       _getUserProfile(uid),
-      _getDetailedLast7Days(uid, sevenDaysAgo, today),
-      _getWeeklyAggregatesTwoMonths(uid, twoMonthsAgo, today),
+      _getDailyLogsRange(
+        uid,
+        twoMonthsAgo.toIso8601String().split('T')[0],
+        today.toIso8601String().split('T')[0],
+      ),
+      _getActivitiesRange(
+        uid,
+        twoMonthsAgo.toIso8601String().split('T')[0],
+        today.toIso8601String().split('T')[0],
+      ),
+      _getDailyHealthRange(
+        uid,
+        twoMonthsAgo.toIso8601String().split('T')[0],
+        today.toIso8601String().split('T')[0],
+      ),
       _getBaseline(uid),
     ]);
 
+    final dailyLogs = results[1] as List<DailyLogModel>;
+    final activitiesByDate =
+        results[2] as Map<String, List<Map<String, dynamic>>>;
+    final dailyHealth = results[3] as List<Map<String, dynamic>>;
+    final dailyHealthByDate = {
+      for (final health in dailyHealth) (health['date'] as String): health,
+    };
+
     return GeminiHomeContext(
       userProfile: results[0] as UserProfile?,
-      detailed7Days: results[1] as List<DayDetail>,
-      weeklySummary: results[2] as List<WeeklySummary>,
-      baseline: results[3] as BaselineProfileModel?,
+      detailed7Days: _buildDetailedLast7Days(
+        today,
+        dailyLogs: dailyLogs,
+        activitiesByDate: activitiesByDate,
+        dailyHealthByDate: dailyHealthByDate,
+      ),
+      weeklySummary: _buildWeeklyAggregatesTwoMonths(
+        dailyLogs: dailyLogs,
+        activitiesByDate: activitiesByDate,
+        dailyHealth: dailyHealth,
+      ),
+      baseline: results[4] as BaselineProfileModel?,
     );
   }
 
@@ -88,33 +118,46 @@ class LongevityEngine {
     }
   }
 
-  /// Ultimi 7 giorni: attività (daily_logs) + daily_health per ogni giorno.
-  Future<List<DayDetail>> _getDetailedLast7Days(
-      String uid, DateTime start, DateTime end) async {
+  /// Ultimi 7 giorni: `daily_logs` come indice, `activities` per gli allenamenti e `daily_health` per i biometrici.
+  List<DayDetail> _buildDetailedLast7Days(
+    DateTime end, {
+    required List<DailyLogModel> dailyLogs,
+    required Map<String, List<Map<String, dynamic>>> activitiesByDate,
+    required Map<String, Map<String, dynamic>> dailyHealthByDate,
+  }) {
+    final logsByDate = {for (final log in dailyLogs) log.date: log};
     final list = <DayDetail>[];
     for (var d = 0; d < 7; d++) {
       final date = end.subtract(Duration(days: d));
       final dateStr = date.toIso8601String().split('T')[0];
-      final log = await _getDailyLog(uid, dateStr);
-      final health = await _getDailyHealth(uid, dateStr);
-      list.add(DayDetail(date: dateStr, log: log, health: health));
+      list.add(
+        DayDetail(
+          date: dateStr,
+          log: logsByDate[dateStr],
+          activities: activitiesByDate[dateStr] ?? const [],
+          health: dailyHealthByDate[dateStr],
+        ),
+      );
     }
     return list;
   }
 
   /// Medie settimanali per i restanti giorni dei 2 mesi (copre 2 mesi totali).
-  Future<List<WeeklySummary>> _getWeeklyAggregatesTwoMonths(
-      String uid, DateTime start, DateTime end) async {
-    final dailyLogs = await _getDailyLogsRange(
-        uid, start.toIso8601String().split('T')[0], end.toIso8601String().split('T')[0]);
-    final dailyHealth = await _getDailyHealthRange(
-        uid, start.toIso8601String().split('T')[0], end.toIso8601String().split('T')[0]);
-
+  List<WeeklySummary> _buildWeeklyAggregatesTwoMonths({
+    required List<DailyLogModel> dailyLogs,
+    required Map<String, List<Map<String, dynamic>>> activitiesByDate,
+    required List<Map<String, dynamic>> dailyHealth,
+  }) {
     final byWeek = <String, _WeekAccumulator>{};
     for (final log in dailyLogs) {
       final weekKey = _weekKey(DateTime.parse(log.date));
       byWeek.putIfAbsent(weekKey, () => _WeekAccumulator());
-      byWeek[weekKey]!.addLog(log);
+      byWeek[weekKey]!.addNutrition(log);
+    }
+    for (final entry in activitiesByDate.entries) {
+      final weekKey = _weekKey(DateTime.parse(entry.key));
+      byWeek.putIfAbsent(weekKey, () => _WeekAccumulator());
+      byWeek[weekKey]!.addActivities(entry.value);
     }
     for (final h in dailyHealth) {
       final date = h['date'] as String?;
@@ -134,25 +177,11 @@ class LongevityEngine {
     return monday.toIso8601String().split('T')[0];
   }
 
-  Future<DailyLogModel?> _getDailyLog(String uid, String dateStr) async {
-    final doc = await _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('daily_logs')
-        .doc(dateStr)
-        .get();
-    if (!doc.exists || doc.data() == null) return null;
-    final data = doc.data()!;
-    return DailyLogModel.fromJson({
-      ...data,
-      'date': doc.id,
-      'goal_today_ia': data['goal_today_ia'] ?? data['goal_today'] ?? '',
-      'timestamp': data['timestamp'] ?? Timestamp.now(),
-    });
-  }
-
   Future<List<DailyLogModel>> _getDailyLogsRange(
-      String uid, String startStr, String endStr) async {
+    String uid,
+    String startStr,
+    String endStr,
+  ) async {
     final snapshot = await _firestore
         .collection('users')
         .doc(uid)
@@ -171,19 +200,33 @@ class LongevityEngine {
     }).toList();
   }
 
-  Future<Map<String, dynamic>?> _getDailyHealth(String uid, String dateStr) async {
-    final doc = await _firestore
+  Future<Map<String, List<Map<String, dynamic>>>> _getActivitiesRange(
+    String uid,
+    String startStr,
+    String endStr,
+  ) async {
+    final snapshot = await _firestore
         .collection('users')
         .doc(uid)
-        .collection('daily_health')
-        .doc(dateStr)
+        .collection('activities')
+        .where('dateKey', isGreaterThanOrEqualTo: startStr)
+        .where('dateKey', isLessThanOrEqualTo: endStr)
         .get();
-    if (!doc.exists || doc.data() == null) return null;
-    return {...doc.data()!, 'date': doc.id};
+    final byDate = <String, List<Map<String, dynamic>>>{};
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      final dateKey = data['dateKey']?.toString();
+      if (dateKey == null || dateKey.isEmpty) continue;
+      byDate.putIfAbsent(dateKey, () => []).add({'id': doc.id, ...data});
+    }
+    return byDate;
   }
 
   Future<List<Map<String, dynamic>>> _getDailyHealthRange(
-      String uid, String startStr, String endStr) async {
+    String uid,
+    String startStr,
+    String endStr,
+  ) async {
     final snapshot = await _firestore
         .collection('users')
         .doc(uid)
@@ -196,7 +239,9 @@ class LongevityEngine {
 
   String _buildLongevityPlanPromptFromContext(GeminiHomeContext ctx) {
     final sb = StringBuffer();
-    sb.writeln('# CONTESTO PER ANALISI HOME - Longevity Path e Obiettivi Settimanali');
+    sb.writeln(
+      '# CONTESTO PER ANALISI HOME - Longevity Path e Obiettivi Settimanali',
+    );
     sb.writeln();
     sb.writeln('## 1. PROFILO UTENTE (onboarding)');
     sb.writeln(_formatUserProfile(ctx.userProfile));
@@ -204,23 +249,33 @@ class LongevityEngine {
     sb.writeln('## 2. RIASSUNTO 2 MESI (medie settimanali)');
     sb.writeln(_formatWeeklySummary(ctx.weeklySummary));
     sb.writeln();
-    sb.writeln('## 3. DATI DETTAGLIATI ULTIMI 7 GIORNI (attività + daily_health)');
+    sb.writeln(
+      '## 3. DATI DETTAGLIATI ULTIMI 7 GIORNI (attività + daily_health)',
+    );
     sb.writeln(_formatDetailed7Days(ctx.detailed7Days));
     sb.writeln();
     sb.writeln('## 4. NOTE E OBIETTIVI');
     sb.writeln(_formatNotes(ctx.baseline));
     sb.writeln();
     sb.writeln('---');
-    sb.writeln('OBIETTIVO PRINCIPALE DA RISPETTARE: ${_mainGoalLabel(ctx.userProfile?.mainGoal ?? '')}');
+    sb.writeln(
+      'OBIETTIVO PRINCIPALE DA RISPETTARE: ${_mainGoalLabel(ctx.userProfile?.mainGoal ?? '')}',
+    );
     sb.writeln();
-    sb.writeln('Sei un esperto di longevità (Peter Attia, Outlive). Genera un piano di longevità che:');
+    sb.writeln(
+      'Sei un esperto di longevità (Peter Attia, Outlive). Genera un piano di longevità che:',
+    );
     sb.writeln('1. Metti al centro l\'obiettivo principale dell\'utente');
-    sb.writeln('2. 4 micro-obiettivi per OGGI (Cuore, Forza, Alimentazione, Recupero)');
+    sb.writeln(
+      '2. 4 micro-obiettivi per OGGI (Cuore, Forza, Alimentazione, Recupero)',
+    );
     sb.writeln('3. 1 macro-obiettivo SETTIMANALE (7 giorni)');
     sb.writeln('4. 1 consiglio STRATEGICO a lungo termine');
     sb.writeln();
     sb.writeln('Rispondi SOLO in JSON:');
-    sb.writeln('{"cuore":"...","forza":"...","alimentazione":"...","recupero":"...","weekly_sprint":"...","strategic_advice":"..."}');
+    sb.writeln(
+      '{"cuore":"...","forza":"...","alimentazione":"...","recupero":"...","weekly_sprint":"...","strategic_advice":"..."}',
+    );
     return sb.toString();
   }
 
@@ -245,10 +300,12 @@ class LongevityEngine {
     if (weeks.isEmpty) return 'Nessun dato.';
     final sb = StringBuffer();
     for (final w in weeks) {
-      sb.writeln('Settimana ${w.weekStart}: km_tot=${w.totalDistanceKm.toStringAsFixed(1)}, '
-          'workouts=${w.totalWorkouts}, passi_med=${w.avgSteps.round()}, '
-          'sonno_med=${w.avgSleepScore?.round() ?? 0}, kcal_med=${w.avgCalories.round()}, '
-          'VO2Max=${w.vo2Max?.toStringAsFixed(1) ?? "—"}, FitnessAge=${w.fitnessAge?.toStringAsFixed(0) ?? "—"}');
+      sb.writeln(
+        'Settimana ${w.weekStart}: km_tot=${w.totalDistanceKm.toStringAsFixed(1)}, '
+        'workouts=${w.totalWorkouts}, passi_med=${w.avgSteps.round()}, '
+        'sonno_med=${w.avgSleepScore?.round() ?? 0}, kcal_med=${w.avgCalories.round()}, '
+        'VO2Max=${w.vo2Max?.toStringAsFixed(1) ?? "—"}, FitnessAge=${w.fitnessAge?.toStringAsFixed(0) ?? "—"}',
+      );
     }
     return sb.toString();
   }
@@ -258,13 +315,24 @@ class LongevityEngine {
     for (final d in days) {
       sb.writeln('--- ${d.date} ---');
       if (d.log != null) {
-        final acts = d.log!.activitiesForAggregation;
-        sb.writeln('Attività: ${acts.length} | Bruciate: ${d.log!.totalBurnedKcalForAggregation.toStringAsFixed(0)} kcal');
+        final acts = d.activities;
+        sb.writeln(
+          'Attività: ${acts.length} | Bruciate: ${d.log!.totalBurnedKcalForAggregation.toStringAsFixed(0)} kcal',
+        );
         sb.writeln('Nutrizione: ${_formatNut(d.log!.nutritionForAi)}');
         for (final a in acts) {
-          final type = a['activityTypeKey'] ?? a['sport_type'] ?? a['type'] ?? '?';
-          final dist = (a['distance'] as num?)?.toDouble();
-          sb.writeln('  - $type: ${dist != null ? "${(dist / 1000).toStringAsFixed(1)} km" : ""}');
+          final type =
+              a['activityType'] ??
+              a['activityTypeKey'] ??
+              a['sport_type'] ??
+              a['type'] ??
+              '?';
+          final distKm =
+              (a['distanceKm'] as num?)?.toDouble() ??
+              (((a['distance'] as num?)?.toDouble() ?? 0) / 1000);
+          sb.writeln(
+            '  - $type: ${distKm > 0 ? "${distKm.toStringAsFixed(1)} km" : ""}',
+          );
         }
       }
       if (d.health != null) {
@@ -274,11 +342,14 @@ class LongevityEngine {
         final sleep = d.health!['sleep'] as Map<String, dynamic>?;
         final sleepScore = sleep?['sleepScore'] ?? sleep?['overallSleepScore'];
         final maxMetrics = d.health!['max_metrics'] as Map<String, dynamic>?;
-        final vo2max = maxMetrics?['vo2Max'] ?? maxMetrics?['maxVo2'] ?? stats?['vo2Max'];
+        final vo2max =
+            maxMetrics?['vo2Max'] ?? maxMetrics?['maxVo2'] ?? stats?['vo2Max'];
         final fitnessAge = d.health!['fitness_age'] as Map<String, dynamic>?;
         final fitnessAgeVal = fitnessAge?['fitnessAge'] ?? fitnessAge?['age'];
-        sb.writeln('Passi: $steps | Body Battery: $bb | Sonno: $sleepScore | '
-            'VO2Max: ${vo2max ?? "—"} | Fitness Age: ${fitnessAgeVal ?? "—"}');
+        sb.writeln(
+          'Passi: $steps | Body Battery: $bb | Sonno: $sleepScore | '
+          'VO2Max: ${vo2max ?? "—"} | Fitness Age: ${fitnessAgeVal ?? "—"}',
+        );
       }
       sb.writeln();
     }
@@ -362,9 +433,15 @@ class GeminiHomeContext {
 class DayDetail {
   final String date;
   final DailyLogModel? log;
+  final List<Map<String, dynamic>> activities;
   final Map<String, dynamic>? health;
 
-  const DayDetail({required this.date, this.log, this.health});
+  const DayDetail({
+    required this.date,
+    this.log,
+    this.activities = const [],
+    this.health,
+  });
 }
 
 /// Riepilogo settimanale aggregato (medie/ totali per settimana).
@@ -399,18 +476,24 @@ class _WeekAccumulator {
   double? latestVo2Max;
   double? latestFitnessAge;
 
-  void addLog(DailyLogModel log) {
-    final acts = log.activitiesForAggregation;
-    workouts += acts.length;
-    for (final a in acts) {
-      final d = (a['distance'] as num?)?.toDouble();
-      if (d != null && d > 0) {
-        distances.add(d < 100 ? d * 1000 : d);
-      }
-    }
+  void addNutrition(DailyLogModel log) {
     final nut = log.nutritionForAi;
     final cal = nut['total_calories'] ?? nut['total_kcal'];
     if (cal != null) calories.add((cal as num).toDouble());
+  }
+
+  void addActivities(List<Map<String, dynamic>> acts) {
+    workouts += acts.length;
+    for (final a in acts) {
+      final distanceKm = (a['distanceKm'] as num?)?.toDouble();
+      final legacyDistance = (a['distance'] as num?)?.toDouble();
+      final meters = distanceKm != null && distanceKm > 0
+          ? distanceKm * 1000
+          : legacyDistance != null && legacyDistance > 0
+          ? (legacyDistance < 100 ? legacyDistance * 1000 : legacyDistance)
+          : null;
+      if (meters != null && meters > 0) distances.add(meters);
+    }
   }
 
   void addHealth(Map<String, dynamic> h) {
@@ -426,7 +509,8 @@ class _WeekAccumulator {
     }
     final maxMetrics = h['max_metrics'] as Map<String, dynamic>?;
     if (maxMetrics != null) {
-      final v = maxMetrics['vo2Max'] ?? maxMetrics['maxVo2'] ?? stats?['vo2Max'];
+      final v =
+          maxMetrics['vo2Max'] ?? maxMetrics['maxVo2'] ?? stats?['vo2Max'];
       if (v != null) latestVo2Max = (v as num).toDouble();
     }
     final fitnessAge = h['fitness_age'] as Map<String, dynamic>?;
@@ -437,10 +521,18 @@ class _WeekAccumulator {
   }
 
   WeeklySummary toSummary(String weekStart) {
-    final distKm = distances.isEmpty ? 0.0 : distances.reduce((a, b) => a + b) / 1000;
-    final avgSteps = steps.isEmpty ? 0.0 : steps.reduce((a, b) => a + b) / steps.length;
-    final avgSleep = sleepScores.isEmpty ? null : sleepScores.reduce((a, b) => a + b) / sleepScores.length;
-    final avgCal = calories.isEmpty ? 0.0 : calories.reduce((a, b) => a + b) / calories.length;
+    final distKm = distances.isEmpty
+        ? 0.0
+        : distances.reduce((a, b) => a + b) / 1000;
+    final avgSteps = steps.isEmpty
+        ? 0.0
+        : steps.reduce((a, b) => a + b) / steps.length;
+    final avgSleep = sleepScores.isEmpty
+        ? null
+        : sleepScores.reduce((a, b) => a + b) / sleepScores.length;
+    final avgCal = calories.isEmpty
+        ? 0.0
+        : calories.reduce((a, b) => a + b) / calories.length;
     return WeeklySummary(
       weekStart: weekStart,
       totalDistanceKm: distKm,

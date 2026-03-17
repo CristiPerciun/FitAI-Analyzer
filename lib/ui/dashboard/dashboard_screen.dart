@@ -24,13 +24,15 @@ class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
   Future<void> _onSyncStrava(BuildContext context, WidgetRef ref) async {
-    await ref.read(authNotifierProvider.notifier).startOAuth(
-      'strava',
-      onSuccess: () {
-        ref.invalidate(healthDataStreamProvider);
-        ref.read(selectedTabIndexProvider.notifier).state = 1;
-      },
-    );
+    await ref
+        .read(authNotifierProvider.notifier)
+        .startOAuth(
+          'strava',
+          onSuccess: () {
+            ref.invalidate(activitiesStreamProvider);
+            ref.read(selectedTabIndexProvider.notifier).state = 1;
+          },
+        );
   }
 
   Future<void> _onAnalisiAI(BuildContext context, WidgetRef ref) async {
@@ -48,6 +50,7 @@ class DashboardScreen extends ConsumerWidget {
       final saved = await showGeminiApiKeyDialog(context, ref);
       if (!saved || !context.mounted) return;
     }
+    if (!context.mounted) return;
 
     showDialog(
       context: context,
@@ -65,8 +68,12 @@ class DashboardScreen extends ConsumerWidget {
     );
 
     try {
-      final contextStr = await ref.read(aiPromptServiceProvider).buildFullAIContext(uid);
-      final response = await ref.read(geminiServiceProvider).analyzeFitnessContext(contextStr);
+      final contextStr = await ref
+          .read(aiPromptServiceProvider)
+          .buildFullAIContext(uid);
+      final response = await ref
+          .read(geminiServiceProvider)
+          .analyzeFitnessContext(contextStr);
 
       if (context.mounted) {
         Navigator.of(context).pop(); // chiudi loading
@@ -74,9 +81,7 @@ class DashboardScreen extends ConsumerWidget {
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('Analisi AI'),
-            content: SingleChildScrollView(
-              child: SelectableText(response),
-            ),
+            content: SingleChildScrollView(child: SelectableText(response)),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(ctx).pop(),
@@ -97,11 +102,13 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final uid = ref.watch(authNotifierProvider).user?.uid;
-    final stravaConnected = ref.watch(stravaConnectedProvider).valueOrNull ?? false;
-    final isGarminSyncing =
-        ref.watch(garminSyncNotifierProvider.select((s) => s.isSyncing));
+    final stravaConnected =
+        ref.watch(stravaConnectedProvider).valueOrNull ?? false;
+    final isGarminSyncing = ref.watch(
+      garminSyncNotifierProvider.select((s) => s.isSyncing),
+    );
 
-    ref.listen(healthDataStreamProvider, (prev, next) {
+    ref.listen(activitiesStreamProvider, (prev, next) {
       next.whenOrNull(
         error: (e, _) {
           if (context.mounted) showErrorDialog(context, e.toString());
@@ -110,9 +117,7 @@ class DashboardScreen extends ConsumerWidget {
     });
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Allenamenti'),
-      ),
+      appBar: AppBar(title: const Text('Allenamenti')),
       body: SafeArea(
         child: Column(
           children: [
@@ -154,10 +159,9 @@ class DashboardScreen extends ConsumerWidget {
 
   Future<void> _onRefreshGarmin(WidgetRef ref, String? uid) async {
     if (uid == null) return;
-    await ref.read(garminSyncNotifierProvider.notifier).syncNow(
-          uid: uid,
-          trigger: 'dashboard_pull_to_refresh',
-        );
+    await ref
+        .read(garminSyncNotifierProvider.notifier)
+        .syncNow(uid: uid, trigger: 'dashboard_pull_to_refresh');
   }
 }
 
@@ -190,8 +194,8 @@ class _ActivitiesSection extends ConsumerWidget {
     final displayDates = selectedDate == null
         ? [todayStr]
         : selectedDate == dateFilterAll
-            ? dates
-            : [selectedDate];
+        ? dates
+        : [selectedDate];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -217,9 +221,9 @@ class _ActivitiesSection extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
             'Allenamenti',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
         ),
         const SizedBox(height: 12),
@@ -244,11 +248,14 @@ class _ActivitiesSection extends ConsumerWidget {
                 ),
                 ...activities.map((a) {
                   final activity = StravaActivity.fromFitnessData(a);
-                  final isStrava = a.source == 'strava';
+                  final detailId = a.detailActivityId;
                   return CompactActivityCard(
                     activity: a,
-                    onTap: isStrava && activity.id > 0
-                        ? () => _showStravaDetailDialog(context, activity.id)
+                    onTap:
+                        a.containsStravaData &&
+                            detailId != null &&
+                            activity.id > 0
+                        ? () => _showStravaDetailDialog(context, detailId)
                         : null,
                   );
                 }),
@@ -356,16 +363,16 @@ class _AnalisiAIButton extends StatelessWidget {
                       Text(
                         'Analisi AI',
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              color: cardTheme.contentColor,
-                              fontWeight: FontWeight.bold,
-                            ),
+                          color: cardTheme.contentColor,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         'Piano settimanale personalizzato con Gemini',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: cardTheme.contentColorMuted,
-                            ),
+                          color: cardTheme.contentColorMuted,
+                        ),
                       ),
                     ],
                   ),
@@ -447,7 +454,9 @@ class _StravaDetailLoadingDialogState
                 ),
                 const SizedBox(height: 8),
                 ..._detailed!.laps!.take(5).map((lap) {
-                  final m = lap is Map ? lap as Map<String, dynamic> : <String, dynamic>{};
+                  final m = lap is Map
+                      ? lap as Map<String, dynamic>
+                      : <String, dynamic>{};
                   final distM = (m['distance'] as num?)?.toDouble() ?? 0;
                   final speed = (m['average_speed'] as num?)?.toDouble();
                   final pace = speed != null && speed > 0
@@ -482,4 +491,3 @@ class _StravaDetailLoadingDialogState
     );
   }
 }
-

@@ -19,6 +19,15 @@
 - **API Garmin**: `get_stats`, `get_sleep_data`, `get_hrv_data`, `get_body_battery`, `get_max_metrics`, `get_fitnessage_data`
 - **Destinazione**: `users/{uid}/daily_health/{date}`
 - **Campi**: stats, sleep, hrv, body_battery, max_metrics (VO2Max), fitness_age
+- **Indice**: il server aggiorna anche `daily_logs/{date}.health_ref`
+
+## 1b. Cattura attivita unificate
+
+- **API Garmin**: `get_activities(0, 20)`
+- **Destinazione**: `users/{uid}/activities/{id}`
+- **Merge**: lookup fuzzy su `startTime +/- 2 min` contro i documenti gia presenti per il giorno
+- **Esito**: `source = garmin` se nuova attivita, `source = dual` se fusa con una attivita Strava gia salvata
+- **Indice**: aggiornamento di `daily_logs/{date}.activity_ids`
 
 ---
 
@@ -34,7 +43,7 @@
 
 - **Dove**: HomeScreen, DashboardScreen
 - **Azione**: `RefreshIndicator.onRefresh` → `GarminService.syncNow()` → `/garmin/sync-vitals`
-- **Post-sync**: invalidazione `dailyHealthStreamProvider`, `longevityHomePackageProvider`, ecc.
+- **Post-sync**: invalidazione `dailyHealthStreamProvider`, `activitiesStreamProvider`, `longevityHomePackageProvider`, ecc.
 
 ---
 
@@ -51,7 +60,7 @@
 - **Struttura prompt Gemini**:
   1. Profilo utente (onboarding)
   2. Riassunto 2 mesi (medie settimanali: km, workouts, passi, sonno, VO2Max, Fitness Age)
-  3. Dettaglio 7 giorni (attività + daily_health per giorno)
+  3. Dettaglio 7 giorni (`daily_logs` indice + `activities` + `daily_health`)
   4. Note e obiettivi (baseline)
 - **Focus**: obiettivo principale utente (mainGoal)
 - **File**: `lib/services/longevity_engine.dart` → `buildGeminiHomeContext`, `buildLongevityPlanPrompt`

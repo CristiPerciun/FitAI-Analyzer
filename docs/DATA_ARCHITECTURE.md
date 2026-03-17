@@ -1,107 +1,146 @@
 # Architettura dati – Scrittura e lettura
 
-Riepilogo di dove vengono scritti e letti i dati in FitAI Analyzer.
+Riepilogo della gerarchia Firestore finale usata da FitAI Analyzer.
 
 ---
 
 ## 1. Collezioni Firestore (sotto `users/{uid}/`)
 
-### 1.1 Strategia Tre Livelli (nutrizione)
+### 1.1 Strategia Tre Livelli
 
 | Collezione | Percorso | Scrittore | Lettore |
 |------------|----------|-----------|---------|
-| Daily logs | `daily_logs/{date}` | StravaService, NutritionService, garmin-sync-server | `DailyLogModel`, `LongevityEngine`, `AggregationService` |
-| Meals | `daily_logs/{date}/meals/{mealId}` | NutritionService | `mealsForDayStream`, `NutritionService` |
-| Rolling 10 days | `rolling_10days/current` | AggregationService | `Rolling10DaysModel`, `LongevityEngine` |
-| Baseline profile | `baseline_profile/main` | AggregationService | `BaselineProfileModel`, `LongevityEngine` |
+| Daily logs | `daily_logs/{date}` | `NutritionService`, `StravaService`, `garmin-sync-server` | `DailyLogModel`, `LongevityEngine`, `AggregationService`, `AiPromptService` |
+| Meals | `daily_logs/{date}/meals/{mealId}` | `NutritionService` | `mealsForDayStream`, `NutritionService` |
+| Rolling 10 days | `rolling_10days/current` | `AggregationService` | `Rolling10DaysModel`, `LongevityEngine`, `AiPromptService` |
+| Baseline profile | `baseline_profile/main` | `AggregationService` | `BaselineProfileModel`, `LongevityEngine`, `AiPromptService` |
 
-### 1.2 Collezioni aggiornate (daily_health, activities, ai_insights)
-
-| Collezione | Percorso | Scrittore | Lettore |
-|------------|----------|-----------|---------|
-| Daily health | `daily_health/{date}` | garmin-sync-server | `dailyHealthStreamProvider`, `LongevityEngine`, `GarminDailyStats`, `LongevityHeader` |
-| Activities | `activities/{id}` | (futuro) Server + FitAI | — |
-| AI insights | `ai_insights/{date}` | (futuro) FitAI | — |
-
-### 1.3 Garmin
+### 1.2 Collezioni operative aggiornate
 
 | Collezione | Percorso | Scrittore | Lettore |
 |------------|----------|-----------|---------|
-| Garmin activities | `garmin_activities/{activityId}` | garmin-sync-server | `garminActivitiesStreamProvider`, `GarminService` |
-| Garmin daily | `garmin_daily/{date}` | garmin-sync-server | `garminDailyProvider` |
+| Daily health | `daily_health/{date}` | `garmin-sync-server` | `dailyHealthStreamProvider`, `LongevityEngine`, `GarminDailyStats`, `LongevityHeader`, `AggregationService` |
+| Activities | `activities/{id}` | `garmin-sync-server`, `StravaService` | `activitiesStreamProvider`, `GarminService`, `DashboardScreen`, `LongevityEngine`, `AggregationService` |
+| AI insights | `ai_insights/{date}` | FitAI | dedicato prompt/UI |
 
-### 1.4 Strava / Health
-
-| Collezione | Percorso | Scrittore | Lettore |
-|------------|----------|-----------|---------|
-| Health data | `health_data` | StravaService | `healthDataStreamProvider` |
-
-### 1.5 Profilo
+### 1.3 Profilo
 
 | Collezione | Percorso | Scrittore | Lettore |
 |------------|----------|-----------|---------|
-| Profile | `profile/profile` | UserProfileNotifier | `userProfileStreamProvider` |
+| Profile | `profile/profile` | `UserProfileNotifier` | `userProfileStreamProvider`, `LongevityEngine` |
 
 ---
 
-## 2. Flusso scrittura per tipo di dato
+## 2. Struttura dei documenti chiave
 
-### Nutrizione (foto piatto → Gemini)
+### `daily_logs/{date}`
 
+Documento indice giornaliero. Contiene:
+- `date`, `timestamp`
+- `activity_ids`: lista di document ID della collection `activities`
+- `health_ref`: riferimento logico a `daily_health/{date}`
+- `nutrition_summary`
+- `nutrition_gemini` come fallback legacy
+- `total_burned_kcal`
+- `weight_kg`, `goal_today_ia`, `user_notes`
+
+`daily_logs` non e piu la sorgente canonica delle attivita: serve come indice giornaliero per UI e AI.
+
+### `activities/{id}`
+
+Documento attivita unificato. Campi principali:
+- `source`: `garmin`, `strava` o `dual`
+- `date`, `startTime`, `dateKey`
+- `activityType`, `activityName`
+- `distanceKm`, `activeMinutes`, `elapsedMinutes`, `calories`
+- `avgHeartrate`, `maxHeartrate`, `avgSpeedKmh`, `elevationGainM`
+- `hasGarmin`, `hasStrava`
+- `garminActivityId`, `stravaActivityId`
+- `garmin_raw`, `strava_raw`
+
+### `daily_health/{date}`
+
+Biometrici Garmin del giorno:
+- `stats`
+- `sleep`
+- `hrv`
+- `body_battery`
+- `max_metrics`
+- `fitness_age`
+
+---
+
+## 3. Flussi di scrittura
+
+### Nutrizione
+
+```text
+[Gemini analizza foto] -> NutritionService
+    -> daily_logs/{date}/meals/{mealId}
+    -> daily_logs/{date}.nutrition_summary
+    -> AggregationService.updateRolling10DaysAndBaseline()
 ```
-[Gemini analizza foto] → NutritionService
-    → meals/{mealId} (Livello 1)
-    → daily_logs/{date}.nutrition_summary (sintesi)
-    → AggregationService.updateRolling10DaysAndBaseline()
-        → rolling_10days/current
-        → baseline_profile/main (ogni 10 giorni)
+
+### Attivita Strava
+
+```text
+[Strava OAuth] -> StravaService
+    -> users/{uid}/activities/{id}
+    -> merge fuzzy con attivita Garmin compatibile (+/- 2 min)
+    -> daily_logs/{date}.activity_ids
 ```
 
-### Attività Strava
+### Attivita Garmin + biometrici
 
-```
-[Strava OAuth] → StravaService
-    → health_data
-    → daily_logs/{date}.strava_activities
-    → AggregationService
-```
-
-### Attività Garmin + biometrici
-
-```
+```text
 [garmin-sync-server]
-    → garmin_activities/{id}
-    → daily_logs/{date}.garmin_activities
-    → garmin_daily/{date}
-    → daily_health/{date} (stats, sleep, hrv, body_battery, max_metrics, fitness_age)
-```
-
-### Prompt AI (LongevityEngine)
-
-```
-[buildGeminiHomeContext]
-    Lettura: profile, daily_logs (7 gg + 2 mesi), daily_health (7 gg + 2 mesi), baseline_profile
-    → Costruzione prompt per Gemini
-    → buildLongevityPlanPrompt
+    -> users/{uid}/daily_health/{date}
+    -> users/{uid}/activities/{id}
+    -> merge fuzzy con attivita Strava compatibile (+/- 2 min)
+    -> daily_logs/{date}.activity_ids
+    -> daily_logs/{date}.health_ref
 ```
 
 ---
 
-## 3. File di riferimento per lettura/scrittura
+## 4. Flussi di lettura
 
-| Servizio | Lettura | Scrittura |
-|----------|---------|-----------|
+### UI Flutter
+
+```text
+activitiesStreamProvider -> users/{uid}/activities
+dailyHealthStreamProvider -> users/{uid}/daily_health
+activitiesByDateProvider -> grouping client-side di activities gia unificate
+```
+
+### Prompt AI
+
+```text
+LongevityEngine / AggregationService
+    -> daily_logs per nutrizione, goal, note, peso
+    -> activities per allenamenti
+    -> daily_health per biometrici
+    -> rolling_10days / baseline_profile per aggregati
+```
+
+---
+
+## 5. File di riferimento
+
+| File/Servizio | Legge | Scrive |
+|---------------|-------|--------|
 | `NutritionService` | meals, daily_logs | meals, nutrition_summary |
-| `StravaService` | — | health_data, strava_activities |
-| `AggregationService` | daily_logs | rolling_10days, baseline_profile |
-| `LongevityEngine` | daily_logs, daily_health, rolling_10days, baseline_profile, profile | — |
-| `GarminService` | garmin_activities, garmin_daily | — |
-| `data_sync_notifier` | health_data, daily_health, garmin_activities | — |
+| `StravaService` | activities (match per slot) | activities, daily_logs.activity_ids |
+| `garmin-sync-server/main.py` | activities (match per slot) | daily_health, activities, daily_logs.activity_ids, daily_logs.health_ref |
+| `AggregationService` | daily_logs, activities, daily_health | rolling_10days, baseline_profile |
+| `LongevityEngine` | daily_logs, activities, daily_health, rolling_10days, baseline_profile, profile | — |
+| `GarminService` | activities | endpoint server |
+| `data_sync_notifier` | activities, daily_health | — |
 
 ---
 
-## 4. Regole Firestore
+## 6. Regole Firestore
 
-Le regole in `firestore.rules` permettono: `read, write` su `users/{userId}/{document=**}` solo se `request.auth.uid == userId`.
+`firestore.rules` permette `read, write` su `users/{userId}/{document=**}` solo se `request.auth.uid == userId`.
 
-Il garmin-sync-server usa **Admin SDK** (credenziali di servizio) e bypassa le regole utente.
+Il `garmin-sync-server` usa Admin SDK e bypassa le regole utente.
