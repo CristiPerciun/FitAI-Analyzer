@@ -1,6 +1,7 @@
 import 'package:fitai_analyzer/app.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
+import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/services/garmin_service.dart';
 import 'package:fitai_analyzer/providers/strava_sync_status_notifier.dart';
@@ -175,6 +176,16 @@ class ImpostazioniScreen extends ConsumerWidget {
       scaffoldMessengerKey.currentState?.showSnackBar(
         const SnackBar(content: Text('✅ Garmin collegato!')),
       );
+      // Sync vitals anche al login (attivita + biometrici oggi/ieri)
+      await ref.read(garminSyncNotifierProvider.notifier).syncNow(
+            uid: uid,
+            trigger: 'garmin_login',
+          );
+      if (context.mounted) {
+        ref.invalidate(activitiesStreamProvider);
+        ref.invalidate(dailyHealthStreamProvider);
+        ref.invalidate(activitiesByDateProvider);
+      }
     }
   }
 
