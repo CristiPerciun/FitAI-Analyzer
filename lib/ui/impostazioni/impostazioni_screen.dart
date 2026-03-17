@@ -2,6 +2,7 @@ import 'package:fitai_analyzer/app.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
+import 'package:fitai_analyzer/services/garmin_service.dart';
 import 'package:fitai_analyzer/providers/strava_sync_status_notifier.dart';
 import 'package:fitai_analyzer/providers/theme_mode_provider.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
@@ -92,6 +93,17 @@ class ImpostazioniScreen extends ConsumerWidget {
                 : 'Collega account Garmin Connect',
             onTap: () => _onConnectGarmin(context, ref),
           ),
+          if (isGarminConnected)
+            _SettingsTile(
+              leading: Icon(
+                Icons.link_off,
+                color: Theme.of(context).colorScheme.outline,
+                size: 24,
+              ),
+              title: 'Disconnetti Garmin',
+              subtitle: 'Scollega account e chiudi sessione sul server',
+              onTap: () => _onDisconnectGarmin(context, ref),
+            ),
           const Divider(height: 24),
           _ThemeModeTile(),
           const Divider(height: 24),
@@ -154,8 +166,57 @@ class ImpostazioniScreen extends ConsumerWidget {
     if (result == true && context.mounted) {
       ref.invalidate(garminConnectedProvider);
       ref.invalidate(garminActivitiesStreamProvider);
+      ref.invalidate(dailyHealthStreamProvider);
       scaffoldMessengerKey.currentState?.showSnackBar(
         const SnackBar(content: Text('✅ Garmin collegato!')),
+      );
+    }
+  }
+
+  Future<void> _onDisconnectGarmin(BuildContext context, WidgetRef ref) async {
+    final uid = ref.read(authNotifierProvider).user?.uid;
+    if (uid == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Disconnetti Garmin'),
+        content: const Text(
+          'Vuoi scollegare l\'account Garmin? I token verranno eliminati dal server e la sessione chiusa.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Annulla'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            child: const Text('Scollega'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final result = await ref.read(garminServiceProvider).disconnect(uid: uid);
+    if (context.mounted) {
+      ref.invalidate(garminConnectedProvider);
+      ref.invalidate(garminActivitiesStreamProvider);
+      ref.invalidate(dailyHealthStreamProvider);
+      ref.invalidate(activitiesByDateProvider);
+      ref.invalidate(longevityHomePackageProvider);
+      scaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text(result['success'] == true
+              ? '✅ Garmin scollegato.'
+              : '❌ ${result['message']}'),
+          backgroundColor: result['success'] == true
+              ? null
+              : Theme.of(context).colorScheme.error,
+        ),
       );
     }
   }

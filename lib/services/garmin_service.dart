@@ -99,6 +99,36 @@ class GarminService {
     }
   }
 
+  /// Scollega l'account Garmin: elimina token sul server e aggiorna Firestore.
+  Future<Map<String, dynamic>> disconnect({required String uid}) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$garminServerUrl/garmin/disconnect'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'uid': uid}),
+      ).timeout(const Duration(seconds: 30));
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200 && data['success'] == true) {
+        return {'success': true, 'message': data['message']?.toString() ?? 'Garmin scollegato.'};
+      }
+      return {
+        'success': false,
+        'message': data['detail']?.toString() ?? 'Disconnessione non riuscita.',
+      };
+    } on TimeoutException {
+      return {'success': false, 'message': 'Server non risponde. Riprova.'};
+    } on Exception catch (e) {
+      final msg = e.toString().toLowerCase();
+      return {
+        'success': false,
+        'message': msg.contains('socket') || msg.contains('connection')
+            ? 'Server non raggiungibile.'
+            : 'Errore di rete.',
+      };
+    }
+  }
+
   /// Richiede una sync immediata al mini-server usando i token Garmin gia' salvati.
   /// Usa /garmin/sync-vitals (oggi + ieri) per pull-to-refresh leggero.
   Future<Map<String, dynamic>> syncNow({

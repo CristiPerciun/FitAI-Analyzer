@@ -32,6 +32,7 @@ FitAI Analyzer legge i dati Garmin da Firestore scritti dal **garmin-sync-server
 | `POST /garmin/connect` | `{ uid, email, password }` | Login Garmin + sync iniziale |
 | `POST /garmin/sync` | `{ uid }` | Sync completa (attività + 14 giorni biometrici) |
 | `POST /garmin/sync-vitals` | `{ uid }` | Sync leggera: solo oggi e ieri (pull-to-refresh) |
+| `POST /garmin/disconnect` | `{ uid }` | Scollega account: elimina token, imposta garmin_linked=false |
 
 ## Lettura nell'app Flutter
 
