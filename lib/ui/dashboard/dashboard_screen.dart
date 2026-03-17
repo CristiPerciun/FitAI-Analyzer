@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:fitai_analyzer/models/fitness_data.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart';
@@ -13,6 +14,7 @@ import 'package:fitai_analyzer/ui/widgets/date_filter_chips.dart';
 import 'package:fitai_analyzer/utils/date_utils.dart' show dateFilterAll;
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
+import 'package:fitai_analyzer/ui/widgets/garmin_activity_detail_card.dart';
 import 'package:fitai_analyzer/ui/widgets/strava_activity_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -249,14 +251,22 @@ class _ActivitiesSection extends ConsumerWidget {
                 ...activities.map((a) {
                   final activity = StravaActivity.fromFitnessData(a);
                   final detailId = a.detailActivityId;
+                  final hasStravaDetail = a.containsStravaData &&
+                      detailId != null &&
+                      activity.id > 0;
+                  final hasGarminData = a.source == 'garmin' ||
+                      a.source == 'dual' ||
+                      a.hasGarmin ||
+                      a.garminRaw != null;
+                  VoidCallback? onTap;
+                  if (hasStravaDetail) {
+                    onTap = () => _showStravaDetailDialog(context, detailId);
+                  } else if (hasGarminData) {
+                    onTap = () => _showGarminDetailDialog(context, a);
+                  }
                   return CompactActivityCard(
                     activity: a,
-                    onTap:
-                        a.containsStravaData &&
-                            detailId != null &&
-                            activity.id > 0
-                        ? () => _showStravaDetailDialog(context, detailId)
-                        : null,
+                    onTap: onTap,
                   );
                 }),
               ],
@@ -272,6 +282,30 @@ class _ActivitiesSection extends ConsumerWidget {
       context: context,
       barrierDismissible: true,
       builder: (ctx) => _StravaDetailLoadingDialog(activityId: activityId),
+    );
+  }
+
+  void _showGarminDetailDialog(BuildContext context, FitnessData activity) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          activity.stravaActivityName ??
+              (activity.stravaActivityType.isNotEmpty
+                  ? activity.stravaActivityType
+                  : 'Attività Garmin'),
+        ),
+        content: SingleChildScrollView(
+          child: GarminActivityDetailCard(activity: activity),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Chiudi'),
+          ),
+        ],
+      ),
     );
   }
 }
