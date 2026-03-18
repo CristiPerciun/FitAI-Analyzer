@@ -78,10 +78,23 @@ La strategia a Tre Livelli (`daily_logs`, `rolling_10days`, `baseline_profile`) 
 
 ---
 
+## Collezione `garmin_tokens/{uid}` (top-level)
+
+**Contenuto**: Token OAuth Garmin serializzati in Base64 per ogni utente collegato.
+
+**Scrittore/Lettore**: Solo garmin-sync-server (Admin SDK). Il client non ha accesso (regole Firestore: `allow read, write: if false`).
+
+**Campi**:
+- `token_b64`: stringa Base64 (garth.dumps())
+- `updated_at`: timestamp ultimo aggiornamento
+
+---
+
 ## Chi scrive dove (riepilogo)
 
 | Collezione       | Scrittore   |
 |------------------|-------------|
+| `garmin_tokens`  | Server      |
 | `daily_health`   | Server      |
 | `activities`     | Server + FitAI |
 | `longevity_diary`| FitAI       |

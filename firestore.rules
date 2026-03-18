@@ -1,6 +1,10 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Token Garmin: SOLO server (Admin SDK) puo' leggere/scrivere. Client mai.
+    match /garmin_tokens/{userId} {
+      allow read, write: if false;
+    }
     // Accesso ai dati SOLO se l'UID del documento coincide con l'UID di chi ha fatto il login.
     // Copre: users/{uid}/daily_logs, profile, rolling_10days, baseline_profile,
     // daily_health, meals, activities, longevity_diary, ai_insights.
