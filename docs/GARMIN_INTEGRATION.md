@@ -1,6 +1,6 @@
 # Integrazione Garmin Sync Server
 
-FitAI Analyzer legge i dati Garmin da Firestore scritti dal **garmin-sync-server** (Python, deploy su fly.io).
+FitAI Analyzer legge i dati Garmin da Firestore scritti dal **garmin-sync-server** (Python, deploy su Render).
 
 > **Architettura dati completa**: [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md)  
 > **Flussi Garmin e AI**: [FLUSSI_GARMIN_AI.md](FLUSSI_GARMIN_AI.md)
@@ -10,13 +10,13 @@ FitAI Analyzer legge i dati Garmin da Firestore scritti dal **garmin-sync-server
 ## 1. Architettura
 
 ```
-[Garmin Connect] → [garmin-sync-server su fly.io] → [Firestore]
+[Garmin Connect] → [garmin-sync-server su Render] → [Firestore]
                                                           ↓
                                               [FitAI Analyzer Flutter]
 ```
 
 - **Server**: [github.com/CristiPerciun/garmin-sync-server](https://github.com/CristiPerciun/garmin-sync-server)
-- **Deploy**: [fly.io/apps/garmin-sync-server](https://fly.io/apps/garmin-sync-server/activity)
+- **Deploy**: Render (vedi `RENDER_DEPLOY.md` nel repo garmin-sync-server)
 
 ---
 

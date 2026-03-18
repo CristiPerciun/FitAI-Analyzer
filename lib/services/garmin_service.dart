@@ -10,11 +10,11 @@ import '../utils/platform_firestore_fix.dart';
 
 final garminServiceProvider = Provider<GarminService>((ref) => GarminService());
 
-/// URL del garmin-sync-server su fly.io. Cambia se usi un deploy diverso.
-const String garminServerUrl = 'https://garmin-sync-server.fly.dev';
+/// URL del garmin-sync-server. Aggiorna con il tuo URL Render (es. https://garmin-sync-server.onrender.com).
+const String garminServerUrl = 'https://garmin-sync-server.onrender.com';
 
 /// Servizio per lettura dati Garmin da Firestore e connessione via server.
-/// I dati sono scritti dal garmin-sync-server Python (deploy su fly.io).
+/// I dati sono scritti dal garmin-sync-server Python (deploy su Render).
 /// Collezioni: users/{uid}/activities, users/{uid}/daily_health
 class GarminService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -35,7 +35,7 @@ class GarminService {
     );
   }
 
-  /// Timeout per connect: 60s per cold start fly.io (auto_stop_machines).
+  /// Timeout per connect: 60s per cold start (Render/Fly auto-stop).
   static const Duration _connectTimeout = Duration(seconds: 60);
   static const Duration _syncTimeout = Duration(seconds: 90);
 
@@ -81,7 +81,7 @@ class GarminService {
       return {
         'success': false,
         'message':
-            'Server in avvio (fly.io cold start). Attendi 1 min e riprova.',
+            'Server in avvio. Attendi 1 min e riprova.',
       };
     } on Exception catch (e) {
       final msg = e.toString().toLowerCase();
@@ -131,8 +131,9 @@ class GarminService {
 
   /// Richiede una sync immediata al mini-server usando i token Garmin gia' salvati.
   /// Usa /garmin/sync-vitals (oggi + ieri) per pull-to-refresh leggero.
+  /// Ritenta una volta in caso di timeout/connessione (cold start).
   Future<Map<String, dynamic>> syncNow({required String uid}) async {
-    try {
+    Future<Map<String, dynamic>> doRequest() async {
       final response = await http
           .post(
             Uri.parse('$garminServerUrl/garmin/sync-vitals'),
@@ -140,6 +141,11 @@ class GarminService {
             body: jsonEncode({'uid': uid}),
           )
           .timeout(_syncTimeout);
+
+      // 5xx = server in avvio (cold start), ritenta
+      if (response.statusCode >= 500 && response.statusCode < 600) {
+        throw Exception('Server unavailable');
+      }
 
       final body = response.body.trim();
       final data = body.isEmpty
@@ -160,14 +166,50 @@ class GarminService {
             data['message']?.toString() ??
             'Sync Garmin non riuscita.',
       };
+    }
+
+    try {
+      return await doRequest();
     } on TimeoutException {
-      return {
-        'success': false,
-        'message':
-            'La sync Garmin sta impiegando troppo tempo. Riprova tra poco.',
-      };
+      // Ritenta: cold start può richiedere più tempo al primo wake
+      await Future<void>.delayed(const Duration(seconds: 3));
+      try {
+        return await doRequest();
+      } on TimeoutException {
+        return {
+          'success': false,
+          'message':
+              'La sync Garmin sta impiegando troppo tempo. Riprova tra poco.',
+        };
+      } on Exception catch (e) {
+        final msg = e.toString().toLowerCase();
+        return {
+          'success': false,
+          'message': msg.contains('socket') || msg.contains('connection')
+              ? 'Mini-server Garmin non raggiungibile.'
+              : 'Errore di rete durante la sync Garmin.',
+        };
+      }
     } on Exception catch (e) {
       final msg = e.toString().toLowerCase();
+      final isRetryable = msg.contains('socket') ||
+          msg.contains('connection') ||
+          msg.contains('timeout') ||
+          msg.contains('unavailable');
+      if (isRetryable) {
+        await Future<void>.delayed(const Duration(seconds: 3));
+        try {
+          return await doRequest();
+        } on Exception catch (e2) {
+          final m2 = e2.toString().toLowerCase();
+          return {
+            'success': false,
+            'message': m2.contains('socket') || m2.contains('connection')
+                ? 'Mini-server Garmin non raggiungibile.'
+                : 'Errore di rete durante la sync Garmin.',
+          };
+        }
+      }
       return {
         'success': false,
         'message': msg.contains('socket') || msg.contains('connection')

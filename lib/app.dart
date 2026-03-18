@@ -74,13 +74,20 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       }
     });
 
-    ref.listen<String?>(
-      garminSyncNotifierProvider.select((s) => s.error),
+    ref.listen(
+      garminSyncNotifierProvider.select((s) => (s.error, s.trigger)),
       (prev, next) {
-        if (next == null || next.isEmpty || next == prev) return;
+        final error = next.$1;
+        if (error == null || error.isEmpty || next == prev) return;
+        // Non mostrare errore per pull-to-refresh: l'utente ha scrollato, non serve SnackBar
+        final trigger = next.$2 ?? '';
+        if (trigger.contains('pull_to_refresh')) {
+          ref.read(garminSyncNotifierProvider.notifier).clearError();
+          return;
+        }
         scaffoldMessengerKey.currentState?.showSnackBar(
           SnackBar(
-            content: Text(next),
+            content: Text(error),
             backgroundColor: AppColors.error,
             duration: const Duration(seconds: 6),
           ),
