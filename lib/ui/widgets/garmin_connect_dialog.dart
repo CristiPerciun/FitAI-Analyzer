@@ -1,3 +1,4 @@
+import 'package:fitai_analyzer/app.dart';
 import 'package:fitai_analyzer/services/garmin_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -77,7 +78,7 @@ Future<bool?> showGarminConnectDialog(
 
             // Mostra loading
             if (!ctx.mounted) return;
-            showDialog(
+            showDialog<void>(
               context: ctx,
               barrierDismissible: false,
               builder: (c) => const Center(
@@ -89,7 +90,7 @@ Future<bool?> showGarminConnectDialog(
                       children: [
                         CircularProgressIndicator(),
                         SizedBox(height: 16),
-                        Text('Connessione in corso...'),
+                        Text('Connessione al server Garmin in corso...'),
                       ],
                     ),
                   ),
@@ -97,22 +98,35 @@ Future<bool?> showGarminConnectDialog(
               ),
             );
 
-            final result = await ref.read(garminServiceProvider).connect(
-                  uid: uid,
-                  email: email,
-                  password: password,
-                );
+            late Map<String, dynamic> result;
+            try {
+              result = await ref.read(garminServiceProvider).connect(
+                    uid: uid,
+                    email: email,
+                    password: password,
+                  );
+            } on Object catch (e) {
+              result = {
+                'success': false,
+                'message': 'Errore imprevisto: $e',
+              };
+            } finally {
+              if (ctx.mounted) {
+                Navigator.of(ctx).pop(); // chiudi sempre il loading
+              }
+            }
 
             if (!ctx.mounted) return;
-            Navigator.of(ctx).pop(); // chiudi loading
 
             if (result['success'] == true) {
-              Navigator.of(ctx).pop(true); // chiudi dialog principale, successo
+              Navigator.of(ctx).pop(true);
             } else {
-              ScaffoldMessenger.of(context).showSnackBar(
+              final msg = result['message']?.toString() ?? 'Errore sconosciuto';
+              scaffoldMessengerKey.currentState?.showSnackBar(
                 SnackBar(
-                  content: Text('❌ ${result['message']}'),
-                  backgroundColor: Theme.of(context).colorScheme.error,
+                  content: Text('Garmin: $msg'),
+                  backgroundColor: Theme.of(ctx).colorScheme.error,
+                  duration: const Duration(seconds: 8),
                 ),
               );
             }

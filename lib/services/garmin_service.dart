@@ -79,17 +79,39 @@ class GarminService {
     return doc.data()?['garmin_linked'] == true;
   }
 
+  static Map<String, dynamic>? _tryDecodeJsonObject(String body) {
+    final t = body.trim();
+    if (t.isEmpty) return null;
+    try {
+      final v = jsonDecode(t);
+      return v is Map<String, dynamic> ? v : null;
+    } on Object {
+      return null;
+    }
+  }
+
+  static String _serverDetailOrMessage(Map<String, dynamic>? data) {
+    if (data == null) return '';
+    final d = data['detail'];
+    if (d is String && d.isNotEmpty) return d;
+    if (d is List && d.isNotEmpty) return d.map((e) => e.toString()).join('; ');
+    final m = data['message'];
+    if (m is String && m.isNotEmpty) return m;
+    return '';
+  }
+
   /// Invia credenziali Garmin al server per collegare l'account.
-  /// Il server valida su Garmin Connect e salva i token.
+  /// Il server valida su Garmin Connect e salva i tokens.
   Future<Map<String, dynamic>> connect({
     required String uid,
     required String email,
     required String password,
   }) async {
+    final uri = Uri.parse('$_baseUrl/garmin/connect');
     try {
       final response = await _http
           .post(
-            Uri.parse('$_baseUrl/garmin/connect'),
+            uri,
             headers: _jsonHeaders,
             body: jsonEncode({
               'uid': uid,
@@ -99,32 +121,65 @@ class GarminService {
           )
           .timeout(_connectTimeout);
 
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      if (response.statusCode == 200 && data['success'] == true) {
+      final data = _tryDecodeJsonObject(response.body);
+      if (response.statusCode == 200 &&
+          data != null &&
+          data['success'] == true) {
         return {
           'success': true,
           'message': data['message']?.toString() ?? 'Garmin collegato!',
         };
       }
+
+      if (response.statusCode == 200 &&
+          data != null &&
+          data['success'] == false) {
+        final msg = _serverDetailOrMessage(data);
+        return {
+          'success': false,
+          'message': msg.isNotEmpty
+              ? msg
+              : 'Login Garmin non completato (sync iniziale fallita o altro).',
+        };
+      }
+
+      final err = _serverDetailOrMessage(data);
+      if (err.isNotEmpty) {
+        return {'success': false, 'message': err};
+      }
+
+      final snippet = response.body.length > 160
+          ? '${response.body.substring(0, 160)}…'
+          : response.body;
       return {
         'success': false,
         'message':
-            data['detail']?.toString() ??
-            'Credenziali non valide o errore server',
+            'Risposta server HTTP ${response.statusCode} da $_baseUrl. '
+            '${snippet.isEmpty ? '(corpo vuoto)' : snippet}',
       };
     } on TimeoutException {
       return {
         'success': false,
         'message':
-            'Server in avvio. Attendi 1 min e riprova.',
+            'Timeout: il server non ha risposto in tempo ($_baseUrl). '
+            'Controlla che il Pi sia acceso, stessa rete/Wi‑Fi e GARMIN_SERVER_URL in .env.',
       };
-    } on Exception catch (e) {
-      final msg = e.toString().toLowerCase();
+    } on Object catch (e) {
+      final s = e.toString().toLowerCase();
+      if (s.contains('socket') ||
+          s.contains('connection') ||
+          s.contains('failed host lookup') ||
+          s.contains('network')) {
+        return {
+          'success': false,
+          'message':
+              'Server non raggiungibile ($_baseUrl). Stesso Wi‑Fi del telefono? '
+              'Verifica GARMIN_SERVER_URL in .env (es. http://IP_PI:8080).',
+        };
+      }
       return {
         'success': false,
-        'message': msg.contains('socket') || msg.contains('connection')
-            ? 'Server non raggiungibile. Verifica la connessione.'
-            : 'Errore di rete. Riprova più tardi.',
+        'message': 'Errore di rete: $e',
       };
     }
   }
