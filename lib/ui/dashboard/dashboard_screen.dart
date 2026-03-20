@@ -334,7 +334,7 @@ class _EmptyActivitiesCard extends StatelessWidget {
             Text(
               isStravaConnected
                   ? 'Nessuna attività. Sincronizza Strava o attendi la sync Garmin dal server.'
-                  : 'Connetti Strava o attendi la sync Garmin (server fly.io).',
+                  : 'Connetti Strava o attendi la sync Garmin dal server.',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),

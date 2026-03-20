@@ -42,6 +42,10 @@ app.*.map.json
 # API keys (non committare .env)
 .env
 
+# Firebase Admin SDK (chiave privata — solo server / secret CI, mai in repo)
+**/*firebase-adminsdk*.json
+**/*-firebase-adminsdk-*.json
+
 # Android Studio will place build artifacts here
 /android/app/debug
 /android/app/profile

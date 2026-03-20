@@ -1,7 +1,10 @@
 # Integrazione Garmin Sync Server
 
-FitAI Analyzer legge i dati Garmin da Firestore scritti dal **garmin-sync-server** (Python, deploy su Render).
+FitAI Analyzer legge i dati Garmin da Firestore scritti dal **garmin-sync-server** (Python). L’URL del server è in **`.env`** → `GARMIN_SERVER_URL` (es. Raspberry Pi in LAN: `http://192.168.x.x:8080`). Repository server: [garmin-sync-server](https://github.com/CristiPerciun/garmin-sync-server); deploy Pi: `RPI_DEPLOY.md` in quel repo.
 
+Se proteggi l’API con un reverse proxy (Bearer), imposta opzionalmente **`GARMIN_SERVER_BEARER_TOKEN`** in `.env`: l’app invia `Authorization: Bearer …` su connect / disconnect / sync-vitals.
+
+> **Stesso progetto Firebase** (app + server): [FIREBASE_CLIENT_SYNC.md](FIREBASE_CLIENT_SYNC.md)  
 > **Architettura dati completa**: [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md)  
 > **Flussi Garmin e AI**: [FLUSSI_GARMIN_AI.md](FLUSSI_GARMIN_AI.md)
 
@@ -10,13 +13,13 @@ FitAI Analyzer legge i dati Garmin da Firestore scritti dal **garmin-sync-server
 ## 1. Architettura
 
 ```
-[Garmin Connect] → [garmin-sync-server su Render] → [Firestore]
+[Garmin Connect] → [garmin-sync-server (es. Raspberry Pi)] → [Firestore]
                                                           ↓
                                               [FitAI Analyzer Flutter]
 ```
 
 - **Server**: [github.com/CristiPerciun/garmin-sync-server](https://github.com/CristiPerciun/garmin-sync-server)
-- **Deploy**: Render (vedi `RENDER_DEPLOY.md` nel repo garmin-sync-server)
+- **Deploy consigliato**: Raspberry Pi (vedi `RPI_DEPLOY.md` nel repo garmin-sync-server)
 
 ---
 

@@ -1,5 +1,5 @@
 /// Modello per attività Garmin da Firestore (garmin_activities).
-/// Scritto dal garmin-sync-server Python su fly.io.
+/// Scritto dal garmin-sync-server Python (Firestore).
 class GarminActivityModel {
   final String activityId;
   final String startTime; // ISO string (startTimeGMT)

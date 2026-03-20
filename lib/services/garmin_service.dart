@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
@@ -10,14 +11,48 @@ import '../utils/platform_firestore_fix.dart';
 
 final garminServiceProvider = Provider<GarminService>((ref) => GarminService());
 
-/// URL del garmin-sync-server. Aggiorna con il tuo URL Render (es. https://garmin-sync-server.onrender.com).
-const String garminServerUrl = 'https://garmin-sync-server.onrender.com';
+/// URL del garmin-sync-server (`.env` → `GARMIN_SERVER_URL`).
+/// Esempio LAN / Raspberry Pi: `http://192.168.x.x:8080` — vedi `RPI_DEPLOY.md` nel repo garmin-sync-server.
+/// Fallback `127.0.0.1` solo per sviluppo locale; su telefono imposta sempre l’IP del Pi o tunnel.
+String get garminServerUrl {
+  if (!dotenv.isInitialized) {
+    return 'http://127.0.0.1:8080';
+  }
+  final u = dotenv.env['GARMIN_SERVER_URL']?.trim();
+  return (u != null && u.isNotEmpty) ? u : 'http://127.0.0.1:8080';
+}
 
 /// Servizio per lettura dati Garmin da Firestore e connessione via server.
-/// I dati sono scritti dal garmin-sync-server Python (deploy su Render).
+/// I dati sono scritti dal garmin-sync-server Python (es. su Raspberry Pi).
 /// Collezioni: users/{uid}/activities, users/{uid}/daily_health
 class GarminService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  GarminService({
+    http.Client? httpClient,
+    String? serverUrlOverride,
+  })  : _http = httpClient ?? http.Client(),
+        _serverUrlOverride = serverUrlOverride;
+
+  final http.Client _http;
+  final String? _serverUrlOverride;
+
+  /// Lazy: evita `Firebase.initializeApp()` quando si usano solo connect/sync/disconnect (es. test).
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
+
+  String get _baseUrl {
+    final o = _serverUrlOverride?.trim();
+    return (o != null && o.isNotEmpty) ? o : garminServerUrl;
+  }
+
+  Map<String, String> get _jsonHeaders {
+    final h = <String, String>{'Content-Type': 'application/json'};
+    if (dotenv.isInitialized) {
+      final token = dotenv.env['GARMIN_SERVER_BEARER_TOKEN']?.trim();
+      if (token != null && token.isNotEmpty) {
+        h['Authorization'] = 'Bearer $token';
+      }
+    }
+    return h;
+  }
 
   /// Stream real-time attività unificate (Garmin, Strava o dual) ordinate per startTime.
   /// Su Windows usa polling per evitare errori "non-platform thread".
@@ -35,7 +70,7 @@ class GarminService {
     );
   }
 
-  /// Timeout per connect: 60s per cold start (Render/Fly auto-stop).
+  /// Timeout per connect: 60s (rete lenta o server che si sveglia da sospensione).
   static const Duration _connectTimeout = Duration(seconds: 60);
   static const Duration _syncTimeout = Duration(seconds: 90);
 
@@ -52,10 +87,10 @@ class GarminService {
     required String password,
   }) async {
     try {
-      final response = await http
+      final response = await _http
           .post(
-            Uri.parse('$garminServerUrl/garmin/connect'),
-            headers: {'Content-Type': 'application/json'},
+            Uri.parse('$_baseUrl/garmin/connect'),
+            headers: _jsonHeaders,
             body: jsonEncode({
               'uid': uid,
               'email': email.trim(),
@@ -97,10 +132,10 @@ class GarminService {
   /// Scollega l'account Garmin: elimina token sul server e aggiorna Firestore.
   Future<Map<String, dynamic>> disconnect({required String uid}) async {
     try {
-      final response = await http
+      final response = await _http
           .post(
-            Uri.parse('$garminServerUrl/garmin/disconnect'),
-            headers: {'Content-Type': 'application/json'},
+            Uri.parse('$_baseUrl/garmin/disconnect'),
+            headers: _jsonHeaders,
             body: jsonEncode({'uid': uid}),
           )
           .timeout(const Duration(seconds: 30));
@@ -134,10 +169,10 @@ class GarminService {
   /// Ritenta una volta in caso di timeout/connessione (cold start).
   Future<Map<String, dynamic>> syncNow({required String uid}) async {
     Future<Map<String, dynamic>> doRequest() async {
-      final response = await http
+      final response = await _http
           .post(
-            Uri.parse('$garminServerUrl/garmin/sync-vitals'),
-            headers: {'Content-Type': 'application/json'},
+            Uri.parse('$_baseUrl/garmin/sync-vitals'),
+            headers: _jsonHeaders,
             body: jsonEncode({'uid': uid}),
           )
           .timeout(_syncTimeout);

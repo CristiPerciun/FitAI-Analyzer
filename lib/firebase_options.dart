@@ -85,4 +85,5 @@ class DefaultFirebaseOptions {
     storageBucket: 'fit-ai-analyzer.firebasestorage.app',
     measurementId: 'G-ZN2E3S520F',
   );
+
 }

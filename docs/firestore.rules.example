@@ -1,0 +1,30 @@
+// Esempio da adattare in Firebase Console → Firestore → Regole.
+// Progetto FitAI Analyzer (Firebase): stesso progetto del server Garmin se condividi Firestore.
+//
+// IMPORTANTE:
+// - Il server Python (firebase-admin) usa l’Account di servizio: NON passa da queste regole
+//   (ha privilegi amministrativi sul database).
+// - Queste regole valgono solo per client SDK (web/iOS/Android) con utenti autenticati.
+//
+// La collection garmin_tokens/{uid} è pensata per essere usata SOLO dal server garmin-sync-server.
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Token Garmin: mai esporli al client.
+    match /garmin_tokens/{document=**} {
+      allow read, write: if false;
+    }
+
+    // Esempio: dati per utente autenticato (sostituisci "users" con le tue collection reali).
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Fallback restrittivo: nega tutto il resto finché non definisci le collection.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

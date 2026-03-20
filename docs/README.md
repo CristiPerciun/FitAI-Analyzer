@@ -28,6 +28,7 @@ Indice della documentazione tecnica del progetto.
 
 | Documento | Contenuto |
 |-----------|-----------|
+| [FIREBASE_CLIENT_SYNC.md](FIREBASE_CLIENT_SYNC.md) | Dopo un nuovo `google-services.json` / progetto: allineare app, `firebase_options`, server Garmin |
 | [FIREBASE_AUTH_SETUP.md](FIREBASE_AUTH_SETUP.md) | Configurazione Firebase Auth (Email/Password) |
 | [FIREBASE_DEPLOY.md](FIREBASE_DEPLOY.md) | Deploy regole Firestore |
 

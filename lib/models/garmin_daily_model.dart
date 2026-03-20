@@ -1,5 +1,5 @@
 /// Modello per dati giornalieri Garmin da Firestore (garmin_daily/{date}).
-/// Scritto dal garmin-sync-server Python su fly.io.
+/// Scritto dal garmin-sync-server Python (Firestore).
 /// Contiene stats, heartRate, sleep del giorno.
 class GarminDailyModel {
   final String date; // YYYY-MM-DD
