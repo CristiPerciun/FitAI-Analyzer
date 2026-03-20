@@ -24,6 +24,7 @@ alwaysApply: true
 - **Firebase**: Cloud Firestore per dati strutturati, Firebase Auth per login
 - **Strategia Tre Livelli**: vedi `three-levels-memory-strategy.mdc` – daily_logs, rolling_10days, baseline_profile
 - **Collezioni aggiornate**: `daily_health` (Garmin biometrici), `activities`, `ai_insights` – vedi `firestore-collections-structure.mdc`
+- **Server Garmin (Pi, branch fork-sync, `GARMIN_SERVER_URL`)**: vedi `garmin-server-pi-fork-sync.mdc`
 - **Scrittura/lettura**: vedi `docs/DATA_ARCHITECTURE.md` per chi scrive/legge ogni collezione
 
 ## UI Best Practices

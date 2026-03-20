@@ -1,0 +1,28 @@
+---
+description: Server Garmin (garmin-sync-server), Raspberry Pi, branch fork-sync e sync Git
+alwaysApply: true
+---
+
+# Garmin sync server, Raspberry Pi e branch `fork-sync`
+
+Il backend **garmin-sync-server** è un **repository separato** da FitAI Analyzer (es. `github.com/CristiPerciun/garmin-sync-server`). L’app Flutter **non** contiene il codice Python del server; legge/scrivi tramite HTTP e Firestore.
+
+## App Flutter (questo repo)
+
+- **URL server**: variabile **`GARMIN_SERVER_URL`** in `.env` (es. `http://IP_PI_LAN:8080`). Vedi `lib/services/garmin_service.dart` e `docs/GARMIN_INTEGRATION.md`.
+- **Fallback** senza `.env`: `http://127.0.0.1:8080` (solo sviluppo locale); su dispositivo reale va sempre impostato l’IP del Pi o un tunnel.
+- Le credenziali **Firebase Admin SDK** stanno **solo sul server** / variabili ambiente Pi, **mai** nel progetto Flutter.
+
+## Raspberry / Ubuntu (repo garmin-sync-server)
+
+- **Branch di deploy sul Pi**: **`fork-sync`**, configurato con `GARMIN_SYNC_GIT_BRANCH=fork-sync` in `/etc/default/garmin-sync-env` (script `deploy/rpi/setup_fork_sync_branch.sh`).
+- **Aggiornamento automatico**: `garmin-sync-pull.timer` (~3 min) esegue fetch → `git reset --hard origin/fork-sync` → `pip install -r requirements.txt` → `systemctl restart garmin-sync`. Supporta anche **rebase + force-push** su `fork-sync`.
+- **Il solo `git pull` sul PC non aggiorna il Pi**: serve **`git push origin fork-sync`** (dopo merge/rebase con `main` se usi quel flusso).
+- **Installazione / doc di dettaglio** (nel repo server): `RPI_DEPLOY.md`, `docs/WORKFLOW_FORK_SYNC.md`, `deploy/rpi/install.sh`.
+
+## Riferimenti in FitAI Analyzer
+
+- `docs/GARMIN_INTEGRATION.md` — endpoint API, Firestore, flusso Connect Garmin dall’app.
+- `docs/FIREBASE_CLIENT_SYNC.md` — allineamento Firebase app vs service account sul server.
+
+Quando suggerisci deploy o debug Garmin, distingui sempre **client Flutter** (`.env`, `GarminService`) da **server Python** (repo `garmin-sync-server`, systemd sul Pi).

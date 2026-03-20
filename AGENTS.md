@@ -8,6 +8,7 @@ Consulta `.cursor/rules/three-levels-memory-strategy.mdc` per la strategia a Tre
 Consulta `.cursor/rules/firestore-collections-structure.mdc` per la struttura aggiornata: `daily_health`, `activities`, `ai_insights`.
 Consulta `docs/FLUSSI_GARMIN_AI.md` per il riepilogo dei flussi Garmin e AI.
 Consulta `docs/DATA_ARCHITECTURE.md` per scrittura/lettura dati Firestore.
+Consulta `.cursor/rules/garmin-server-pi-fork-sync.mdc` per server **garmin-sync-server**, Raspberry Pi, branch **`fork-sync`** e sync Git (push vs pull).
 
 ## Riepilogo vincolante
 
