@@ -6,6 +6,7 @@ import 'package:fitai_analyzer/ui/auth/login_screen.dart';
 import 'package:fitai_analyzer/ui/launch/launch_screen.dart';
 import 'package:fitai_analyzer/ui/onboarding/onboarding_screen.dart';
 import 'package:fitai_analyzer/ui/shell/main_shell_screen.dart';
+import 'package:fitai_analyzer/utils/boot_log.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,13 +30,24 @@ class AuthGateway extends ConsumerStatefulWidget {
 
 class _AuthGatewayState extends ConsumerState<AuthGateway> {
   bool _authReady = false;
+  String? _lastGatewayUi;
+
+  void _traceGatewayUi(String label) {
+    if (_lastGatewayUi == label) return;
+    _lastGatewayUi = label;
+    bootLog('AuthGateway: $label');
+  }
 
   @override
   void initState() {
     super.initState();
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+      bootLog('Windows: posticipo di 1 frame prima di leggere auth (workaround piattaforma)');
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) setState(() => _authReady = true);
+        if (mounted) {
+          bootLog('Auth gateway: primo frame OK, auth utilizzabile');
+          setState(() => _authReady = true);
+        }
       });
     } else {
       _authReady = true;
@@ -45,20 +57,31 @@ class _AuthGatewayState extends ConsumerState<AuthGateway> {
   @override
   Widget build(BuildContext context) {
     if (!_authReady) {
+      _traceGatewayUi('Launch — attesa primo frame (Windows) o init');
       return const Scaffold(body: LaunchScreen());
     }
     final authState = ref.watch(authNotifierProvider);
     final user = authState.user;
+    final authStream = ref.watch(authUserStreamProvider);
+
+    // Evita "Login" per ~1s mentre Firebase ripristina la sessione (v. log Boot).
+    if (user == null && authStream.isLoading) {
+      _traceGatewayUi('Launch — attesa primo evento auth (ripristino sessione)');
+      return const Scaffold(body: LaunchScreen());
+    }
 
     if (user != null && user.isAnonymous) {
+      _traceGatewayUi('Login — utente anonimo, sign-out in post-frame');
       WidgetsBinding.instance.addPostFrameCallback((_) {
         ref.read(authNotifierProvider.notifier).signOut();
       });
       return const LoginScreen();
     }
     if (user != null && !user.isAnonymous) {
+      _traceGatewayUi('VerifyUserGate — utente ${user.uid} (verifica token)');
       return _VerifyUserGate(user: user);
     }
+    _traceGatewayUi('Login — nessuna sessione');
     return const LoginScreen();
   }
 }
@@ -77,10 +100,18 @@ class _VerifyUserGate extends ConsumerStatefulWidget {
 class _VerifyUserGateState extends ConsumerState<_VerifyUserGate> {
   bool _verified = false;
   bool _isVerifying = true;
+  String? _lastVerifyUi;
+
+  void _traceVerifyUi(String label) {
+    if (_lastVerifyUi == label) return;
+    _lastVerifyUi = label;
+    bootLog('VerifyUserGate: $label');
+  }
 
   @override
   void initState() {
     super.initState();
+    bootLog('VerifyUserGate: inizio verifica token (uid=${widget.user.uid})');
     _verify();
   }
 
@@ -89,6 +120,7 @@ class _VerifyUserGateState extends ConsumerState<_VerifyUserGate> {
         .read(authNotifierProvider.notifier)
         .verifyTokenAndSignOutIfInvalid(widget.user);
     if (!mounted) return;
+    bootLog('VerifyUserGate: token ${valid ? "valido" : "non valido —→ login"}');
     setState(() {
       _isVerifying = false;
       _verified = valid;
@@ -98,11 +130,14 @@ class _VerifyUserGateState extends ConsumerState<_VerifyUserGate> {
   @override
   Widget build(BuildContext context) {
     if (_isVerifying) {
+      _traceVerifyUi('Launch — verifica token in corso');
       return const Scaffold(body: LaunchScreen());
     }
     if (!_verified) {
+      _traceVerifyUi('Login — sessione non valida');
       return const LoginScreen();
     }
+    _traceVerifyUi('LoggedInGate — caricamento profilo / home');
     return const _LoggedInGate();
   }
 }
@@ -117,12 +152,21 @@ class _LoggedInGate extends ConsumerStatefulWidget {
 }
 
 class _LoggedInGateState extends ConsumerState<_LoggedInGate> {
+  String? _lastLoggedUi;
+
+  void _traceLoggedUi(String label) {
+    if (_lastLoggedUi == label) return;
+    _lastLoggedUi = label;
+    bootLog('LoggedInGate: $label');
+  }
+
   @override
   void initState() {
     super.initState();
-    Future.microtask(() {
-      ref.read(userProfileNotifierProvider.notifier).loadProfile();
-    });
+    bootLog('LoggedInGate: richiesta loadProfile() (Firestore profile/profile)');
+    // Subito (no microtask): loadProfile() imposta isLoading=true in modo sincrono
+    // così il primo build non vede profile==null con isLoading==false → flash Onboarding.
+    ref.read(userProfileNotifierProvider.notifier).loadProfile();
   }
 
   @override
@@ -131,22 +175,37 @@ class _LoggedInGateState extends ConsumerState<_LoggedInGate> {
     final uid = ref.watch(authNotifierProvider).user?.uid;
 
     if (profileState.isLoading) {
+      _traceLoggedUi('Launch — profilo utente in caricamento');
       return const Scaffold(body: LaunchScreen());
     }
 
     if (uid == null || profileState.error != null) {
+      _traceLoggedUi(
+        'Login — uid assente o errore profilo (${profileState.error})',
+      );
       return const LoginScreen();
     }
 
     if (profileState.profile == null) {
+      _traceLoggedUi('Onboarding — profilo assente (nuovo utente)');
       return const OnboardingScreen();
     }
 
     final homePkg = ref.watch(longevityHomePackageProvider);
-    if (homePkg.isLoading) {
+    // Durante un refresh Riverpod può avere isLoading=true ma hasValue=true: non
+    // sostituire MainShell con Launch (altrimenti shell e Home si smontano di nuovo).
+    if (homePkg.isLoading && !homePkg.hasValue) {
+      _traceLoggedUi('Launch — precaricamento pacchetto Home (primo caricamento)');
       return const Scaffold(body: LaunchScreen());
     }
 
+    if (homePkg.hasError) {
+      _traceLoggedUi(
+        'MainShell — pacchetto Home in errore (la Home mostrerà retry): ${homePkg.error}',
+      );
+    } else {
+      _traceLoggedUi('MainShell — pacchetto Home pronto, apertura shell');
+    }
     return const MainShellScreen();
   }
 }

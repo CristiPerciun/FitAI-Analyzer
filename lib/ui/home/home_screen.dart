@@ -1,7 +1,9 @@
+import 'package:fitai_analyzer/models/longevity_home_package.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
+import 'package:fitai_analyzer/utils/boot_log.dart';
 import 'package:fitai_analyzer/ui/home/widgets/garmin_daily_stats.dart';
 import 'package:fitai_analyzer/ui/home/widgets/longevity_header.dart';
 import 'package:fitai_analyzer/ui/home/widgets/longevity_path_section.dart';
@@ -17,11 +19,39 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// 2. Griglia AI 2x2 (Daily Goals: Cuore, Forza, Alimentazione, Recupero)
 /// 3. Weekly Sprint (obiettivo 7 giorni)
 /// 4. Longevity Path (trend mensile Livello 3)
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  String? _lastHomeUiPhase;
+  String? _lastPkgListenSig;
+
+  void _traceHomeUi(String label) {
+    if (_lastHomeUiPhase == label) return;
+    _lastHomeUiPhase = label;
+    bootLog('HomeScreen: $label');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.listen<AsyncValue<LongevityHomePackage>>(
+      longevityHomePackageProvider,
+      (prev, next) {
+        final n =
+            'loading=${next.isLoading} data=${next.hasValue} err=${next.hasError}';
+        if (_lastPkgListenSig == n) return;
+        _lastPkgListenSig = n;
+        final p = prev == null
+            ? 'null'
+            : 'loading=${prev.isLoading} data=${prev.hasValue} err=${prev.hasError}';
+        bootLog('HomeScreen: listener pacchetto $p → $n');
+      },
+    );
+
     final uid = ref.watch(authNotifierProvider).user?.uid;
     final packageAsync = ref.watch(longevityHomePackageProvider);
     final planDay = ref.watch(homeLongevityPlanForUiProvider);
@@ -37,7 +67,7 @@ class HomeScreen extends ConsumerWidget {
         title: const Text('Home'),
         actions: [
           TextButton(
-            onPressed: uid == null ? null : () => _onGeneratePlan(context, ref),
+            onPressed: uid == null ? null : () => _onGeneratePlan(context),
             child: const Text('Analisi'),
           ),
         ],
@@ -47,9 +77,13 @@ class HomeScreen extends ConsumerWidget {
           if (isGarminSyncing) const LinearProgressIndicator(minHeight: 2),
           Expanded(
             child: RefreshIndicator(
-              onRefresh: () => _onRefreshGarmin(ref, uid),
+              onRefresh: () => _onRefreshGarmin(uid),
               child: packageAsync.when(
-                data: (package) => CustomScrollView(
+                data: (package) {
+                  _traceHomeUi(
+                    'UI elenco — dati pacchetto longevità (no spinner centrale)',
+                  );
+                  return CustomScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   slivers: [
                     SliverToBoxAdapter(
@@ -72,7 +106,7 @@ class HomeScreen extends ConsumerWidget {
                               isLoading: isLoadingPlan,
                               pillarContents:
                                   dailyGoals.isEmpty ? null : dailyGoals,
-                              onGenerateTap: () => _onGeneratePlan(context, ref),
+                              onGenerateTap: () => _onGeneratePlan(context),
                             ),
                             const SizedBox(height: 16),
                             const GarminDailyStats(),
@@ -88,29 +122,38 @@ class HomeScreen extends ConsumerWidget {
                             WeeklySprintCard(
                               content: weeklySprint,
                               isLoading: isLoadingPlan,
-                              onGenerateTap: () => _onGeneratePlan(context, ref),
+                              onGenerateTap: () => _onGeneratePlan(context),
                             ),
                             const SizedBox(height: 24),
                             LongevityPathSection(
                               baseline: package.baseline,
                               strategicAdvice: strategicAdvice,
                               isLoading: isLoadingPlan,
-                              onGenerateTap: () => _onGeneratePlan(context, ref),
+                              onGenerateTap: () => _onGeneratePlan(context),
                             ),
                           ],
                         ),
                       ),
                     ),
                   ],
-                ),
-                loading: () => ListView(
+                );
+                },
+                loading: () {
+                  _traceHomeUi(
+                    'UI spinner centrale — stesso provider ancora in loading '
+                    '(può comparire dopo il Launch se il FutureProvider si è reinizializzato)',
+                  );
+                  return ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   children: const [
                     SizedBox(height: 220),
                     Center(child: CircularProgressIndicator()),
                   ],
-                ),
-                error: (e, _) => ListView(
+                );
+                },
+                error: (e, _) {
+                  _traceHomeUi('UI errore pacchetto: $e');
+                  return ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   children: [
                     Padding(
@@ -133,7 +176,8 @@ class HomeScreen extends ConsumerWidget {
                       ),
                     ),
                   ],
-                ),
+                );
+                },
               ),
             ),
           ),
@@ -142,7 +186,8 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _onGeneratePlan(BuildContext context, WidgetRef ref) async {
+  Future<void> _onGeneratePlan(BuildContext context) async {
+    final ref = this.ref;
     final uid = ref.read(authNotifierProvider).user?.uid;
     if (uid == null) {
       if (context.mounted) showErrorDialog(context, 'Utente non autenticato.');
@@ -167,7 +212,7 @@ class HomeScreen extends ConsumerWidget {
     }
   }
 
-  Future<void> _onRefreshGarmin(WidgetRef ref, String? uid) async {
+  Future<void> _onRefreshGarmin(String? uid) async {
     await refreshGarminSync(ref, uid, trigger: 'home_pull_to_refresh');
   }
 }

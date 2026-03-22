@@ -1,5 +1,6 @@
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/ui/alimentazione/alimentazione_screen.dart';
+import 'package:fitai_analyzer/utils/boot_log.dart';
 import 'package:fitai_analyzer/ui/dashboard/dashboard_screen.dart';
 import 'package:fitai_analyzer/ui/home/home_screen.dart';
 import 'package:fitai_analyzer/ui/impostazioni/impostazioni_screen.dart';
@@ -7,9 +8,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Shell principale con bottom navigation bar.
-class MainShellScreen extends ConsumerWidget {
+class MainShellScreen extends ConsumerStatefulWidget {
   const MainShellScreen({super.key});
 
+  @override
+  ConsumerState<MainShellScreen> createState() => _MainShellScreenState();
+}
+
+class _MainShellScreenState extends ConsumerState<MainShellScreen> {
   static const _tabs = [
     (icon: Icons.home_outlined, label: 'Home'),
     (icon: Icons.directions_bike_outlined, label: 'Allenamenti'),
@@ -18,7 +24,15 @@ class MainShellScreen extends ConsumerWidget {
   ];
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  void initState() {
+    super.initState();
+    bootLog(
+      'MainShell: shell montata (IndexedStack; Home è il tab 0 e costruisce subito)',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final index = ref.watch(selectedTabIndexProvider);
     final isNarrow = MediaQuery.of(context).size.width < 600;
 
@@ -64,7 +78,7 @@ class MainShellScreen extends ConsumerWidget {
     );
   }
 
-  IconData _selectedIcon(IconData outline) {
+  static IconData _selectedIcon(IconData outline) {
     switch (outline) {
       case Icons.home_outlined:
         return Icons.home;

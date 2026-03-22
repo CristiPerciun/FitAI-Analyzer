@@ -12,7 +12,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Stream dello stato auth Firebase. Usato per aggiornare AuthNotifier al riavvio app.
-final _authUserStreamProvider = StreamProvider<User?>((ref) {
+/// Esposto per [AuthGateway]: finché è in loading, non mostrare il login (sessione in ripristino).
+final authUserStreamProvider = StreamProvider<User?>((ref) {
   return ref.watch(authServiceProvider).authStateChanges;
 });
 
@@ -53,7 +54,7 @@ class AuthNotifier extends Notifier<AuthState> {
   AuthState build() {
     // Ascolta authStateChanges: al riavvio app Firebase ripristina la sessione
     // in modo asincrono; senza questo listener AuthNotifier resterebbe con user=null
-    ref.listen(_authUserStreamProvider, (prev, next) {
+    ref.listen(authUserStreamProvider, (prev, next) {
       next.whenData((user) {
         if (state.user != user) {
           state = state.copyWith(user: user);

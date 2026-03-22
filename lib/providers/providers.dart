@@ -69,6 +69,7 @@ final selectedTabIndexProvider = StateProvider<int>((ref) => 0);
 /// Usato per popolare la Home con dati AI: oggi, rolling 10 giorni, baseline annuale.
 final longevityHomePackageProvider =
     FutureProvider.autoDispose<LongevityHomePackage>((ref) async {
+  ref.keepAlive();
   final uid = ref.watch(authNotifierProvider).user?.uid;
   if (uid == null) return const LongevityHomePackage();
   return ref.read(longevityEngineProvider).buildHomePackage(uid);
