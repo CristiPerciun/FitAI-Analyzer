@@ -45,6 +45,10 @@
 - **Azione**: `RefreshIndicator.onRefresh` → `GarminService.syncNow()` → `/garmin/sync-vitals`
 - **Post-sync**: invalidazione `dailyHealthStreamProvider`, `activitiesStreamProvider`, `longevityHomePackageProvider`, ecc.
 
+**Perché “non tutti” i dati dopo la sync dall’app:** `sync-vitals` è volutamente **leggera**: circa **2 giorni** di `daily_health` e fino a **50 attività** recenti (vedi `main.py` → `_sync_vitals_for_client`). Lo **scheduler** sul Pi (ogni ~45 min) chiama `sync_user` e allinea **14 giorni** di biometrici + fino a 50 attività in quel batch. L’app **non** chiama `POST /garmin/sync` (full) al tap: per storico lungo conta il job sul server o una chiamata manuale a quell’endpoint.
+
+**Timeout:** il client Flutter usa **~180s** per `sync-vitals` (rete lenta o molte attività). Se scade prima, il Pi può comunque completare in background: controlla Firebase o `journalctl -u garmin-sync`.
+
 ---
 
 ## 4. Widget Home (GarminDailyStats)
@@ -71,7 +75,7 @@
 
 ### Log Flutter: `firebase_auth_plugin/auth-state` o `id-token` su **non-platform thread**
 
-Su **Windows desktop** il plugin `firebase_auth` può ancora loggare questo avviso mentre il login funziona: è un limite noto lato **codice nativo** del plugin (messaggi verso Flutter da un thread sbagliato). In progetto: `AuthService.authStateChanges` usa **polling** su Windows invece dello stream nativo; login e token usano un frame differito dove possibile (`AuthNotifier`); la verifica post-login usa `getIdToken(false)` su Windows per evitare un refresh forzato extra sul canale `id-token`. **Può comunque** comparire una riga `id-token` se il SDK o `cloud_firestore` aggiornano il token in background: in quel caso è solo rumore in debug finché FlutterFire non corregge il plugin. Per test senza questi log usa **Android/iOS**. Riferimento: [flutterfire#11933](https://github.com/firebase/flutterfire/issues/11933).
+**Non c’entra con la sync Garmin** (quella passa da HTTP al Pi + Firestore). Su **Windows desktop** è un limite noto del plugin `firebase_auth`: messaggi nativi sul canale da un thread sbagliato. In progetto: polling per `authStateChanges`, frame differito per login, `getIdToken(false)` dopo login su Windows. Può restare rumore se SDK/`cloud_firestore` aggiornano il token in background — [flutterfire#11933](https://github.com/firebase/flutterfire/issues/11933). Per log puliti usa **Android/iOS**.
 
 ### Server: `SSLCertVerificationError` / `self-signed certificate` verso `sso.garmin.com`
 

@@ -124,7 +124,10 @@ class GarminService {
 
   /// Timeout per connect: 90s (OAuth Garmin + rete lenta / Pi che si sveglia).
   static const Duration _connectTimeout = Duration(seconds: 90);
-  static const Duration _syncTimeout = Duration(seconds: 90);
+
+  /// Sync-vitals sul Pi: 2 giorni di health (molte chiamate Garmin) + fino a 50 attività + Firestore.
+  /// 90s era stretto su rete lenta / cold start.
+  static const Duration _syncTimeout = Duration(seconds: 180);
 
   Future<bool> isConnected(String uid) async {
     final doc = await _firestore.collection('users').doc(uid).get();
