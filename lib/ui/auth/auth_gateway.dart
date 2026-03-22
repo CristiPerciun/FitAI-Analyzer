@@ -154,6 +154,10 @@ class _LoggedInGate extends ConsumerStatefulWidget {
 class _LoggedInGateState extends ConsumerState<_LoggedInGate> {
   String? _lastLoggedUi;
 
+  /// Riverpod non consente di aggiornare un provider in [initState]/durante il build.
+  /// Fino al primo post-frame mostriamo Launch; poi [loadProfile] imposta `isLoading`.
+  bool _profileKickoffPending = true;
+
   void _traceLoggedUi(String label) {
     if (_lastLoggedUi == label) return;
     _lastLoggedUi = label;
@@ -163,16 +167,23 @@ class _LoggedInGateState extends ConsumerState<_LoggedInGate> {
   @override
   void initState() {
     super.initState();
-    bootLog('LoggedInGate: richiesta loadProfile() (Firestore profile/profile)');
-    // Subito (no microtask): loadProfile() imposta isLoading=true in modo sincrono
-    // così il primo build non vede profile==null con isLoading==false → flash Onboarding.
-    ref.read(userProfileNotifierProvider.notifier).loadProfile();
+    bootLog('LoggedInGate: loadProfile() schedulato dopo il primo frame (regola Riverpod)');
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(userProfileNotifierProvider.notifier).loadProfile();
+      setState(() => _profileKickoffPending = false);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final profileState = ref.watch(userProfileNotifierProvider);
     final uid = ref.watch(authNotifierProvider).user?.uid;
+
+    if (_profileKickoffPending) {
+      _traceLoggedUi('Launch — attesa post-frame (prima di loadProfile, no flash Onboarding)');
+      return const Scaffold(body: LaunchScreen());
+    }
 
     if (profileState.isLoading) {
       _traceLoggedUi('Launch — profilo utente in caricamento');
