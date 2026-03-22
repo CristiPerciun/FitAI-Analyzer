@@ -1,8 +1,9 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
+import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/providers/user_profile_notifier.dart';
 import 'package:fitai_analyzer/ui/auth/login_screen.dart';
-import 'package:fitai_analyzer/ui/widgets/loading_indicator.dart';
+import 'package:fitai_analyzer/ui/launch/launch_screen.dart';
 import 'package:fitai_analyzer/ui/onboarding/onboarding_screen.dart';
 import 'package:fitai_analyzer/ui/shell/main_shell_screen.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
@@ -44,7 +45,7 @@ class _AuthGatewayState extends ConsumerState<AuthGateway> {
   @override
   Widget build(BuildContext context) {
     if (!_authReady) {
-      return const Scaffold(body: LoadingScreen());
+      return const Scaffold(body: LaunchScreen());
     }
     final authState = ref.watch(authNotifierProvider);
     final user = authState.user;
@@ -97,7 +98,7 @@ class _VerifyUserGateState extends ConsumerState<_VerifyUserGate> {
   @override
   Widget build(BuildContext context) {
     if (_isVerifying) {
-      return const Scaffold(body: LoadingScreen());
+      return const Scaffold(body: LaunchScreen());
     }
     if (!_verified) {
       return const LoginScreen();
@@ -106,7 +107,8 @@ class _VerifyUserGateState extends ConsumerState<_VerifyUserGate> {
   }
 }
 
-/// Controlla se il profilo esiste: se nuovo → Onboarding, altrimenti MainShell.
+/// Controlla se il profilo esiste: se nuovo → Onboarding, altrimenti precarica il
+/// pacchetto Home e apre MainShell (una sola UI di launch durante i caricamenti).
 class _LoggedInGate extends ConsumerStatefulWidget {
   const _LoggedInGate();
 
@@ -129,7 +131,7 @@ class _LoggedInGateState extends ConsumerState<_LoggedInGate> {
     final uid = ref.watch(authNotifierProvider).user?.uid;
 
     if (profileState.isLoading) {
-      return const Scaffold(body: LoadingScreen());
+      return const Scaffold(body: LaunchScreen());
     }
 
     if (uid == null || profileState.error != null) {
@@ -138,6 +140,11 @@ class _LoggedInGateState extends ConsumerState<_LoggedInGate> {
 
     if (profileState.profile == null) {
       return const OnboardingScreen();
+    }
+
+    final homePkg = ref.watch(longevityHomePackageProvider);
+    if (homePkg.isLoading) {
+      return const Scaffold(body: LaunchScreen());
     }
 
     return const MainShellScreen();
