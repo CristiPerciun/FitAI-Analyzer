@@ -2,16 +2,33 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/meal_model.dart';
+import '../models/user_profile.dart';
 import '../utils/platform_firestore_fix.dart';
+import 'ai_prompt_service.dart';
+import 'gemini_service.dart';
 
 /// Servizio per salvataggio dati nutrizione (Gemini foto piatto) su Firestore.
 /// Strategia a Tre Livelli:
 /// - Livello 1: meals subcollection (dettaglio singolo pasto per "Com'è andato il pranzo?")
 /// - Livello 2: nutrition_summary su daily_log (trend settimanale senza scaricare ogni pasto)
 /// - Livello 3: baseline_profile usa medie da nutrition_summary
-final nutritionServiceProvider = Provider<NutritionService>((ref) => NutritionService());
+final nutritionServiceProvider = Provider<NutritionService>((ref) {
+  return NutritionService(
+    aiPromptService: ref.read(aiPromptServiceProvider),
+    geminiService: ref.read(geminiServiceProvider),
+  );
+});
 
 class NutritionService {
+  NutritionService({
+    required AiPromptService aiPromptService,
+    required GeminiService geminiService,
+  })  : _aiPromptService = aiPromptService,
+        _geminiService = geminiService;
+
+  final AiPromptService _aiPromptService;
+  final GeminiService _geminiService;
+
   /// Salva il pasto nella sottocollezione meals e aggiorna nutrition_summary sul daily_log.
   /// [uid] - ID utente Firebase
   /// [nutritionGemini] - Risposta Gemini: dish_name, total_calories, protein_g, carbs_g, fat_g, advice, longevity_score
@@ -97,6 +114,46 @@ class NutritionService {
         'timestamp': Timestamp.fromDate(now),
       }, SetOptions(merge: true));
     });
+  }
+
+  /// Legge il profilo, costruisce il prompt nutrizione, chiama Gemini e salva il testo su `daily_logs/{oggi}.weekly_meal_plan`.
+  Future<void> generateInitialMealPlan(String uid) async {
+    final firestore = FirebaseFirestore.instance;
+    final profileDoc = await firestore
+        .collection('users')
+        .doc(uid)
+        .collection('profile')
+        .doc('profile')
+        .get();
+    if (!profileDoc.exists || profileDoc.data() == null) {
+      throw StateError('Profilo non trovato');
+    }
+    final profile = UserProfile.fromJson(profileDoc.data()!);
+    if (profile.nutritionGoal == null) {
+      throw StateError('Obiettivo mangiare non configurato');
+    }
+
+    final prompt = _aiPromptService.buildNutritionPrompt(profile);
+    final plan = await _geminiService.generateFromPrompt(prompt);
+
+    final now = DateTime.now();
+    final todayStr = now.toIso8601String().split('T')[0];
+    await firestore
+        .collection('users')
+        .doc(uid)
+        .collection('daily_logs')
+        .doc(todayStr)
+        .set(
+      {
+        'date': todayStr,
+        'weekly_meal_plan': {
+          'content': plan,
+          'generated_at': Timestamp.fromDate(now),
+        },
+        'timestamp': Timestamp.fromDate(now),
+      },
+      SetOptions(merge: true),
+    );
   }
 
   String _extractDishName(Map<String, dynamic> nut, String? mealLabel) {

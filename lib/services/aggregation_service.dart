@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/baseline_profile_model.dart';
 import '../models/daily_log_model.dart';
 import '../models/rolling_10days_model.dart';
+import '../models/user_profile.dart';
+import 'nutrition_calculator_service.dart';
 import 'gemini_api_key_service.dart';
 import 'gemini_service.dart';
 
@@ -173,14 +175,16 @@ class AggregationService {
     final startDateStr = tenDaysAgo.toIso8601String().split('T')[0];
     final endDateStr = today.toIso8601String().split('T')[0];
 
+    // Due filtri su __name__ + orderBy richiedono indice composito: evitiamo orderBy
+    // e ordiniamo in memoria (YYYY-MM-DD è ordinabile lessicograficamente).
     final snapshot = await dailyLogsRef
         .where(FieldPath.documentId, isGreaterThanOrEqualTo: startDateStr)
         .where(FieldPath.documentId, isLessThanOrEqualTo: endDateStr)
-        .orderBy(FieldPath.documentId, descending: true)
-        .limit(10)
         .get();
 
-    final dailyLogs = snapshot.docs.map(_dailyLogFromDoc).toList();
+    final docs = snapshot.docs.toList()
+      ..sort((a, b) => b.id.compareTo(a.id));
+    final dailyLogs = docs.take(10).map(_dailyLogFromDoc).toList();
 
     // Ordina per data crescente (dal più vecchio al più recente)
     dailyLogs.sort((a, b) => a.date.compareTo(b.date));
@@ -406,6 +410,27 @@ class AggregationService {
       endDate: todayStr,
     );
 
+    UserProfile? userProfile;
+    try {
+      final profileDoc = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('profile')
+          .doc('profile')
+          .get();
+      if (profileDoc.exists && profileDoc.data() != null) {
+        userProfile = UserProfile.fromJson(profileDoc.data()!);
+      }
+    } catch (_) {
+      userProfile = null;
+    }
+
+    NutritionEnergyResult? nutritionEnergy;
+    if (userProfile != null && userProfile.nutritionGoal != null) {
+      nutritionEnergy =
+          NutritionCalculatorService.computeFromUserProfile(userProfile);
+    }
+
     // Goal IA: da daily_logs più frequente (goal_today_ia creato dall'IA)
     String goalIa = '';
     final goalCounts = <String, int>{};
@@ -586,6 +611,43 @@ class AggregationService {
       );
     }
 
+    double? bmrKcal = nutritionEnergy?.bmrKcal;
+    double? tdeeKcal = nutritionEnergy?.tdeeKcal;
+    double? activityMult = nutritionEnergy?.activityMultiplier;
+    String? activityLevelDerived = nutritionEnergy?.activityLevel;
+    double? nutritionCalTarget = nutritionEnergy?.calorieTarget;
+    double? nutritionAdjFrac = nutritionEnergy?.adjustmentFraction;
+    Map<String, dynamic>? nutritionSnap = userProfile?.nutritionGoal?.toJson();
+
+    if (nutritionEnergy == null) {
+      try {
+        final prev = await firestore
+            .collection('users')
+            .doc(uid)
+            .collection('baseline_profile')
+            .doc('main')
+            .get();
+        final m = prev.data();
+        if (m != null) {
+          bmrKcal = (m['bmr_kcal'] as num?)?.toDouble() ?? bmrKcal;
+          tdeeKcal = (m['tdee_kcal'] as num?)?.toDouble() ?? tdeeKcal;
+          activityMult =
+              (m['activity_multiplier'] as num?)?.toDouble() ?? activityMult;
+          activityLevelDerived =
+              m['activity_level_derived'] as String? ?? activityLevelDerived;
+          nutritionCalTarget =
+              (m['nutrition_calorie_target'] as num?)?.toDouble() ??
+              nutritionCalTarget;
+          nutritionAdjFrac =
+              (m['nutrition_energy_adjustment_fraction'] as num?)?.toDouble() ??
+              nutritionAdjFrac;
+          nutritionSnap =
+              m['nutrition_goal_snapshot'] as Map<String, dynamic>? ??
+              nutritionSnap;
+        }
+      } catch (_) {}
+    }
+
     return BaselineProfileModel(
       goalIa: goalIa,
       annualStats: annualStats,
@@ -599,6 +661,13 @@ class AggregationService {
         'Università Stanford - VO2max e mortalità',
         'ACSM - Linee guida esercizio cardiovascolare',
       ],
+      bmrKcal: bmrKcal,
+      tdeeKcal: tdeeKcal,
+      activityMultiplier: activityMult,
+      activityLevelDerived: activityLevelDerived,
+      nutritionCalorieTarget: nutritionCalTarget,
+      nutritionEnergyAdjustmentFraction: nutritionAdjFrac,
+      nutritionGoalSnapshot: nutritionSnap,
     );
   }
 

@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fitai_analyzer/models/user_profile.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
+import 'package:fitai_analyzer/services/aggregation_service.dart';
+import 'package:fitai_analyzer/services/nutrition_calculator_service.dart';
 import 'package:fitai_analyzer/utils/platform_firestore_fix.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -92,15 +94,93 @@ class UserProfileNotifier extends Notifier<UserProfileState> {
 
     state = state.copyWith(isLoading: true, error: null);
     try {
+      final toSave = profile.nutritionGoal != null
+          ? NutritionCalculatorService.profileWithComputedCalorieTarget(profile)
+          : profile;
+
       await FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
           .collection('profile')
           .doc('profile')
-          .set(profile.toJson(), SetOptions(merge: true));
+          .set(toSave.toJson(), SetOptions(merge: true));
+
+      if (toSave.nutritionGoal != null) {
+        await NutritionCalculatorService.syncNutritionFieldsToBaseline(
+          firestore: FirebaseFirestore.instance,
+          uid: uid,
+          profile: toSave,
+        );
+      }
 
       state = state.copyWith(
-        profile: profile,
+        profile: toSave,
+        isLoading: false,
+        error: null,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: e.toString(),
+      );
+      rethrow;
+    }
+  }
+
+  /// Aggiorna solo l’obiettivo nutrizione, ricalcola kcal target, baseline e aggregati.
+  Future<void> updateNutritionGoal(NutritionGoal goal) async {
+    final uid = _uid;
+    if (uid == null) {
+      state = state.copyWith(error: 'Utente non autenticato');
+      throw StateError('Utente non autenticato');
+    }
+
+    final current = state.profile;
+    if (current == null) {
+      state = state.copyWith(error: 'Profilo non caricato');
+      throw StateError('Profilo non caricato');
+    }
+
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final merged = UserProfile(
+        mainGoal: current.mainGoal,
+        age: current.age,
+        gender: current.gender,
+        heightCm: current.heightCm,
+        weightKg: current.weightKg,
+        trainingDaysPerWeek: current.trainingDaysPerWeek,
+        equipment: current.equipment,
+        takesMedications: current.takesMedications,
+        medicationsList: current.medicationsList,
+        healthConditions: current.healthConditions,
+        avgSleepHours: current.avgSleepHours,
+        sleepImportance: current.sleepImportance,
+        trainingGoal: current.trainingGoal,
+        nutritionGoal: goal,
+      );
+      final toSave =
+          NutritionCalculatorService.profileWithComputedCalorieTarget(merged);
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('profile')
+          .doc('profile')
+          .update({
+            'nutrition_goal': toSave.nutritionGoal!.toJson(),
+          });
+
+      await NutritionCalculatorService.syncNutritionFieldsToBaseline(
+        firestore: FirebaseFirestore.instance,
+        uid: uid,
+        profile: toSave,
+      );
+
+      await ref.read(aggregationServiceProvider).updateRolling10DaysAndBaseline(uid);
+
+      state = state.copyWith(
+        profile: toSave,
         isLoading: false,
         error: null,
       );
@@ -141,6 +221,11 @@ final userProfileNotifierProvider =
     NotifierProvider<UserProfileNotifier, UserProfileState>(
   UserProfileNotifier.new,
 );
+
+/// Obiettivo nutrizione corrente (da stato notifier; null se assente o profilo non caricato).
+final nutritionGoalProvider = Provider<NutritionGoal?>((ref) {
+  return ref.watch(userProfileNotifierProvider).profile?.nutritionGoal;
+});
 
 /// Stream real-time del profilo per ref.watch/ref.listen in UI.
 /// Si ricrea automaticamente quando cambia l'utente autenticato.

@@ -24,9 +24,10 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final uid = ref.watch(authNotifierProvider).user?.uid;
     final packageAsync = ref.watch(longevityHomePackageProvider);
-    final dailyGoals = ref.watch(dailyGoalsProvider);
-    final weeklySprint = ref.watch(weeklySprintProvider);
-    final strategicAdvice = ref.watch(strategicAdviceProvider);
+    final planDay = ref.watch(homeLongevityPlanForUiProvider);
+    final dailyGoals = ref.watch(homeDailyGoalsMapProvider);
+    final weeklySprint = planDay?.weeklySprint;
+    final strategicAdvice = planDay?.strategicAdvice;
     final isLoadingPlan = ref.watch(_longevityPlanLoadingProvider);
     final isGarminSyncing =
         ref.watch(garminSyncNotifierProvider.select((s) => s.isSyncing));
@@ -34,6 +35,12 @@ class HomeScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Home'),
+        actions: [
+          TextButton(
+            onPressed: uid == null ? null : () => _onGeneratePlan(context, ref),
+            child: const Text('Analisi'),
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -63,7 +70,8 @@ class HomeScreen extends ConsumerWidget {
                             const SizedBox(height: 12),
                             PillarGrid(
                               isLoading: isLoadingPlan,
-                              pillarContents: dailyGoals,
+                              pillarContents:
+                                  dailyGoals.isEmpty ? null : dailyGoals,
                               onGenerateTap: () => _onGeneratePlan(context, ref),
                             ),
                             const SizedBox(height: 16),

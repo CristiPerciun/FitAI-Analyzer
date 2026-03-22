@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitai_analyzer/models/meal_model.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
+import 'package:fitai_analyzer/providers/user_profile_notifier.dart';
+import 'package:fitai_analyzer/ui/onboarding/nutrition_goal_screen.dart';
 import 'package:fitai_analyzer/utils/date_utils.dart' show dateFilterAll, formatDateForDisplay;
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/services/gemini_service.dart';
@@ -347,8 +349,7 @@ class AlimentazioneScreen extends ConsumerWidget {
             ? (dates.isNotEmpty ? dates : [])
             : [selectedDate];
 
-    // Obiettivo calorico giornaliero (placeholder, da implementare)
-    const int obiettivoKcal = 3000;
+    final nutritionGoal = ref.watch(nutritionGoalProvider);
 
     // Somma calorie assunte per le date visualizzate
     int calorieAssunte = 0;
@@ -360,7 +361,10 @@ class AlimentazioneScreen extends ConsumerWidget {
         }
       }
     }
-    final rimanenti = obiettivoKcal - calorieAssunte;
+
+    final obiettivoKcal = nutritionGoal?.calorieTarget.round();
+    final rimanenti =
+        obiettivoKcal != null ? obiettivoKcal - calorieAssunte : null;
 
     return Scaffold(
       appBar: AppBar(
@@ -371,33 +375,112 @@ class AlimentazioneScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Header obiettivo: 3000 - calorie assunte = rimanenti
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(12),
+            if (nutritionGoal == null)
+              _NutritionOnboardingCard(
+                onConfigure: () {
+                  Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => NutritionGoalScreen(
+                        onSuccess: () {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Obiettivo mangiare salvato'),
+                            ),
+                          );
+                          Navigator.of(context).pop();
+                        },
+                      ),
+                    ),
+                  );
+                },
+              )
+            else
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$obiettivoKcal − $calorieAssunte = $rimanenti',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Obiettivo − Calorie assunte = Rimanenti',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant,
+                          ),
+                    ),
+                  ],
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '$obiettivoKcal − $calorieAssunte = $rimanenti',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          fontFeatures: [const FontFeature.tabularFigures()],
+            if (nutritionGoal != null) ...[
+              const SizedBox(height: 16),
+              Consumer(
+                builder: (context, ref, _) {
+                  final gen = ref.watch(nutritionMealPlanGeneratingProvider);
+                  final planAsync = ref.watch(nutritionMealPlanAiStreamProvider);
+                  final plan = planAsync.valueOrNull;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      FilledButton.tonalIcon(
+                        onPressed: gen
+                            ? null
+                            : () => _onGenerateNutritionMealPlan(context, ref),
+                        icon: gen
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.restaurant_menu),
+                        label: Text(
+                          gen
+                              ? 'Generazione piano...'
+                              : (plan?.hasAnyObjective == true
+                                  ? 'Aggiorna obiettivi pasti (AI)'
+                                  : 'Genera obiettivi pasti (AI)'),
                         ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Obiettivo − Calorie assunte = Rimanenti',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                      if (plan != null && plan.macroGiornalieri.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          _macroSummaryLine(plan.macroGiornalieri),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
                         ),
-                  ),
-                ],
+                      ],
+                      if (plan != null &&
+                          plan.aderenzaScore != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Aderenza piano (stima): ${plan.aderenzaScore}%',
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                        ),
+                      ],
+                    ],
+                  );
+                },
               ),
-            ),
+            ],
             const SizedBox(height: 20),
             Text(
               'Date',
@@ -440,6 +523,60 @@ class AlimentazioneScreen extends ConsumerWidget {
     );
   }
 
+  static String _macroSummaryLine(Map<String, dynamic> m) {
+    num? n(String a, String b) {
+      final v = m[a] ?? m[b];
+      if (v is num) return v;
+      return num.tryParse(v?.toString() ?? '');
+    }
+
+    final p = n('proteine_g', 'protein_g');
+    final c = n('carboidrati_g', 'carbs_g');
+    final f = n('grassi_g', 'fat_g');
+    final k = n('kcal', 'calories');
+    final parts = <String>[];
+    if (p != null) parts.add('P: ${p.round()} g');
+    if (c != null) parts.add('C: ${c.round()} g');
+    if (f != null) parts.add('G: ${f.round()} g');
+    if (k != null) parts.add('${k.round()} kcal');
+    return parts.isEmpty ? '' : 'Macro giornalieri (da piano AI): ${parts.join(' · ')}';
+  }
+
+  Future<void> _onGenerateNutritionMealPlan(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    var uid = ref.read(authNotifierProvider).user?.uid;
+    uid ??= FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      if (context.mounted) {
+        showErrorDialog(context, 'Utente non autenticato.');
+      }
+      return;
+    }
+
+    final apiKeyService = ref.read(geminiApiKeyServiceProvider);
+    if (!await apiKeyService.hasValidKey()) {
+      if (!context.mounted) return;
+      final saved = await showGeminiApiKeyDialog(context, ref);
+      if (!saved || !context.mounted) return;
+    }
+
+    ref.read(nutritionMealPlanGeneratingProvider.notifier).state = true;
+    try {
+      await ref.read(nutritionMealPlanServiceProvider).generateAndSave(uid);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Piano alimentare AI salvato')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) showErrorDialog(context, e.toString());
+    } finally {
+      ref.read(nutritionMealPlanGeneratingProvider.notifier).state = false;
+    }
+  }
+
   List<Widget> _buildMealCardsForDate(
     BuildContext context,
     WidgetRef ref,
@@ -459,8 +596,153 @@ class AlimentazioneScreen extends ConsumerWidget {
           ),
           onMealTap: (meal) => _showMealDetailDialog(context, meal),
         ),
+        _MealAiObjectivesCard(pastoKey: MealConstants.mealLabels[i]),
       ],
     ];
+  }
+}
+
+/// Obiettivi operativi Gemini sotto la card Colazione / Pranzo / Cena.
+class _MealAiObjectivesCard extends ConsumerWidget {
+  const _MealAiObjectivesCard({required this.pastoKey});
+
+  /// `colazione` | `pranzo` | `cena` (allineato a [MealConstants.mealLabels]).
+  final String pastoKey;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ng = ref.watch(nutritionGoalProvider);
+    if (ng == null) return const SizedBox.shrink();
+
+    final plan = ref.watch(nutritionMealPlanAiStreamProvider).valueOrNull;
+    if (plan == null || !plan.hasAnyObjective) {
+      return const SizedBox.shrink();
+    }
+
+    final List<String> items;
+    switch (pastoKey) {
+      case 'colazione':
+        items = plan.obiettiviColazione;
+        break;
+      case 'cena':
+        items = plan.obiettiviCena;
+        break;
+      case 'pranzo':
+      default:
+        items = plan.obiettiviPranzo;
+        break;
+    }
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Material(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.flag_outlined, size: 18, color: cs.primary),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Obiettivi per questo pasto',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurface,
+                        ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              for (final t in items)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '• ',
+                        style: TextStyle(
+                          color: cs.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          t,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                height: 1.35,
+                                color: cs.onSurfaceVariant,
+                              ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Invito a completare sub-onboarding Obiettivo Mangiare (al posto dei numeri placeholder).
+class _NutritionOnboardingCard extends StatelessWidget {
+  const _NutritionOnboardingCard({required this.onConfigure});
+
+  final VoidCallback onConfigure;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      elevation: 0,
+      color: cs.primaryContainer,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.restaurant_menu, color: cs.onPrimaryContainer, size: 28),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Obiettivo Mangiare',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: cs.onPrimaryContainer,
+                        ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Imposta preferenze, obiettivo nutrizionale e target calorico '
+              '(evidenza CREA / ISSN). Poi vedrai qui obiettivo giornaliero, '
+              'calorie assunte e kcal rimanenti con i tuoi dati reali.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: cs.onPrimaryContainer.withValues(alpha: 0.92),
+                  ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: onConfigure,
+              child: const Text('Configura obiettivo mangiare'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

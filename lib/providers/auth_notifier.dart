@@ -350,6 +350,98 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
+  /// Re-auth e nuova password. Aggiorna le credenziali in secure storage se erano salvate.
+  Future<void> updatePasswordWithReauth({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      await _runOnPlatformThread(() async {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user == null) throw StateError('Utente non autenticato');
+        final email = user.email;
+        if (email == null || email.isEmpty) {
+          throw StateError('Nessuna email associata all’account.');
+        }
+        final cred = EmailAuthProvider.credential(
+          email: email,
+          password: currentPassword,
+        );
+        await user.reauthenticateWithCredential(cred);
+        await user.updatePassword(newPassword);
+      });
+      final user = FirebaseAuth.instance.currentUser;
+      final creds =
+          await ref.read(credentialStorageServiceProvider).getCredentials();
+      if (creds != null && user?.email != null) {
+        await ref.read(credentialStorageServiceProvider).saveCredentials(
+              email: user!.email!,
+              password: newPassword,
+              rememberMe: true,
+            );
+      }
+      state = state.copyWith(isLoading: false);
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: e is FirebaseAuthException
+            ? _firebaseAuthExceptionMessage(e)
+            : _authErrorToMessage(e),
+      );
+      rethrow;
+    }
+  }
+
+  /// Invia email di verifica al nuovo indirizzo; il cambio è effettivo dopo il link (Firebase).
+  Future<void> verifyBeforeUpdateUserEmail({
+    required String currentPassword,
+    required String newEmail,
+  }) async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      await _runOnPlatformThread(() async {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user == null) throw StateError('Utente non autenticato');
+        final email = user.email;
+        if (email == null || email.isEmpty) {
+          throw StateError('Nessuna email associata.');
+        }
+        final cred = EmailAuthProvider.credential(
+          email: email,
+          password: currentPassword,
+        );
+        await user.reauthenticateWithCredential(cred);
+        await user.verifyBeforeUpdateEmail(newEmail.trim());
+      });
+      state = state.copyWith(isLoading: false);
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: e is FirebaseAuthException
+            ? _firebaseAuthExceptionMessage(e)
+            : _authErrorToMessage(e),
+      );
+      rethrow;
+    }
+  }
+
+  static String _firebaseAuthExceptionMessage(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'wrong-password':
+      case 'invalid-credential':
+        return 'Password attuale non corretta.';
+      case 'weak-password':
+        return 'La nuova password è troppo debole (min. 6 caratteri).';
+      case 'invalid-email':
+        return 'Indirizzo email non valido.';
+      case 'email-already-in-use':
+        return 'Questa email è già usata da un altro account.';
+      default:
+        return e.message ?? e.code;
+    }
+  }
+
   static String _authErrorToMessage(Object e) {
     final msg = e.toString().toLowerCase();
     if (msg.contains('invalid-credential') || msg.contains('invalid_credential')) {

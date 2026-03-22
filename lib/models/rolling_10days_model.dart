@@ -8,7 +8,7 @@ part 'rolling_10days_model.g.dart';
 @JsonSerializable()
 class Rolling10DaysModel {
   /// Riepilogo attività per ciascuno dei 10 giorni.
-  @JsonKey(name: 'activities_summary', defaultValue: [])
+  @JsonKey(name: 'activities_summary', fromJson: _activitiesSummaryFromJson)
   final List<Map<String, dynamic>> activitiesSummary;
 
   /// Distanza totale km.
@@ -56,4 +56,17 @@ class Rolling10DaysModel {
   }
 
   static Object _dateToJson(DateTime date) => Timestamp.fromDate(date);
+
+  static List<Map<String, dynamic>> _activitiesSummaryFromJson(Object? json) {
+    if (json is! List) return [];
+    final out = <Map<String, dynamic>>[];
+    for (final e in json) {
+      if (e is Map<String, dynamic>) {
+        out.add(e);
+      } else if (e is Map) {
+        out.add(Map<String, dynamic>.from(e));
+      }
+    }
+    return out;
+  }
 }

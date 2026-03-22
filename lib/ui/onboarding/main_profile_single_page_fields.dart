@@ -1,13 +1,10 @@
 import 'package:fitai_analyzer/models/user_profile.dart';
 import 'package:fitai_analyzer/providers/user_profile_notifier.dart';
-import 'package:fitai_analyzer/theme/app_theme.dart';
-import 'package:fitai_analyzer/ui/onboarding/nutrition_goal_screen.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/utils/goal_options.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 const _genderOptions = [
   ('male', 'Maschio'),
@@ -29,39 +26,31 @@ const _equipmentOptions = [
   ('full_gym', 'Palestra completa'),
 ];
 
-class OnboardingScreen extends ConsumerStatefulWidget {
-  const OnboardingScreen({super.key});
+/// Tutte le domande onboarding principale in un unico blocco (scroll gestito dal genitore).
+/// Usato da [CombinedOnboardingEditScreen] da Impostazioni.
+class MainProfileSinglePageFields extends ConsumerStatefulWidget {
+  const MainProfileSinglePageFields({super.key});
 
   @override
-  ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
+  ConsumerState<MainProfileSinglePageFields> createState() =>
+      MainProfileSinglePageFieldsState();
 }
 
-class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
-  final _formKey = GlobalKey<FormState>();
-  int _pageIndex = 0;
-
-  // Page 1
+class MainProfileSinglePageFieldsState
+    extends ConsumerState<MainProfileSinglePageFields> {
   String? _mainGoal;
-
-  // Page 2
   final _ageController = TextEditingController();
   String? _gender;
   final _heightController = TextEditingController();
   final _weightController = TextEditingController();
-
-  // Page 3
   int? _trainingDaysPerWeek;
   String? _equipment;
-
-  // Page 4
   bool _takesMedications = false;
   final _medicationsController = TextEditingController();
   final _healthConditionsController = TextEditingController();
   double _avgSleepHours = 7.0;
   int _sleepImportance = 3;
-
-  // Non chiamare loadProfile in initState: _LoggedInGate l'ha già fatto.
-  // Richiamarlo metterebbe isLoading=true e causerebbe flickering.
+  bool _seeded = false;
 
   @override
   void dispose() {
@@ -73,9 +62,26 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     super.dispose();
   }
 
-  double get _progress => (_pageIndex + 1) / 4;
+  void seedFrom(UserProfile p) {
+    if (_seeded) return;
+    _seeded = true;
+    setState(() {
+      _mainGoal = p.mainGoal;
+      _ageController.text = p.age.toString();
+      _gender = p.gender;
+      _heightController.text = p.heightCm.toString();
+      _weightController.text = p.weightKg.toString();
+      _trainingDaysPerWeek = p.trainingDaysPerWeek;
+      _equipment = p.equipment;
+      _takesMedications = p.takesMedications;
+      _medicationsController.text = p.medicationsList;
+      _healthConditionsController.text = p.healthConditions;
+      _avgSleepHours = p.avgSleepHours;
+      _sleepImportance = p.sleepImportance.clamp(1, 5);
+    });
+  }
 
-  UserProfile _buildProfileWithDefaults() {
+  UserProfile _buildBase() {
     return UserProfile(
       mainGoal: _mainGoal ?? 'longevity',
       age: int.tryParse(_ageController.text.trim()) ?? 30,
@@ -92,9 +98,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     );
   }
 
-  /// Preserva nutrition_goal e training_goal già salvati (modifica profilo da Impostazioni).
-  UserProfile _mergedProfileForSave() {
-    final b = _buildProfileWithDefaults();
+  /// Profilo principale + conserva ramo nutrizione e training dal profilo corrente in Firestore.
+  UserProfile buildMergedProfile() {
+    final b = _buildBase();
     final cur = ref.read(userProfileNotifierProvider).profile;
     return UserProfile(
       mainGoal: b.mainGoal,
@@ -135,157 +141,55 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     return null;
   }
 
-  void _onContinue() {
-    if (_pageIndex == 0) {
-      if (_mainGoal == null) return;
-      setState(() => _pageIndex = 1);
-      return;
+  /// Valida i campi (richiede [Form] antenato per i TextFormField).
+  bool validateAll() {
+    if (_mainGoal == null) {
+      showErrorDialog(context, 'Seleziona l\'obiettivo principale');
+      return false;
     }
-    if (_pageIndex == 1) {
-      if (!_formKey.currentState!.validate()) return;
-      if (_gender == null) {
-        showErrorDialog(context, 'Seleziona il sesso biologico');
-        return;
-      }
-      setState(() => _pageIndex = 2);
-      return;
+    final form = Form.maybeOf(context);
+    if (form != null && !form.validate()) return false;
+    if (_gender == null) {
+      showErrorDialog(context, 'Seleziona il sesso biologico');
+      return false;
     }
-    if (_pageIndex == 2) {
-      if (_trainingDaysPerWeek == null) {
-        showErrorDialog(context, 'Seleziona i giorni di allenamento');
-        return;
-      }
-      if (_equipment == null) {
-        showErrorDialog(context, 'Seleziona l\'attrezzatura');
-        return;
-      }
-      setState(() => _pageIndex = 3);
-      return;
+    if (_trainingDaysPerWeek == null) {
+      showErrorDialog(context, 'Seleziona i giorni di allenamento');
+      return false;
     }
-    _saveAndNavigate();
-  }
-
-  void _onSkip() {
-    if (_pageIndex < 3) {
-      setState(() => _pageIndex++);
-    } else {
-      _saveAndNavigate();
+    if (_equipment == null) {
+      showErrorDialog(context, 'Seleziona l\'attrezzatura');
+      return false;
     }
-  }
-
-  Future<void> _saveAndNavigate() async {
-    final profile = _mergedProfileForSave();
-    try {
-      await ref.read(userProfileNotifierProvider.notifier).saveProfile(profile);
-      if (!mounted) return;
-      await Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          builder: (_) => const NutritionGoalScreen(),
-        ),
-      );
-      if (mounted) context.go('/');
-    } catch (e) {
-      if (mounted) showErrorDialog(context, e.toString());
-    }
+    return true;
   }
 
   @override
   Widget build(BuildContext context) {
-    final profileState = ref.watch(userProfileNotifierProvider);
-
-    ref.listen(userProfileNotifierProvider, (prev, next) {
-      if (next.error != null &&
-          next.error!.isNotEmpty &&
-          next.error != prev?.error &&
-          context.mounted) {
-        showErrorDialog(context, next.error!);
-      }
-    });
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_pageTitle),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(4),
-          child: LinearProgressIndicator(
-            value: _progress,
-            backgroundColor:
-                Theme.of(context).colorScheme.surfaceContainerHighest,
-          ),
-        ),
-      ),
-      body: Form(
-        key: _formKey,
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final maxWidth =
-                  constraints.maxWidth > 600 ? 400.0 : constraints.maxWidth;
-              return SingleChildScrollView(
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: maxWidth),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _buildPageContent(),
-                        const SizedBox(height: 32),
-                        _buildActions(profileState.isLoading),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
-
-  String get _pageTitle {
-    switch (_pageIndex) {
-      case 0:
-        return 'Obiettivo principale';
-      case 1:
-        return 'Informazioni base';
-      case 2:
-        return 'Allenamento';
-      case 3:
-        return 'Salute e recupero';
-      default:
-        return 'Onboarding';
+    final theme = Theme.of(context);
+    final p = ref.watch(userProfileNotifierProvider).profile;
+    if (p != null && !_seeded) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) seedFrom(p);
+      });
     }
-  }
 
-  Widget _buildPageContent() {
-    switch (_pageIndex) {
-      case 0:
-        return _buildPage1();
-      case 1:
-        return _buildPage2();
-      case 2:
-        return _buildPage3();
-      case 3:
-        return _buildPage4();
-      default:
-        return const SizedBox.shrink();
-    }
-  }
-
-  Widget _buildPage1() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
+          'Obiettivo principale',
+          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        Text(
           'Scegli l\'obiettivo principale per personalizzare il tuo piano AI',
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.8),
-              ),
+          style: theme.textTheme.bodyLarge?.copyWith(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+          ),
           textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         DropdownButtonFormField<String>(
           key: ValueKey(_mainGoal),
           initialValue: _mainGoal,
@@ -298,22 +202,20 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               .toList(),
           onChanged: (v) => setState(() => _mainGoal = v),
         ),
-      ],
-    );
-  }
-
-  Widget _buildPage2() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
+        const SizedBox(height: 28),
+        Text(
+          'Informazioni base',
+          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 12),
         Text(
           'Inserisci le tue informazioni per un piano personalizzato',
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.8),
-              ),
+          style: theme.textTheme.bodyLarge?.copyWith(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+          ),
           textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         TextFormField(
           controller: _ageController,
           decoration: const InputDecoration(
@@ -371,22 +273,20 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           ],
           validator: _validateWeight,
         ),
-      ],
-    );
-  }
-
-  Widget _buildPage3() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
+        const SizedBox(height: 28),
+        Text(
+          'Allenamento',
+          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 12),
         Text(
           'Quanto puoi allenarti e che attrezzatura hai a disposizione?',
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.8),
-              ),
+          style: theme.textTheme.bodyLarge?.copyWith(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+          ),
           textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         DropdownButtonFormField<int>(
           key: ValueKey(_trainingDaysPerWeek),
           initialValue: _trainingDaysPerWeek,
@@ -412,22 +312,20 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               .toList(),
           onChanged: (v) => setState(() => _equipment = v),
         ),
-      ],
-    );
-  }
-
-  Widget _buildPage4() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
+        const SizedBox(height: 28),
+        Text(
+          'Salute e recupero',
+          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 12),
         Text(
           'Farmaci, condizioni di salute e qualità del sonno',
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.8),
-              ),
+          style: theme.textTheme.bodyLarge?.copyWith(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+          ),
           textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         SwitchListTile(
           title: const Text('Assumi farmaci regolarmente'),
           value: _takesMedications,
@@ -460,7 +358,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         const SizedBox(height: 24),
         Text(
           'Ore di sonno medie: ${_avgSleepHours.toStringAsFixed(1)}',
-          style: Theme.of(context).textTheme.titleSmall,
+          style: theme.textTheme.titleSmall,
         ),
         Slider(
           value: _avgSleepHours,
@@ -473,7 +371,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         const SizedBox(height: 16),
         Text(
           'Importanza recupero (1-5): $_sleepImportance',
-          style: Theme.of(context).textTheme.titleSmall,
+          style: theme.textTheme.titleSmall,
         ),
         Slider(
           value: _sleepImportance.toDouble(),
@@ -482,33 +380,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           divisions: 4,
           label: '$_sleepImportance',
           onChanged: (v) => setState(() => _sleepImportance = v.round()),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildActions(bool isLoading) {
-    final isLastPage = _pageIndex == 3;
-    return Row(
-      children: [
-        if (!isLastPage)
-          TextButton(
-            onPressed: isLoading ? null : _onSkip,
-            child: const Text('Salta'),
-          ),
-        const Spacer(),
-        FilledButton(
-          onPressed: isLoading ? null : _onContinue,
-          child: isLoading
-              ? const SizedBox(
-                  height: 24,
-                  width: 24,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: AppColors.white,
-                  ),
-                )
-              : Text(isLastPage ? 'Genera piano AI' : 'Continua'),
         ),
       ],
     );

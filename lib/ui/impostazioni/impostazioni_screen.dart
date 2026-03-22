@@ -10,6 +10,7 @@ import 'package:fitai_analyzer/services/strava_service.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
+import 'package:fitai_analyzer/ui/profile/profile_hub_screen.dart';
 import 'package:fitai_analyzer/ui/widgets/garmin_connect_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -44,7 +45,16 @@ class ImpostazioniScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
-          _ProfileTile(userName: authState.user?.email ?? 'Utente'),
+          _ProfileTile(
+            userName: authState.user?.email ?? 'Utente',
+            onTap: () {
+              Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => const ProfileHubScreen(),
+                ),
+              );
+            },
+          ),
           const Divider(height: 24),
           _SettingsTile(
             leading: Container(
@@ -277,9 +287,13 @@ class ImpostazioniScreen extends ConsumerWidget {
 }
 
 class _ProfileTile extends StatelessWidget {
-  const _ProfileTile({required this.userName});
+  const _ProfileTile({
+    required this.userName,
+    required this.onTap,
+  });
 
   final String userName;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -302,6 +316,11 @@ class _ProfileTile extends StatelessWidget {
           color: Theme.of(context).colorScheme.outline,
         ),
       ),
+      trailing: Icon(
+        Icons.chevron_right,
+        color: Theme.of(context).colorScheme.outline,
+      ),
+      onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
     );
   }

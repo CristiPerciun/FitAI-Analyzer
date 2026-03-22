@@ -47,7 +47,7 @@ class LongevityEngine {
 
   /// Prompt master per piano di longevità (4 micro-obiettivi + macro settimanale + consiglio strategico).
   /// Memoria strutturata per Gemini 2.5: [Profilo] + [Riassunto 2 mesi] + [Dettaglio 7 giorni] + [Note].
-  /// Focus sull'obiettivo dell'utente (mainGoal).
+  /// Focus sul main goal a 4 vie ([UserProfile.mainGoal]) e contesto collegato.
   Future<String> buildLongevityPlanPrompt(String uid) async {
     final context = await buildGeminiHomeContext(uid);
     return _buildLongevityPlanPromptFromContext(context);
@@ -144,7 +144,7 @@ class LongevityEngine {
     if (profile != null) {
       sb.writeln('## Profilo');
       sb.writeln(
-        'Obiettivo: ${_mainGoalLabel(profile.mainGoal)} | Età: ${profile.age} | '
+        'Main goal: ${_mainGoalLabel(profile.mainGoal)} | Età: ${profile.age} | '
         'Peso: ${profile.weightKg} kg | Altezza: ${profile.heightCm} cm | '
         'Allenamenti/sett: ${profile.trainingDaysPerWeek} | Sonno medio: ${profile.avgSleepHours}h',
       );
@@ -420,13 +420,13 @@ class LongevityEngine {
     sb.writeln();
     sb.writeln('---');
     sb.writeln(
-      'OBIETTIVO PRINCIPALE DA RISPETTARE: ${_mainGoalLabel(ctx.userProfile?.mainGoal ?? '')}',
+      'MAIN GOAL (4 vie) DA RISPETTARE: ${_mainGoalLabel(ctx.userProfile?.mainGoal ?? '')}',
     );
     sb.writeln();
     sb.writeln(
       'Sei un esperto di longevità (Peter Attia, Outlive). Genera un piano di longevità che:',
     );
-    sb.writeln('1. Metti al centro l\'obiettivo principale dell\'utente');
+    sb.writeln('1. Metti al centro il main goal (4 vie) dell\'utente; rispetta anche training e nutrizione se presenti nel contesto');
     sb.writeln(
       '2. 4 micro-obiettivi per OGGI (Cuore, Forza, Alimentazione, Recupero)',
     );
@@ -462,9 +462,29 @@ class LongevityEngine {
 
   String _formatUserProfile(UserProfile? p) {
     if (p == null) return 'Profilo non compilato.';
-    return 'Obiettivo: ${_mainGoalLabel(p.mainGoal)} | Età: ${p.age} | '
+    var base = 'Main goal: ${_mainGoalLabel(p.mainGoal)} | Età: ${p.age} | '
         'Peso: ${p.weightKg} kg | Altezza: ${p.heightCm} cm | '
         'Allenamenti/sett: ${p.trainingDaysPerWeek} | Sonno medio: ${p.avgSleepHours}h';
+    final tg = p.trainingGoal;
+    if (tg != null &&
+        (tg.objectiveKey.isNotEmpty || tg.notes.isNotEmpty)) {
+      final parts = <String>[];
+      if (tg.objectiveKey.isNotEmpty) parts.add(tg.objectiveKey);
+      if (tg.notes.isNotEmpty) parts.add(tg.notes);
+      base = '$base | Training: ${parts.join(' — ')}';
+    }
+    final ng = p.nutritionGoal;
+    if (ng == null) return base;
+    final extra = StringBuffer();
+    if (ng.useSupplements) extra.write(', integratori: sì');
+    final notes = ng.extraNotes.trim();
+    if (notes.isNotEmpty) {
+      extra.write(', note: ');
+      extra.write(notes.length > 120 ? '${notes.substring(0, 117)}…' : notes);
+    }
+    return '$base | Nutrizione: ${ng.nutritionObjective}, '
+        '~${ng.calorieTarget.round()} kcal/die, proteine ${ng.proteinGramsPerKg.toStringAsFixed(1)} g/kg, '
+        'velocità ${ng.speed}, stile ${ng.style}${extra.toString()}';
   }
 
   String _mainGoalLabel(String goal) {

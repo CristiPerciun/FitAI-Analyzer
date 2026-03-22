@@ -142,6 +142,17 @@ Stima le calorie e i macronutrienti in base al cibo visibile. Sii realistico.
     return _parseNutritionJson(text);
   }
 
+  /// Risposta JSON per [AiPromptService.buildNutritionMealPlanPrompt] (pagina Alimentazione).
+  Future<Map<String, dynamic>> generateNutritionMealPlanJson(String prompt) async {
+    final model = await _getModelNutrition();
+    final response = await model.generateContent([Content.text(prompt)]);
+    final text = response.text;
+    if (text == null || text.isEmpty) {
+      return {'error': 'Gemini non ha restituito risposta'};
+    }
+    return _parseNutritionJson(text);
+  }
+
   Map<String, dynamic> _parseNutritionJson(String raw) {
     try {
       final cleaned = raw
