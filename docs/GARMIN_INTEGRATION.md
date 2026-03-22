@@ -1,6 +1,21 @@
 # Integrazione Garmin Sync Server
 
-FitAI Analyzer legge i dati Garmin da Firestore scritti dal **garmin-sync-server** (Python). L’URL del server è in **`.env`** → `GARMIN_SERVER_URL` (es. Raspberry Pi in LAN: `http://192.168.x.x:8080`). Repository server: [garmin-sync-server](https://github.com/CristiPerciun/garmin-sync-server); deploy Pi: `RPI_DEPLOY.md` in quel repo.
+FitAI Analyzer legge i dati Garmin da Firestore scritti dal **garmin-sync-server** (Python). L’URL del server è in **`.env`** → `GARMIN_SERVER_URL`.
+
+**Stessa rete (telefono a casa con il Pi):** default codice / `.env.example`: `http://10.15.22.3:8080` (Wi‑Fi attuale del Pi). In alternativa **mDNS** se non vuoi legarti all’IP: `http://raspberrypi.local:8080` (vedi `RPI_DEPLOY.md` sul repo server).
+
+**Telefono fuori casa, server a casa:** `*.local` e gli IP LAN **non** sono raggiungibili da Internet. Serve uno di questi approcci:
+
+| Approccio | Idea |
+|-----------|------|
+| **Tailscale** (spesso il più semplice) | VPN mesh: installi Tailscale su Pi e sul telefono; usi un hostname tipo `http://raspberrypi:8080` o l’IP Tailscale (100.x) in `GARMIN_SERVER_URL`. Funziona ovunque c’è rete. |
+| **Cloudflare Tunnel** / **ngrok** | Espone il servizio sul Pi con un URL HTTPS pubblico (configurazione e policy da valutare). |
+| **Port forwarding + DDNS** | Router apre la porta verso il Pi; nome dinamico tipo `casatua.duckdns.org`. Attenzione a sicurezza (HTTPS, firewall, token API). |
+| **Server in cloud** | Sposti `garmin-sync-server` su una VM con IP/URL pubblico (niente Pi a casa per quella parte). |
+
+In `.env` Flutter imposti **un solo** `GARMIN_SERVER_URL` coerente con come ti connetti di solito (es. Tailscale se vuoi sia casa che fuori con lo stesso URL). Se a volte sei solo in LAN senza VPN, puoi usare due build/profili `.env` diversi oppure cambiare manualmente l’URL quando cambi scenario.
+
+Repository server: [garmin-sync-server](https://github.com/CristiPerciun/garmin-sync-server); deploy Pi: `RPI_DEPLOY.md` in quel repo.
 
 Se proteggi l’API con un reverse proxy (Bearer), imposta opzionalmente **`GARMIN_SERVER_BEARER_TOKEN`** in `.env`: l’app invia `Authorization: Bearer …` su connect / disconnect / sync-vitals.
 
@@ -121,3 +136,11 @@ Se proteggi l’API con un reverse proxy (Bearer), imposta opzionalmente **`GARM
 1. L'app invia `uid` (Firebase Auth) al login e al sync
 2. Il server scrive in `users/{uid}/activities`, `users/{uid}/daily_health` e aggiorna `daily_logs/{date}`
 3. Le credenziali Firebase sono in `FIREBASE_CREDENTIALS` o `FIREBASE_CREDENTIALS_B64`
+
+---
+
+## 7. Login fallito ma le credenziali sono corrette?
+
+Il messaggio nell’app arriva dal server (corpo `detail` di FastAPI). **Non sempre è un errore di password**: la libreria [python-garminconnect](https://github.com/cyberjunky/python-garminconnect) + [Garth](https://github.com/matin/garth) può fallire per SSO/oauth temporaneo, rate limit, o **MFA attivo** sull’account (l’endpoint attuale non chiede il codice 2FA).
+
+Sul Pi: aggiorna le dipendenze (`pip install -r requirements.txt`) e leggi il messaggio completo in SnackBar / risposta HTTP. Dettaglio: sezione **Login Garmin** nel `README.md` del repo **garmin-sync-server**.

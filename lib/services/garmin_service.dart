@@ -11,15 +11,28 @@ import '../utils/platform_firestore_fix.dart';
 
 final garminServiceProvider = Provider<GarminService>((ref) => GarminService());
 
-/// URL del garmin-sync-server (`.env` → `GARMIN_SERVER_URL`).
-/// Esempio LAN / Raspberry Pi: `http://192.168.x.x:8080` — vedi `RPI_DEPLOY.md` nel repo garmin-sync-server.
-/// Fallback `127.0.0.1` solo per sviluppo locale; su telefono imposta sempre l’IP del Pi o tunnel.
+/// URL LAN: quando sei a casa sulla stessa rete del Raspberry.
+/// Es: http://192.168.1.200:8080
+String get _garminServerUrlLan {
+  if (!dotenv.isInitialized) return 'http://192.168.1.200:8080';
+  final u = dotenv.env['GARMIN_SERVER_URL_LAN']?.trim();
+  return (u != null && u.isNotEmpty) ? u : 'http://192.168.1.200:8080';
+}
+
+/// URL remoto: quando sei fuori casa (DuckDNS + HTTPS).
+/// Es: https://myrasberrysyncgar.duckdns.org
+String get _garminServerUrlRemote {
+  if (!dotenv.isInitialized) return 'https://myrasberrysyncgar.duckdns.org';
+  final u = dotenv.env['GARMIN_SERVER_URL_REMOTE']?.trim();
+  return (u != null && u.isNotEmpty) ? u : 'https://myrasberrysyncgar.duckdns.org';
+}
+
+/// URL legacy (compatibilita): se impostato, usa solo quello.
 String get garminServerUrl {
-  if (!dotenv.isInitialized) {
-    return 'http://127.0.0.1:8080';
-  }
+  if (!dotenv.isInitialized) return _garminServerUrlLan;
   final u = dotenv.env['GARMIN_SERVER_URL']?.trim();
-  return (u != null && u.isNotEmpty) ? u : 'http://127.0.0.1:8080';
+  if (u != null && u.isNotEmpty) return u;
+  return _garminServerUrlLan;
 }
 
 /// Servizio per lettura dati Garmin da Firestore e connessione via server.
@@ -35,12 +48,51 @@ class GarminService {
   final http.Client _http;
   final String? _serverUrlOverride;
 
+  /// URL risolto: LAN (a casa) o REMOTE (fuori). Cache per evitare probe ripetuti.
+  String? _cachedBaseUrl;
+
+  /// Timeout per probe LAN (se a casa risponde subito).
+  static const Duration _lanProbeTimeout = Duration(seconds: 3);
+
   /// Lazy: evita `Firebase.initializeApp()` quando si usano solo connect/sync/disconnect (es. test).
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
 
+  /// Risolve URL: prova LAN prima (192.168.1.200:8080), se fallisce usa REMOTE (DuckDNS).
+  /// A casa: LAN raggiungibile. Fuori: solo REMOTE.
+  /// Se GARMIN_SERVER_URL e' impostato, usa solo quello (override).
+  Future<String> _resolveBaseUrl() async {
+    final o = _serverUrlOverride?.trim();
+    if (o != null && o.isNotEmpty) return o;
+
+    if (dotenv.isInitialized) {
+      final forced = dotenv.env['GARMIN_SERVER_URL']?.trim();
+      if (forced != null && forced.isNotEmpty) return forced;
+    }
+
+    if (_cachedBaseUrl != null) return _cachedBaseUrl!;
+
+    final lan = _garminServerUrlLan;
+    final remote = _garminServerUrlRemote;
+
+    try {
+      final r = await _http
+          .get(Uri.parse('$lan/'))
+          .timeout(_lanProbeTimeout);
+      if (r.statusCode == 200) {
+        _cachedBaseUrl = lan;
+        return lan;
+      }
+    } on Object {
+      // LAN non raggiungibile (timeout, connection refused, etc.)
+    }
+    _cachedBaseUrl = remote;
+    return remote;
+  }
+
+  /// Per test: forza un URL specifico.
   String get _baseUrl {
     final o = _serverUrlOverride?.trim();
-    return (o != null && o.isNotEmpty) ? o : garminServerUrl;
+    return (o != null && o.isNotEmpty) ? o : (_cachedBaseUrl ?? _garminServerUrlLan);
   }
 
   Map<String, String> get _jsonHeaders {
@@ -70,8 +122,8 @@ class GarminService {
     );
   }
 
-  /// Timeout per connect: 60s (rete lenta o server che si sveglia da sospensione).
-  static const Duration _connectTimeout = Duration(seconds: 60);
+  /// Timeout per connect: 90s (OAuth Garmin + rete lenta / Pi che si sveglia).
+  static const Duration _connectTimeout = Duration(seconds: 90);
   static const Duration _syncTimeout = Duration(seconds: 90);
 
   Future<bool> isConnected(String uid) async {
@@ -107,7 +159,8 @@ class GarminService {
     required String email,
     required String password,
   }) async {
-    final uri = Uri.parse('$_baseUrl/garmin/connect');
+    final baseUrl = await _resolveBaseUrl();
+    final uri = Uri.parse('$baseUrl/garmin/connect');
     try {
       final response = await _http
           .post(
@@ -154,14 +207,14 @@ class GarminService {
       return {
         'success': false,
         'message':
-            'Risposta server HTTP ${response.statusCode} da $_baseUrl. '
+            'Risposta server HTTP ${response.statusCode} da $baseUrl. '
             '${snippet.isEmpty ? '(corpo vuoto)' : snippet}',
       };
     } on TimeoutException {
       return {
         'success': false,
         'message':
-            'Timeout: il server non ha risposto in tempo ($_baseUrl). '
+            'Timeout: il server non ha risposto in tempo ($baseUrl). '
             'Controlla che il Pi sia acceso, stessa rete/Wi‑Fi e GARMIN_SERVER_URL in .env.',
       };
     } on Object catch (e) {
@@ -173,7 +226,7 @@ class GarminService {
         return {
           'success': false,
           'message':
-              'Server non raggiungibile ($_baseUrl). Stesso Wi‑Fi del telefono? '
+              'Server non raggiungibile ($baseUrl). Stesso Wi‑Fi del telefono? '
               'Verifica GARMIN_SERVER_URL in .env (es. http://IP_PI:8080).',
         };
       }
@@ -186,10 +239,11 @@ class GarminService {
 
   /// Scollega l'account Garmin: elimina token sul server e aggiorna Firestore.
   Future<Map<String, dynamic>> disconnect({required String uid}) async {
+    final baseUrl = await _resolveBaseUrl();
     try {
       final response = await _http
           .post(
-            Uri.parse('$_baseUrl/garmin/disconnect'),
+            Uri.parse('$baseUrl/garmin/disconnect'),
             headers: _jsonHeaders,
             body: jsonEncode({'uid': uid}),
           )
@@ -223,10 +277,11 @@ class GarminService {
   /// Usa /garmin/sync-vitals (oggi + ieri) per pull-to-refresh leggero.
   /// Ritenta una volta in caso di timeout/connessione (cold start).
   Future<Map<String, dynamic>> syncNow({required String uid}) async {
+    final baseUrl = await _resolveBaseUrl();
     Future<Map<String, dynamic>> doRequest() async {
       final response = await _http
           .post(
-            Uri.parse('$_baseUrl/garmin/sync-vitals'),
+            Uri.parse('$baseUrl/garmin/sync-vitals'),
             headers: _jsonHeaders,
             body: jsonEncode({'uid': uid}),
           )

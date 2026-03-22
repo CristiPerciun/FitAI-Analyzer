@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/services/credential_storage_service.dart';
+import 'package:fitai_analyzer/utils/platform_firestore_fix.dart';
 import 'package:fitai_analyzer/providers/strava_sync_status_notifier.dart';
 import 'package:fitai_analyzer/services/aggregation_service.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
@@ -96,8 +97,15 @@ class AuthNotifier extends Notifier<AuthState> {
   ) async {
     if (FirebaseAuth.instance.currentUser == null) {
       try {
-        await ref.read(authServiceProvider).signInAnonymously();
-        state = state.copyWith(user: FirebaseAuth.instance.currentUser);
+        if (isWindows) {
+          await _runOnPlatformThread(() async {
+            await ref.read(authServiceProvider).signInAnonymously();
+            state = state.copyWith(user: FirebaseAuth.instance.currentUser);
+          });
+        } else {
+          await ref.read(authServiceProvider).signInAnonymously();
+          state = state.copyWith(user: FirebaseAuth.instance.currentUser);
+        }
       } catch (e) {
         throw StateError(
           'Login anonimo Firebase fallito. Errore originale: $e\n'
@@ -232,10 +240,14 @@ class AuthNotifier extends Notifier<AuthState> {
 
   /// Verifica se il token è ancora valido (es. utente non cancellato da Firebase).
   /// Se invalido, esegue sign out. Esegue sempre sul platform thread (Windows).
+  ///
+  /// Su Windows `getIdToken(true)` aggiunge refresh lato SDK che alimenta il canale
+  /// `id-token` e spesso logga ancora "non-platform thread" (bug plugin, flutterfire#11933).
+  /// Qui usiamo solo la cache del token: meno rumore in debug; su mobile resta refresh forzato.
   Future<bool> verifyTokenAndSignOutIfInvalid(User user) async {
     try {
       await _runOnPlatformThread(() async {
-        await user.getIdToken(true);
+        await user.getIdToken(!isWindows);
       });
       return true;
     } catch (_) {
@@ -316,11 +328,21 @@ class AuthNotifier extends Notifier<AuthState> {
     if (creds == null) return false;
 
     try {
-      await ref.read(authServiceProvider).signInWithEmailAndPassword(
-            creds.email,
-            creds.password,
-          );
-      state = state.copyWith(user: FirebaseAuth.instance.currentUser);
+      if (isWindows) {
+        await _runOnPlatformThread(() async {
+          await ref.read(authServiceProvider).signInWithEmailAndPassword(
+                creds.email,
+                creds.password,
+              );
+          state = state.copyWith(user: FirebaseAuth.instance.currentUser);
+        });
+      } else {
+        await ref.read(authServiceProvider).signInWithEmailAndPassword(
+              creds.email,
+              creds.password,
+            );
+        state = state.copyWith(user: FirebaseAuth.instance.currentUser);
+      }
       return true;
     } catch (_) {
       await ref.read(credentialStorageServiceProvider).clearCredentials();

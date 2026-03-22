@@ -93,8 +93,8 @@ class ImpostazioniScreen extends ConsumerWidget {
                 ? 'Garmin Connect collegato'
                 : 'Connect Garmin',
             subtitle: isGarminConnected
-                ? 'Account collegato. Sync automatica dal server.'
-                : 'Collega account Garmin Connect',
+                ? 'Account collegato. Tocca per sincronizzare (il server usa il token salvato, niente password).'
+                : 'Collega account Garmin Connect (una volta; poi il token resta sul server ~1 anno).',
             onTap: () => _onConnectGarmin(context, ref),
           ),
           if (isGarminConnected)
@@ -165,6 +165,33 @@ class ImpostazioniScreen extends ConsumerWidget {
     if (uid == null) {
       if (context.mounted) {
         showErrorDialog(context, 'Utente non autenticato.');
+      }
+      return;
+    }
+    final alreadyLinked = ref.read(garminConnectedProvider).valueOrNull ?? false;
+    if (alreadyLinked) {
+      final ok = await ref.read(garminSyncNotifierProvider.notifier).syncNow(
+            uid: uid,
+            trigger: 'settings_tap_linked',
+          );
+      ref.invalidate(activitiesStreamProvider);
+      ref.invalidate(dailyHealthStreamProvider);
+      if (!context.mounted) return;
+      final messenger = scaffoldMessengerKey.currentState;
+      if (ok) {
+        messenger?.showSnackBar(
+          const SnackBar(content: Text('Garmin: dati aggiornati dal server.')),
+        );
+      } else {
+        final err = ref.read(garminSyncNotifierProvider).error ??
+            'Sincronizzazione non riuscita.';
+        messenger?.showSnackBar(
+          SnackBar(
+            content: Text('Garmin: $err'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+            duration: const Duration(seconds: 8),
+          ),
+        );
       }
       return;
     }
