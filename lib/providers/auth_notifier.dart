@@ -6,6 +6,7 @@ import 'package:fitai_analyzer/services/credential_storage_service.dart';
 import 'package:fitai_analyzer/utils/platform_firestore_fix.dart';
 import 'package:fitai_analyzer/providers/strava_sync_status_notifier.dart';
 import 'package:fitai_analyzer/services/aggregation_service.dart';
+import 'package:fitai_analyzer/services/garmin_service.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
 import 'package:fitai_analyzer/utils/strava_error_messages.dart';
 import 'package:flutter/widgets.dart';
@@ -130,20 +131,13 @@ class AuthNotifier extends Notifier<AuthState> {
           message: 'Connessione a Strava...',
         );
 
-        List<StravaActivity> activities;
         try {
           statusNotifier.setPhase(
             StravaSyncPhase.connecting,
             message: 'Autorizzazione Strava...',
           );
           await ref.read(stravaServiceProvider).authenticate();
-          statusNotifier.setPhase(
-            StravaSyncPhase.connecting,
-            message: 'Recupero attività da Strava...',
-          );
-          activities = await ref.read(stravaServiceProvider).getRecentActivities(days: 30);
         } catch (e) {
-          // Token senza activity:read_all? Riprova con nuova autorizzazione
           final msg = e.toString();
           if (msg.contains('permessi') ||
               msg.contains('activity:read_permission') ||
@@ -153,33 +147,38 @@ class AuthNotifier extends Notifier<AuthState> {
               message: 'Nuova autorizzazione Strava (permessi attività)...',
             );
             await ref.read(stravaServiceProvider).authenticate();
-            activities = await ref.read(stravaServiceProvider).getRecentActivities(days: 30);
           } else {
             rethrow;
           }
         }
 
+        final tokens = await ref.read(stravaServiceProvider).getTokensForServer();
+        if (tokens == null) {
+          throw StateError('Token Strava non disponibili dopo OAuth.');
+        }
+
         statusNotifier.setPhase(
           StravaSyncPhase.connecting,
-          message: 'Salvataggio su Firestore...',
+          message: 'Invio token al server (backfill attività)...',
         );
-        try {
-          await ref.read(stravaServiceProvider).saveToFirestore(uid, activities);
-        } catch (e) {
-          throw Exception('Errore salvataggio dati Strava: $e');
+        final reg = await ref.read(garminServiceProvider).registerStravaOnServer(
+              uid: uid,
+              accessToken: tokens.access,
+              refreshToken: tokens.refresh,
+              expiresAtMs: tokens.expiresAtMs,
+            );
+        if (reg['success'] != true) {
+          throw Exception(reg['message']?.toString() ?? 'Registrazione Strava sul server fallita.');
         }
 
         statusNotifier.setPhase(
           StravaSyncPhase.completed,
-          message: 'Dati Strava salvati!',
+          message: 'Strava collegato: sincronizzazione in background sul server.',
         );
 
-        // Aggiorna Livello 2 e 3 (rolling_10days + baseline)
         try {
           await ref.read(aggregationServiceProvider).updateRolling10DaysAndBaseline(uid);
-        } catch (_) {
-          // Non bloccare: aggregazione opzionale
-        }
+        } catch (_) {}
 
         state = state.copyWith(isLoading: false, currentService: null, error: null);
         ref.invalidate(stravaConnectedProvider);

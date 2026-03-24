@@ -36,7 +36,7 @@ git push -u origin main
 
 Il workflow `.github/workflows/build-ios.yml` è già presente. Si avvia automaticamente ad ogni push su `main`.
 
-> **Prima di usare l'app su iPhone**: leggi `docs/IOS_SETUP.md` per Strava API, Firebase e troubleshooting.
+> **Prima di usare l'app su iPhone**: `docs/IOS_SETUP.md` (build/sideload), `docs/SYNC_ARCHITECTURE.md` (Strava OAuth), `docs/FIREBASE_SETUP.md` (Firebase).
 
 ---
 

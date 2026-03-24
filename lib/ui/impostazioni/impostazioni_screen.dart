@@ -73,7 +73,7 @@ class ImpostazioniScreen extends ConsumerWidget {
             subtitle: isStravaLoading
                 ? (syncStatus.message ?? 'Connessione...')
                 : (isStravaConnected
-                      ? 'Tocca per sincronizzare'
+                      ? 'Tocca per aggiornare le attività dal server'
                       : 'Collega account Strava'),
             enabled: !isStravaLoading,
             onTap: () => _onConnectStrava(context, ref),
@@ -148,9 +148,43 @@ class ImpostazioniScreen extends ConsumerWidget {
   }
 
   Future<void> _onConnectStrava(BuildContext context, WidgetRef ref) async {
-    await ref
-        .read(authNotifierProvider.notifier)
-        .startOAuth(
+    final connected =
+        ref.read(stravaConnectedProvider).valueOrNull ?? false;
+    if (connected) {
+      final uid = ref.read(authNotifierProvider).user?.uid;
+      if (uid == null) {
+        if (context.mounted) {
+          showErrorDialog(context, 'Utente non autenticato.');
+        }
+        return;
+      }
+      final ok = await ref.read(garminSyncNotifierProvider.notifier).syncNow(
+            uid: uid,
+            trigger: 'settings_strava_refresh',
+          );
+      ref.invalidate(activitiesStreamProvider);
+      ref.invalidate(activitiesByDateProvider);
+      if (!context.mounted) return;
+      final messenger = scaffoldMessengerKey.currentState;
+      if (ok) {
+        messenger?.showSnackBar(
+          const SnackBar(content: Text('Strava: dati aggiornati dal server.')),
+        );
+      } else {
+        final err = ref.read(garminSyncNotifierProvider).error ??
+            'Sincronizzazione non riuscita.';
+        messenger?.showSnackBar(
+          SnackBar(
+            content: Text('Strava: $err'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+            duration: const Duration(seconds: 8),
+          ),
+        );
+      }
+      return;
+    }
+
+    await ref.read(authNotifierProvider.notifier).startOAuth(
           'strava',
           onSuccess: () {
             ref.invalidate(activitiesStreamProvider);
@@ -161,6 +195,10 @@ class ImpostazioniScreen extends ConsumerWidget {
   }
 
   Future<void> _onDisconnectStrava(BuildContext context, WidgetRef ref) async {
+    final uid = ref.read(authNotifierProvider).user?.uid;
+    if (uid != null) {
+      await ref.read(garminServiceProvider).disconnectStravaOnServer(uid: uid);
+    }
     await ref.read(stravaServiceProvider).clearTokens();
     ref.invalidate(stravaConnectedProvider);
     scaffoldMessengerKey.currentState?.showSnackBar(
@@ -213,7 +251,7 @@ class ImpostazioniScreen extends ConsumerWidget {
       scaffoldMessengerKey.currentState?.showSnackBar(
         const SnackBar(content: Text('✅ Garmin collegato!')),
       );
-      // Sync vitals anche al login (attivita + biometrici oggi/ieri)
+      // Sync leggera server (oggi/ieri + attività recenti)
       await ref.read(garminSyncNotifierProvider.notifier).syncNow(
             uid: uid,
             trigger: 'garmin_login',

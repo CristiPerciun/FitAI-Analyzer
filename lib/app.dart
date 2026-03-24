@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart';
+import 'package:fitai_analyzer/providers/sync_backfill_status_provider.dart';
+import 'package:fitai_analyzer/services/aggregation_service.dart';
 import 'package:fitai_analyzer/providers/theme_mode_provider.dart';
 import 'package:fitai_analyzer/routes/app_router.dart';
 import 'package:fitai_analyzer/services/strava_oauth_callback.dart';
@@ -53,6 +55,18 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
             uid: next,
             trigger: 'login',
           ));
+    });
+
+    ref.listen<AsyncValue<SyncBackfillStatus?>>(syncBackfillStatusStreamProvider, (prev, next) {
+      final was = prev?.valueOrNull?.status;
+      final now = next.valueOrNull?.status;
+      if (now != 'completed') return;
+      if (was != 'processing' && was != 'pending') return;
+      final uid = ref.read(authNotifierProvider).user?.uid;
+      if (uid == null) return;
+      unawaited(
+        ref.read(aggregationServiceProvider).updateRolling10DaysAndBaseline(uid),
+      );
     });
 
     // Mostra errori auth anche quando si è navigati via (es. redirect a dashboard)

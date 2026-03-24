@@ -19,17 +19,14 @@ Guida per far funzionare l'app su iPhone (oltre a Windows).
 
 ### 1. Strava API – Redirect URI
 
-Su [developers.strava.com](https://www.strava.com/settings/api) → **My API Application**:
+Configurazione completa (Callback Domain, errori comuni, server): **[SYNC_ARCHITECTURE.md](SYNC_ARCHITECTURE.md)** — sezione **8. Strava OAuth (app)**.
 
-- **Authorization Callback Domain**: aggiungi `myhealthsync://strava/callback`
-- Oppure, se Strava accetta solo domini: verifica che l’app mobile sia registrata con il bundle ID `com.fitai.fitaiAnalyzer`
-
-> **Nota**: Strava per app mobile con custom scheme richiede il redirect URI completo. Controlla la documentazione Strava aggiornata.
+In sintesi: su [strava.com/settings/api](https://www.strava.com/settings/api) imposta **Authorization Callback Domain** (`strava` o `myhealthsync`); redirect dell’app: `myhealthsync://strava/callback`.
 
 ### 2. Firebase Console
 
 - Progetto **fit-ai-analyzer** con app iOS registrata (bundle ID: `com.fitai.fitaiAnalyzer`)
-- **Authentication** → Sign-in method → **Anonymous** abilitato
+- **Authentication** → Sign-in method come da app (es. **Email/Password**; vedi [FIREBASE_SETUP.md](FIREBASE_SETUP.md))
 - **Firestore** creato e regole configurate
 
 ### 3. Build e installazione
@@ -56,7 +53,7 @@ Su iOS il flusso Strava è:
 2. Login Strava e autorizzazione
 3. Redirect a `myhealthsync://strava/callback?code=xxx`
 4. iOS apre l’app → app_links riceve il code
-5. Exchange code → token → salvataggio su Firestore
+5. Exchange code → token in locale + registrazione sul **garmin-sync-server** (`/strava/register-tokens`); backfill attività lato server
 
 ---
 

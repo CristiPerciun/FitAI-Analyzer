@@ -230,7 +230,7 @@ final mealsForDateByTypeProvider =
   }
 });
 
-/// Esegue sync Garmin e invalida i provider dipendenti (pull-to-refresh).
+/// Chiede al server aggiornamento attività/biometrici: Garmin (`sync-today`) o solo Strava (`delta`).
 Future<void> refreshGarminSync(
   WidgetRef ref,
   String? uid, {

@@ -15,18 +15,17 @@ Vedi [docs/README.md](docs/README.md) per l'indice completo.
 | Documento | Contenuto |
 |-----------|-----------|
 | [docs/DATA_ARCHITECTURE.md](docs/DATA_ARCHITECTURE.md) | Scrittura/lettura dati Firestore |
-| [docs/GARMIN_INTEGRATION.md](docs/GARMIN_INTEGRATION.md) | Integrazione Garmin (server, schema API→Firestore) |
-| [docs/FLUSSI_GARMIN_AI.md](docs/FLUSSI_GARMIN_AI.md) | Flussi Garmin e AI |
+| [docs/SYNC_ARCHITECTURE.md](docs/SYNC_ARCHITECTURE.md) | Sync unificata (Garmin + Strava, app + server) |
+| [docs/GARMIN_INTEGRATION.md](docs/GARMIN_INTEGRATION.md) | Garmin: rete, API, endpoint, Firestore |
+| [docs/FLUSSI_GARMIN_AI.md](docs/FLUSSI_GARMIN_AI.md) | UI vitals, contesto AI, troubleshooting |
 | [.cursor/rules/three-levels-memory-strategy.mdc](.cursor/rules/three-levels-memory-strategy.mdc) | Strategia Tre Livelli |
 | [.cursor/rules/firestore-collections-structure.mdc](.cursor/rules/firestore-collections-structure.mdc) | Collezioni daily_health, activities, longevity_diary |
 
 ## Setup
 
-1. **Firebase**: [docs/FIREBASE_AUTH_SETUP.md](docs/FIREBASE_AUTH_SETUP.md)
-2. **Strava**: [docs/STRAVA_SETUP.md](docs/STRAVA_SETUP.md)
-3. **Garmin**: [docs/GARMIN_INTEGRATION.md](docs/GARMIN_INTEGRATION.md)
-4. **iOS**: [docs/IOS_SETUP.md](docs/IOS_SETUP.md)
-5. **Deploy Firestore**: [docs/FIREBASE_DEPLOY.md](docs/FIREBASE_DEPLOY.md)
+1. **Firebase** (auth, chiavi, deploy regole): [docs/FIREBASE_SETUP.md](docs/FIREBASE_SETUP.md)
+2. **Sync** (Garmin + Strava): [docs/SYNC_ARCHITECTURE.md](docs/SYNC_ARCHITECTURE.md) e [docs/GARMIN_INTEGRATION.md](docs/GARMIN_INTEGRATION.md)
+3. **iOS**: [docs/IOS_SETUP.md](docs/IOS_SETUP.md)
 
 ## Getting Started
 

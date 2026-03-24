@@ -23,6 +23,6 @@ Il backend **garmin-sync-server** è un **repository separato** da FitAI Analyze
 ## Riferimenti in FitAI Analyzer
 
 - `docs/GARMIN_INTEGRATION.md` — endpoint API, Firestore, flusso Connect Garmin dall’app.
-- `docs/FIREBASE_CLIENT_SYNC.md` — allineamento Firebase app vs service account sul server.
+- `docs/FIREBASE_SETUP.md` — allineamento Firebase app vs service account sul server.
 
 Quando suggerisci deploy o debug Garmin, distingui sempre **client Flutter** (`.env`, `GarminService`) da **server Python** (repo `garmin-sync-server`, systemd sul Pi).

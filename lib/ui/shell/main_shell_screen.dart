@@ -1,4 +1,5 @@
 import 'package:fitai_analyzer/providers/providers.dart';
+import 'package:fitai_analyzer/providers/sync_backfill_status_provider.dart';
 import 'package:fitai_analyzer/ui/alimentazione/alimentazione_screen.dart';
 import 'package:fitai_analyzer/utils/boot_log.dart';
 import 'package:fitai_analyzer/ui/dashboard/dashboard_screen.dart';
@@ -35,15 +36,48 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
   Widget build(BuildContext context) {
     final index = ref.watch(selectedTabIndexProvider);
     final isNarrow = MediaQuery.of(context).size.width < 600;
+    final backfillAsync = ref.watch(syncBackfillStatusStreamProvider);
+    final backfill = backfillAsync.valueOrNull;
 
     return Scaffold(
-      body: IndexedStack(
-        index: index,
-        children: const [
-          HomeScreen(),
-          DashboardScreen(),
-          AlimentazioneScreen(),
-          ImpostazioniScreen(),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (backfill != null && backfill.isActive)
+            Material(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      backfill.message ??
+                          'Sincronizzazione storico in corso sul server…',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    if (backfill.progress != null) ...[
+                      const SizedBox(height: 8),
+                      LinearProgressIndicator(value: backfill.progress),
+                    ] else ...[
+                      const SizedBox(height: 8),
+                      const LinearProgressIndicator(),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          Expanded(
+            child: IndexedStack(
+              index: index,
+              children: const [
+                HomeScreen(),
+                DashboardScreen(),
+                AlimentazioneScreen(),
+                ImpostazioniScreen(),
+              ],
+            ),
+          ),
         ],
       ),
       bottomNavigationBar: Container(

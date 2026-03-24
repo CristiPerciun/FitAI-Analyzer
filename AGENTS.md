@@ -7,7 +7,9 @@ Consulta `.cursor/rules/ios-build-ci.mdc` per requisiti build iOS e CI (.env, wo
 Consulta `.cursor/rules/three-levels-memory-strategy.mdc` per la strategia a Tre Livelli di Memoria (architettura dati Firestore).
 Consulta `.cursor/rules/firestore-collections-structure.mdc` per la struttura aggiornata: `daily_health`, `activities`, `ai_insights`.
 Consulta `docs/FLUSSI_GARMIN_AI.md` per il riepilogo dei flussi Garmin e AI.
+Consulta `docs/SYNC_ARCHITECTURE.md` per sync unificata app + garmin-sync-server (Garmin, Strava, Firestore).
 Consulta `docs/DATA_ARCHITECTURE.md` per scrittura/lettura dati Firestore.
+Consulta `docs/FIREBASE_SETUP.md` per Firebase (auth, chiavi app/server, deploy regole).
 Consulta `.cursor/rules/garmin-server-pi-fork-sync.mdc` per server **garmin-sync-server**, Raspberry Pi, branch **`fork-sync`** e sync Git (push vs pull).
 
 ## Riepilogo vincolante

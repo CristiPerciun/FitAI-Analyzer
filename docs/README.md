@@ -1,6 +1,6 @@
 # Documentazione FitAI Analyzer
 
-Indice della documentazione tecnica del progetto.
+Indice della documentazione tecnica.
 
 ---
 
@@ -8,19 +8,19 @@ Indice della documentazione tecnica del progetto.
 
 | Documento | Contenuto |
 |-----------|-----------|
-| [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md) | **Fonte principale** – Collezioni Firestore, scrittori/lettori, flussi di scrittura e lettura |
-| [.cursor/rules/three-levels-memory-strategy.mdc](../.cursor/rules/three-levels-memory-strategy.mdc) | Strategia Tre Livelli (daily_logs, rolling_10days, baseline_profile) |
-| [.cursor/rules/firestore-collections-structure.mdc](../.cursor/rules/firestore-collections-structure.mdc) | Struttura collezioni operative (daily_health, activities, longevity_diary) |
+| [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md) | **Fonte principale** – collezioni Firestore, chi scrive/legge |
+| [.cursor/rules/three-levels-memory-strategy.mdc](../.cursor/rules/three-levels-memory-strategy.mdc) | Strategia Tre Livelli |
+| [.cursor/rules/firestore-collections-structure.mdc](../.cursor/rules/firestore-collections-structure.mdc) | `daily_health`, `activities`, `longevity_diary`, … |
 
 ---
 
-## Integrazioni
+## Sync e integrazioni
 
 | Documento | Contenuto |
 |-----------|-----------|
-| [GARMIN_INTEGRATION.md](GARMIN_INTEGRATION.md) | Integrazione Garmin: server, endpoint, schema API→Firestore, setup |
-| [FLUSSI_GARMIN_AI.md](FLUSSI_GARMIN_AI.md) | Flussi Garmin e AI: sync, pull-to-refresh, prompt Gemini |
-| [STRAVA_SETUP.md](STRAVA_SETUP.md) | Setup OAuth Strava |
+| [SYNC_ARCHITECTURE.md](SYNC_ARCHITECTURE.md) | Sync unificata app + **garmin-sync-server** (Garmin, Strava, endpoint, Firestore, OAuth Strava §8) |
+| [GARMIN_INTEGRATION.md](GARMIN_INTEGRATION.md) | Connettività (LAN/remoto), schema API Garmin → Firestore, endpoint, setup server |
+| [FLUSSI_GARMIN_AI.md](FLUSSI_GARMIN_AI.md) | Widget Home, contesto AI, troubleshooting |
 
 ---
 
@@ -28,15 +28,14 @@ Indice della documentazione tecnica del progetto.
 
 | Documento | Contenuto |
 |-----------|-----------|
-| [FIREBASE_CLIENT_SYNC.md](FIREBASE_CLIENT_SYNC.md) | Dopo un nuovo `google-services.json` / progetto: allineare app, `firebase_options`, server Garmin |
-| [FIREBASE_AUTH_SETUP.md](FIREBASE_AUTH_SETUP.md) | Configurazione Firebase Auth (Email/Password) |
-| [FIREBASE_DEPLOY.md](FIREBASE_DEPLOY.md) | Deploy regole Firestore |
+| [FIREBASE_SETUP.md](FIREBASE_SETUP.md) | Auth Email/Password, allineamento chiavi app/server/Garmin, deploy regole Firestore |
+| [firestore.rules.example](firestore.rules.example) | Esempio regole (riferimento) |
 
 ---
 
-## Build e setup
+## Build e piattaforme
 
 | Documento | Contenuto |
 |-----------|-----------|
-| [IOS_SETUP.md](IOS_SETUP.md) | Setup iOS, Strava, Firebase |
-| [../GITHUB_IOS_BUILD.md](../GITHUB_IOS_BUILD.md) | Build iOS in CI (GitHub Actions) |
+| [IOS_SETUP.md](IOS_SETUP.md) | iPhone: Strava deep link, Firebase, build/sideload |
+| [../GITHUB_IOS_BUILD.md](../GITHUB_IOS_BUILD.md) | CI GitHub Actions per iOS |

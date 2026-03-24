@@ -1,8 +1,22 @@
 # Integrazione Garmin Sync Server
 
-FitAI Analyzer legge i dati Garmin da Firestore scritti dal **garmin-sync-server** (Python). L’URL del server è in **`.env`** → `GARMIN_SERVER_URL`.
+FitAI Analyzer legge i dati Garmin da Firestore scritti dal **garmin-sync-server** (Python). L’URL del server è in **`.env`**.
 
-**Stessa rete (telefono a casa con il Pi):** default codice / `.env.example`: `http://10.15.22.3:8080` (Wi‑Fi attuale del Pi). In alternativa **mDNS** se non vuoi legarti all’IP: `http://raspberrypi.local:8080` (vedi `RPI_DEPLOY.md` sul repo server).
+### LAN e remoto (auto-detect)
+
+Se imposti **`GARMIN_SERVER_URL_LAN`** e **`GARMIN_SERVER_URL_REMOTE`**, l’app prova prima la LAN (timeout breve); se non risponde, usa l’URL remoto (es. HTTPS dietro Nginx / DuckDNS). Esempio:
+
+```env
+GARMIN_SERVER_URL_LAN=http://192.168.1.200:8080
+GARMIN_SERVER_URL_REMOTE=https://esempio.duckdns.org
+```
+
+Per **forzare un solo URL** (disattiva il probe): usa solo **`GARMIN_SERVER_URL`**.
+
+- **NAT loopback**: da una macchina in LAN spesso non raggiungi il tuo hostname pubblico; è normale.  
+- Dopo il primo successo, l’URL può essere cachato per la sessione (vedi `GarminService`).
+
+**Stessa rete (telefono a casa con il Pi):** in `.env.example` compare spesso un IP tipo `http://10.15.22.3:8080`. In alternativa **mDNS**: `http://raspberrypi.local:8080` (vedi `RPI_DEPLOY.md` sul repo server).
 
 **Telefono fuori casa, server a casa:** `*.local` e gli IP LAN **non** sono raggiungibili da Internet. Serve uno di questi approcci:
 
@@ -19,8 +33,9 @@ Repository server: [garmin-sync-server](https://github.com/CristiPerciun/garmin-
 
 Se proteggi l’API con un reverse proxy (Bearer), imposta opzionalmente **`GARMIN_SERVER_BEARER_TOKEN`** in `.env`: l’app invia `Authorization: Bearer …` su connect / disconnect / sync-vitals.
 
-> **Stesso progetto Firebase** (app + server): [FIREBASE_CLIENT_SYNC.md](FIREBASE_CLIENT_SYNC.md)  
+> **Stesso progetto Firebase** (app + server): [FIREBASE_SETUP.md](FIREBASE_SETUP.md)  
 > **Architettura dati completa**: [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md)  
+> **Sync unificata (endpoint, Firestore, Flutter)**: [SYNC_ARCHITECTURE.md](SYNC_ARCHITECTURE.md)  
 > **Flussi Garmin e AI**: [FLUSSI_GARMIN_AI.md](FLUSSI_GARMIN_AI.md)
 
 ---
@@ -110,12 +125,31 @@ Se proteggi l’API con un reverse proxy (Bearer), imposta opzionalmente **`GARM
 
 ## 4. Endpoint server
 
+Implementazione: repository **`garmin-sync-server`** (locale es. `Custom_WorkSpace/garmin-sync-server` o [GitHub](https://github.com/CristiPerciun/garmin-sync-server)), FastAPI in `main.py`.
+
 | Endpoint | Body | Scopo |
 |----------|------|-------|
-| `POST /garmin/connect` | `{ uid, email, password }` | Login Garmin + sync iniziale |
-| `POST /garmin/sync` | `{ uid }` | Sync completa (attività + 14 giorni biometrici) |
-| `POST /garmin/sync-vitals` | `{ uid }` | Sync leggera: solo oggi e ieri (pull-to-refresh) |
-| `POST /garmin/disconnect` | `{ uid }` | Scollega account: elimina token, imposta garmin_linked=false |
+| `POST /garmin/connect` | `{ uid, email, password }` | Login Garmin, salva token, **`backfillQueued: true`**: storico (es. 60 gg) in **background** (HTTP risponde subito) |
+| `POST /garmin/sync` | `{ uid }` | (Legacy / scheduler) sync ampia se ancora esposta |
+| `POST /garmin/sync-today` | `{ uid }` | Sync leggera: oggi + ieri `daily_health` + attività recenti |
+| `POST /garmin/sync-vitals` | `{ uid }` | **Compat**: stesso comportamento di `sync-today` |
+| `POST /sync/delta` | `{ uid, lastSuccessfulSync?, sources? }` | Delta all’avvio app: range da ultimo sync + Strava (lista `after` + dettaglio ultime 5 attività) |
+| `POST /garmin/disconnect` | `{ uid }` | Scollega Garmin: elimina token, `garmin_linked=false` |
+| `POST /strava/register-tokens` | `{ uid, access_token, refresh_token, expires_at? }` | Salva token in `strava_tokens/{uid}` (solo server), avvia backfill 60 gg paginato + merge fuzzy su `activities` |
+| `POST /strava/disconnect` | `{ uid }` | Elimina `strava_tokens/{uid}` |
+| `POST /garmin/activity-detail` | `{ uid, garmin_activity_id? \| strava_activity_id? }` | Dettaglio on-demand (FIT/API) e merge su Firestore |
+
+**Risposte JSON (server)**: `sync-today`, `sync-vitals`, `sync/delta` e `activity-detail` possono includere **`no_changes: true`** se nessun documento Firestore è stato modificato (short-circuit dopo confronto). La sync leggera (`sync-today` / vitals) scrive **`garmin_raw`** ridotto (solo campi lista); il dettaglio completo resta su **`activity-detail`** e sul backfill.
+
+**Firestore (server / Admin SDK)**
+
+| Percorso | Scopo |
+|----------|--------|
+| `users/{uid}/sync_status/backfill` | `status`: `pending` \| `processing` \| `completed` \| `error`, `progress`, `message`, `source` (`garmin` / `strava`) |
+| `users/{uid}.lastSuccessfulSync` | Timestamp aggiornato a fine delta / sync-today riuscita |
+| `strava_tokens/{uid}` | Token Strava (stesse regole client di `garmin_tokens`: no accesso app) |
+
+**Server Strava**: impostare `STRAVA_CLIENT_ID` e `STRAVA_CLIENT_SECRET` (stessi valori dell’app per refresh token) nell’ambiente del `garmin-sync-server`.
 
 ---
 
@@ -130,6 +164,12 @@ Se proteggi l’API con un reverse proxy (Bearer), imposta opzionalmente **`GARM
 ---
 
 ## 6. Setup garmin-sync-server
+
+**Repository separato** (non è dentro FitAI Analyzer). Avvio locale dalla root del clone: `pip install -r requirements.txt`, `.env` da `.env.example`, poi ad esempio:
+
+`python -m uvicorn main:app --host 0.0.0.0 --port 8080`
+
+Su Raspberry vedi `RPI_DEPLOY.md` nel repo server.
 
 **IMPORTANTE**: Il server usa il `uid` passato nel body delle richieste (non `USER_ID` da env). L'UID deve corrispondere all'**UID Firebase** dell'utente.
 

@@ -1,86 +1,60 @@
-# Flussi Garmin e AI - Riepilogo
+# Flussi Garmin, sync e AI
 
-> **Architettura dati completa**: vedi [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md) per scrittura/lettura di tutte le collezioni.
+> **Sincronizzazione (endpoint, Firestore, Flutter, deprecazioni)**: [SYNC_ARCHITECTURE.md](SYNC_ARCHITECTURE.md)  
+> **Server Garmin, rete, schema API → Firestore**: [GARMIN_INTEGRATION.md](GARMIN_INTEGRATION.md)  
+> **Architettura dati**: [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md)
 
-## Panoramica
-
-| Flusso | Progetto | Comando Cursor | Stato |
-|--------|----------|----------------|-------|
-| Cattura biometrica | Sync Server | "Add get_sleep, get_hrv, get_stats to Garmin sync" | ✅ |
-| Endpoint sync | Sync Server | "Create /sync-vitals endpoint for mobile trigger" | ✅ |
-| Pull-to-refresh | FitAI App | "Implement RefreshIndicator calling /sync-vitals" | ✅ |
-| Widget Home | FitAI App | "Add Garmin vitals block to Dashboard" | ✅ |
-| AI Memory (2 mesi) | FitAI App | "Update AI context with 7 days detail + 8 weeks summary" | ✅ |
+Questo file resta focalizzato su **UI**, **contesto AI (LongevityEngine)** e **troubleshooting** che non sono ripetuti altrove.
 
 ---
 
-## 1. Cattura biometrica (garmin-sync-server)
+## Storico implementazioni (riferimento)
 
-- **API Garmin**: `get_stats`, `get_sleep_data`, `get_hrv_data`, `get_body_battery`, `get_max_metrics`, `get_fitnessage_data`
-- **Destinazione**: `users/{uid}/daily_health/{date}`
-- **Campi**: stats, sleep, hrv, body_battery, max_metrics (VO2Max), fitness_age
-- **Indice**: il server aggiorna anche `daily_logs/{date}.health_ref`
-
-## 1b. Cattura attivita unificate
-
-- **API Garmin**: `get_activities(0, 20)`
-- **Destinazione**: `users/{uid}/activities/{id}`
-- **Merge**: lookup fuzzy su `startTime +/- 2 min` contro i documenti gia presenti per il giorno
-- **Esito**: `source = garmin` se nuova attivita, `source = dual` se fusa con una attivita Strava gia salvata
-- **Indice**: aggiornamento di `daily_logs/{date}.activity_ids`
+| Area | Progetto | Nota |
+|------|----------|------|
+| Biometrici → `daily_health` | garmin-sync-server | ✅ |
+| Sync leggero / delta / Strava server | garmin-sync-server + app | ✅ vedi SYNC_ARCHITECTURE |
+| Pull-to-refresh | FitAI | ✅ → `GarminService.syncToday` |
+| Widget Home vitals | FitAI | ✅ `dailyHealthStreamProvider` |
+| AI Memory (7 gg + 8 sett) | FitAI | ✅ `longevity_engine.dart` |
 
 ---
 
-## 2. Endpoint sync (`POST /garmin/sync-vitals`)
+## Widget Home (GarminDailyStats)
 
-- **Scopo**: Refresh leggero per mobile (oggi + ieri)
-- **Body**: `{ "uid": "..." }`
-- **Chiamato da**: FitAI App al pull-to-refresh
-
----
-
-## 3. Pull-to-refresh (FitAI App)
-
-- **Dove**: HomeScreen, DashboardScreen
-- **Azione**: `RefreshIndicator.onRefresh` → `GarminService.syncNow()` → `/garmin/sync-vitals`
-- **Post-sync**: invalidazione `dailyHealthStreamProvider`, `activitiesStreamProvider`, `longevityHomePackageProvider`, ecc.
-
-**Perché “non tutti” i dati dopo la sync dall’app:** `sync-vitals` è volutamente **leggera**: circa **2 giorni** di `daily_health` e fino a **50 attività** recenti (vedi `main.py` → `_sync_vitals_for_client`). Lo **scheduler** sul Pi (ogni ~45 min) chiama `sync_user` e allinea **14 giorni** di biometrici + fino a 50 attività in quel batch. L’app **non** chiama `POST /garmin/sync` (full) al tap: per storico lungo conta il job sul server o una chiamata manuale a quell’endpoint.
-
-**Timeout:** il client Flutter usa **~180s** per `sync-vitals` (rete lenta o molte attività). Se scade prima, il Pi può comunque completare in background: controlla Firebase o `journalctl -u garmin-sync`.
+- **Posizione**: Home, sotto PillarGrid  
+- **Dati**: `dailyHealthStreamProvider` → passi, sonno, Body Battery da `daily_health`  
+- **Stile**: coerente con Longevity Path / Weekly Sprint  
 
 ---
 
-## 4. Widget Home (GarminDailyStats)
+## AI Memory – contesto Gemini (LongevityEngine)
 
-- **Posizione**: Home, sotto PillarGrid (obiettivi giornalieri)
-- **Dati**: `dailyHealthStreamProvider` → Passi, Sonno, Body Battery da `daily_health`
-- **Stile**: coerente con Longevity Path / Weekly Sprint
+**Struttura tipica del prompt** (`buildGeminiHomeContext`, `buildLongevityPlanPrompt`):
 
----
+1. Profilo utente (onboarding)  
+2. Riassunto periodo lungo (medie settimanali: km, workout, passi, sonno, VO2Max, Fitness Age)  
+3. Dettaglio **7 giorni** (`daily_logs` indice + `activities` + `daily_health`)  
+4. Note e obiettivi (baseline)  
 
-## 5. AI Memory – 2 mesi (LongevityEngine)
-
-- **Struttura prompt Gemini**:
-  1. Profilo utente (onboarding)
-  2. Riassunto 2 mesi (medie settimanali: km, workouts, passi, sonno, VO2Max, Fitness Age)
-  3. Dettaglio 7 giorni (`daily_logs` indice + `activities` + `daily_health`)
-  4. Note e obiettivi (baseline)
-- **Focus**: obiettivo principale utente (mainGoal)
-- **File**: `lib/services/longevity_engine.dart` → `buildGeminiHomeContext`, `buildLongevityPlanPrompt`
+**File**: `lib/services/longevity_engine.dart`.
 
 ---
 
-## 6. Troubleshooting (Windows + Raspberry)
+## Troubleshooting
 
-### Log Flutter: `firebase_auth_plugin/auth-state` o `id-token` su **non-platform thread**
+### Log Flutter: `firebase_auth` / `id-token` su thread non-platform (Windows)
 
-**Non c’entra con la sync Garmin** (quella passa da HTTP al Pi + Firestore). Su **Windows desktop** è un limite noto del plugin `firebase_auth`: messaggi nativi sul canale da un thread sbagliato. In progetto: polling per `authStateChanges`, frame differito per login, `getIdToken(false)` dopo login su Windows. Può restare rumore se SDK/`cloud_firestore` aggiornano il token in background — [flutterfire#11933](https://github.com/firebase/flutterfire/issues/11933). Per log puliti usa **Android/iOS**.
+Non è la sync Garmin (HTTP → Pi + Firestore). Su **Windows desktop** è un limite noto del plugin; in progetto: workaround su auth state. Per log puliti usa **Android/iOS**. Riferimento: [flutterfire#11933](https://github.com/firebase/flutterfire/issues/11933).
 
-### Server: `SSLCertVerificationError` / `self-signed certificate` verso `sso.garmin.com`
+### Server: `SSLCertVerificationError` verso `sso.garmin.com`
 
-Il **garmin-sync-server** sul Pi chiama Garmin in HTTPS. Se nei log compare questo errore, il TLS è interrotto da una rete che presenta un certificato **non firmato da una CA di sistema** sul Pi (proxy aziendale, antivirus, captive portal, ecc.). **Non** è un problema delle credenziali Firebase (lo script `verify_firebase_credentials.py` può essere OK). Soluzioni: uscita Internet dal Pi senza SSL inspection (es. hotspot), oppure installare sul Pi il certificato root della CA della rete. Dettagli: `garmin-sync-server/RPI_DEPLOY.md` (sezione SSL Garmin).
+Il Pi chiama Garmin in HTTPS. Se compare l’errore, spesso c’è **SSL inspection** o proxy sulla rete. Soluzioni: uscita senza inspection (es. hotspot) o CA root installata sul Pi. Dettagli: `garmin-sync-server/RPI_DEPLOY.md` (sezione SSL Garmin).
 
 ### Server: storici `403` / `504` Firestore su `connect_garmin`
 
-Se compaiono solo orari vecchi nel `garmin_comms.log` e poi `verify_firebase_credentials` è `[OK]`, erano problemi IAM/rete **prima** della correzione. Se persistono dopo `[OK]`, controlla IAM del service account e timeout rete Pi→Google.
+Se `verify_firebase_credentials` è `[OK]` ma prima falliva, erano problemi IAM/rete. Se persistono: IAM del service account e connettività Pi → Google.
+
+### Sync “non carica tutto” dopo pull-to-refresh
+
+`sync-today` è **volutamente leggera** (oggi/ieri + attività recenti). Lo **storico lungo** è nel **backfill** dopo connect / `register-tokens`; stato in `users/{uid}/sync_status/backfill`. Timeout client ~60s per `sync-today`; il backfill continua sul server.

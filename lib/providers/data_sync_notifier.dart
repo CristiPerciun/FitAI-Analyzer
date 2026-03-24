@@ -28,7 +28,7 @@ final garminConnectedProvider = StreamProvider.autoDispose<bool>((ref) {
 });
 
 /// Dati biometrici daily_health (passi, sonno, HRV, Body Battery) scritti da garmin-sync-server.
-/// Usa daily_health/{date} - invalidare dopo sync-vitals.
+/// Usa daily_health/{date} — invalidare dopo sync server (`sync-today` / delta).
 final dailyHealthStreamProvider =
     StreamProvider.autoDispose<List<Map<String, dynamic>>>((ref) {
       final uid = ref.watch(authNotifierProvider).user?.uid;

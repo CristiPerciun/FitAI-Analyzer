@@ -181,13 +181,22 @@ class GarminService {
   /// Timeout per connect: 90s (OAuth Garmin + rete lenta / Pi che si sveglia).
   static const Duration _connectTimeout = Duration(seconds: 90);
 
-  /// Sync-vitals sul Pi: 2 giorni di health (molte chiamate Garmin) + fino a 50 attività + Firestore.
-  /// 90s era stretto su rete lenta / cold start.
-  static const Duration _syncTimeout = Duration(seconds: 180);
+  /// Pull-to-refresh: solo oggi/ieri + attività recenti (server `sync-today`).
+  static const Duration _syncTodayTimeout = Duration(seconds: 60);
+
+  /// Delta all'avvio (Garmin + Strava lato server).
+  static const Duration _deltaTimeout = Duration(seconds: 120);
 
   Future<bool> isConnected(String uid) async {
     final doc = await _firestore.collection('users').doc(uid).get();
     return doc.data()?['garmin_linked'] == true;
+  }
+
+  /// Ultimo sync completo lato server (per `POST /sync/delta`).
+  Future<Timestamp?> getLastSuccessfulSync(String uid) async {
+    final doc = await _firestore.collection('users').doc(uid).get();
+    final v = doc.data()?['lastSuccessfulSync'];
+    return v is Timestamp ? v : null;
   }
 
   static Map<String, dynamic>? _tryDecodeJsonObject(String body) {
@@ -256,7 +265,7 @@ class GarminService {
           'success': false,
           'message': msg.isNotEmpty
               ? msg
-              : 'Login Garmin non completato (sync iniziale fallita o altro).',
+              : 'Login Garmin non completato.',
         };
       }
 
@@ -353,15 +362,180 @@ class GarminService {
     }
   }
 
-  /// Richiede una sync immediata al mini-server usando i token Garmin gia' salvati.
-  /// Usa /garmin/sync-vitals (oggi + ieri) per pull-to-refresh leggero.
-  /// Ritenta una volta in caso di timeout/connessione (cold start).
-  Future<Map<String, dynamic>> syncNow({required String uid}) async {
+  /// Sync leggera: `POST /garmin/sync-today` (oggi/ieri + attività recenti).
+  Future<Map<String, dynamic>> syncToday({required String uid}) async {
+    return _postUidWithRetries(
+      path: '/garmin/sync-today',
+      uid: uid,
+      timeout: _syncTodayTimeout,
+      logLabel: 'sync-today',
+    );
+  }
+
+  /// Delta unificato dopo login: `POST /sync/delta`.
+  Future<Map<String, dynamic>> deltaSync({
+    required String uid,
+    Timestamp? lastSuccessfulSync,
+    List<String> sources = const ['garmin', 'strava'],
+  }) async {
+    final body = <String, dynamic>{
+      'uid': uid,
+      'sources': sources,
+    };
+    if (lastSuccessfulSync != null) {
+      body['lastSuccessfulSync'] =
+          lastSuccessfulSync.toDate().toUtc().millisecondsSinceEpoch;
+    }
+
     Future<Map<String, dynamic>> doRequest() async {
       final baseUrl = await _resolveBaseUrl();
-      final syncUri = Uri.parse('$baseUrl/garmin/sync-vitals');
+      final uri = Uri.parse('$baseUrl/sync/delta');
       _garminHttpLog(
-        'POST $syncUri (sync-vitals, timeout ${_syncTimeout.inSeconds}s)',
+        'POST $uri (delta, timeout ${_deltaTimeout.inSeconds}s)',
+      );
+      final response = await _http
+          .post(
+            uri,
+            headers: _jsonHeaders,
+            body: jsonEncode(body),
+          )
+          .timeout(_deltaTimeout);
+
+      if (response.statusCode >= 500 && response.statusCode < 600) {
+        throw Exception('Server unavailable');
+      }
+
+      final raw = response.body.trim();
+      final data = raw.isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(raw) as Map<String, dynamic>;
+
+      if (response.statusCode == 200 && data['success'] == true) {
+        return {
+          'success': true,
+          'message': data['message']?.toString() ?? 'Delta sync completata.',
+        };
+      }
+
+      return {
+        'success': false,
+        'message': _serverDetailOrMessage(data).isNotEmpty
+            ? _serverDetailOrMessage(data)
+            : (data['message']?.toString() ?? 'Delta sync non riuscita.'),
+      };
+    }
+
+    try {
+      return await doRequest();
+    } on TimeoutException catch (e) {
+      _invalidateBaseUrlCacheOnNetworkFailure(e);
+      await Future<void>.delayed(const Duration(seconds: 3));
+      try {
+        return await doRequest();
+      } on Object catch (e2) {
+        _invalidateBaseUrlCacheOnNetworkFailure(e2);
+        return {
+          'success': false,
+          'message': 'Delta sync: timeout o errore di rete.',
+        };
+      }
+    } on Exception catch (e) {
+      _invalidateBaseUrlCacheOnNetworkFailure(e);
+      final msg = e.toString().toLowerCase();
+      if (msg.contains('socket') ||
+          msg.contains('connection') ||
+          msg.contains('unavailable')) {
+        await Future<void>.delayed(const Duration(seconds: 3));
+        try {
+          return await doRequest();
+        } on Object catch (e2) {
+          _invalidateBaseUrlCacheOnNetworkFailure(e2);
+        }
+      }
+      return {
+        'success': false,
+        'message': 'Errore di rete durante la delta sync.',
+      };
+    }
+  }
+
+  /// Registra token Strava sul server (backfill 60gg in background).
+  Future<Map<String, dynamic>> registerStravaOnServer({
+    required String uid,
+    required String accessToken,
+    required String refreshToken,
+    int? expiresAtMs,
+  }) async {
+    final baseUrl = await _resolveBaseUrl();
+    final uri = Uri.parse('$baseUrl/strava/register-tokens');
+    final body = <String, dynamic>{
+      'uid': uid,
+      'access_token': accessToken,
+      'refresh_token': refreshToken,
+    };
+    if (expiresAtMs != null) {
+      body['expires_at'] = expiresAtMs;
+    }
+    try {
+      final response = await _http
+          .post(
+            uri,
+            headers: _jsonHeaders,
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 45));
+      final data = _tryDecodeJsonObject(response.body);
+      if (response.statusCode == 200 && data != null && data['success'] == true) {
+        return {
+          'success': true,
+          'message': data['message']?.toString() ?? 'Strava registrato sul server.',
+        };
+      }
+      return {
+        'success': false,
+        'message': _serverDetailOrMessage(data).isNotEmpty
+            ? _serverDetailOrMessage(data)
+            : 'Registrazione Strava sul server non riuscita.',
+      };
+    } on Object catch (e) {
+      _invalidateBaseUrlCacheOnNetworkFailure(e);
+      return {'success': false, 'message': 'Errore di rete: $e'};
+    }
+  }
+
+  /// Rimuove token Strava lato server (solo Firestore server-side).
+  Future<Map<String, dynamic>> disconnectStravaOnServer({required String uid}) async {
+    final baseUrl = await _resolveBaseUrl();
+    final uri = Uri.parse('$baseUrl/strava/disconnect');
+    try {
+      final response = await _http
+          .post(
+            uri,
+            headers: _jsonHeaders,
+            body: jsonEncode({'uid': uid}),
+          )
+          .timeout(const Duration(seconds: 30));
+      final data = _tryDecodeJsonObject(response.body);
+      if (response.statusCode == 200 && data != null && data['success'] == true) {
+        return {'success': true};
+      }
+      return {'success': false};
+    } on Object catch (_) {
+      return {'success': false};
+    }
+  }
+
+  Future<Map<String, dynamic>> _postUidWithRetries({
+    required String path,
+    required String uid,
+    required Duration timeout,
+    required String logLabel,
+  }) async {
+    Future<Map<String, dynamic>> doRequest() async {
+      final baseUrl = await _resolveBaseUrl();
+      final syncUri = Uri.parse('$baseUrl$path');
+      _garminHttpLog(
+        'POST $syncUri ($logLabel, timeout ${timeout.inSeconds}s)',
       );
       final sw = Stopwatch()..start();
       final response = await _http
@@ -370,12 +544,11 @@ class GarminService {
             headers: _jsonHeaders,
             body: jsonEncode({'uid': uid}),
           )
-          .timeout(_syncTimeout);
+          .timeout(timeout);
       _garminHttpLog(
-        'POST /garmin/sync-vitals <- ${response.statusCode} in ${sw.elapsedMilliseconds}ms',
+        'POST $path <- ${response.statusCode} in ${sw.elapsedMilliseconds}ms',
       );
 
-      // 5xx = server in avvio (cold start), ritenta
       if (response.statusCode >= 500 && response.statusCode < 600) {
         throw Exception('Server unavailable');
       }
@@ -405,14 +578,13 @@ class GarminService {
       return await doRequest();
     } on TimeoutException catch (e) {
       _invalidateBaseUrlCacheOnNetworkFailure(e);
-      _garminHttpLog('sync-vitals TIMEOUT (tentativo 1)');
-      // Ritenta: cold start può richiedere più tempo al primo wake
+      _garminHttpLog('$logLabel TIMEOUT (tentativo 1)');
       await Future<void>.delayed(const Duration(seconds: 3));
       try {
         return await doRequest();
       } on TimeoutException catch (e2) {
         _invalidateBaseUrlCacheOnNetworkFailure(e2);
-        _garminHttpLog('sync-vitals TIMEOUT (tentativo 2)');
+        _garminHttpLog('$logLabel TIMEOUT (tentativo 2)');
         return {
           'success': false,
           'message':
@@ -421,7 +593,7 @@ class GarminService {
       } on Exception catch (e) {
         _invalidateBaseUrlCacheOnNetworkFailure(e);
         final msg = e.toString().toLowerCase();
-        _garminHttpLog('sync-vitals errore dopo retry: $e');
+        _garminHttpLog('$logLabel errore dopo retry: $e');
         return {
           'success': false,
           'message': msg.contains('socket') || msg.contains('connection')
@@ -436,7 +608,7 @@ class GarminService {
           msg.contains('connection') ||
           msg.contains('timeout') ||
           msg.contains('unavailable');
-      _garminHttpLog('sync-vitals eccezione: $e (retry=$isRetryable)');
+      _garminHttpLog('$logLabel eccezione: $e (retry=$isRetryable)');
       if (isRetryable) {
         await Future<void>.delayed(const Duration(seconds: 3));
         try {
@@ -444,7 +616,7 @@ class GarminService {
         } on Exception catch (e2) {
           _invalidateBaseUrlCacheOnNetworkFailure(e2);
           final m2 = e2.toString().toLowerCase();
-          _garminHttpLog('sync-vitals errore tentativo 2: $e2');
+          _garminHttpLog('$logLabel errore tentativo 2: $e2');
           return {
             'success': false,
             'message': m2.contains('socket') || m2.contains('connection')

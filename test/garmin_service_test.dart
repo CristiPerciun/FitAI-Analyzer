@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fitai_analyzer/services/garmin_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -60,10 +61,10 @@ void main() {
       expect(result['message'], contains('Credenziali'));
     });
 
-    test('syncNow invia POST /garmin/sync-vitals con uid', () async {
+    test('syncToday invia POST /garmin/sync-today con uid', () async {
       final mock = MockClient((request) async {
         expect(request.method, 'POST');
-        expect(request.url.path, '/garmin/sync-vitals');
+        expect(request.url.path, '/garmin/sync-today');
         final body = jsonDecode(request.body) as Map<String, dynamic>;
         expect(body['uid'], 'uid-2');
         return http.Response(
@@ -76,9 +77,67 @@ void main() {
         httpClient: mock,
         serverUrlOverride: 'https://api.example',
       );
-      final result = await svc.syncNow(uid: 'uid-2');
+      final result = await svc.syncToday(uid: 'uid-2');
 
       expect(result['success'], true);
+    });
+
+    test('deltaSync invia POST /sync/delta con lastSuccessfulSync', () async {
+      final expectedMs =
+          DateTime.utc(2024, 6, 1, 12).millisecondsSinceEpoch;
+      final mock = MockClient((request) async {
+        expect(request.url.path, '/sync/delta');
+        final m = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(m['uid'], 'u1');
+        expect(m['sources'], ['garmin', 'strava']);
+        expect(m['lastSuccessfulSync'], expectedMs);
+        return http.Response(jsonEncode({'success': true, 'message': 'ok'}), 200);
+      });
+      final svc = GarminService(
+        httpClient: mock,
+        serverUrlOverride: 'https://api.example',
+      );
+      final result = await svc.deltaSync(
+        uid: 'u1',
+        lastSuccessfulSync: Timestamp.fromDate(DateTime.utc(2024, 6, 1, 12)),
+      );
+      expect(result['success'], true);
+    });
+
+    test('deltaSync senza timestamp non invia lastSuccessfulSync', () async {
+      final mock = MockClient((request) async {
+        final m = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(m.containsKey('lastSuccessfulSync'), false);
+        return http.Response(jsonEncode({'success': true}), 200);
+      });
+      final svc = GarminService(
+        httpClient: mock,
+        serverUrlOverride: 'https://api.example',
+      );
+      await svc.deltaSync(uid: 'u1');
+    });
+
+    test('registerStravaOnServer invia POST /strava/register-tokens', () async {
+      final mock = MockClient((request) async {
+        expect(request.url.path, '/strava/register-tokens');
+        final b = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(b['uid'], 'uid-s');
+        expect(b['access_token'], 'acc');
+        expect(b['refresh_token'], 'ref');
+        expect(b['expires_at'], 99);
+        return http.Response(jsonEncode({'success': true}), 200);
+      });
+      final svc = GarminService(
+        httpClient: mock,
+        serverUrlOverride: 'https://h.test',
+      );
+      final r = await svc.registerStravaOnServer(
+        uid: 'uid-s',
+        accessToken: 'acc',
+        refreshToken: 'ref',
+        expiresAtMs: 99,
+      );
+      expect(r['success'], true);
     });
 
     test('disconnect invia POST /garmin/disconnect', () async {

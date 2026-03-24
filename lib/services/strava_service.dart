@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart'
     show debugPrint, kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -35,7 +34,7 @@ class StravaActivity {
   final String? summaryPolyline;
   final double? calories; // solo da detailed
   final List<dynamic>? laps; // solo da detailed
-  final Map<String, dynamic>? _raw; // per saveToFirestore (solo da API)
+  final Map<String, dynamic>? _raw; // payload API (lista/dettaglio)
 
   StravaActivity({
     required this.id,
@@ -106,7 +105,8 @@ class StravaActivity {
     );
   }
 
-  Map<String, dynamic>? get rawForFirestore => _raw;
+  /// Risposta grezza API (se presente), utile per debug o future feature.
+  Map<String, dynamic>? get stravaRawJson => _raw;
 }
 
 class StravaService {
@@ -117,7 +117,6 @@ class StravaService {
   /// "Authorization Callback Domain" = strava (host di myhealthsync://strava/callback)
   static const String redirectUri = 'myhealthsync://strava/callback';
   static const String callbackScheme = 'myhealthsync';
-  static const Duration _activityMergeTolerance = Duration(minutes: 2);
 
   String? _accessToken;
   String? _refreshToken;
@@ -159,17 +158,11 @@ class StravaService {
     _expiresAt = null;
   }
 
-  Future<void> _clearTokens() => clearTokens();
-
   /// Verifica se Strava è collegato (token presente e valido o refreshabile).
   Future<bool> isConnected() async {
     await _loadInitialTokens();
     return _accessToken != null;
   }
-
-  bool _isActivityReadPermissionError(String body) =>
-      body.contains('activity:read_permission') ||
-      body.contains('activity:read_all');
 
   Future<void> saveTokens(String access, String refresh, int expiresIn) async {
     final prefs = await SharedPreferences.getInstance();
@@ -179,6 +172,20 @@ class StravaService {
     await prefs.setString('strava_access_token', access);
     await prefs.setString('strava_refresh_token', refresh);
     await prefs.setInt('strava_expires_at', _expiresAt!.millisecondsSinceEpoch);
+  }
+
+  /// Token correnti per `GarminService.registerStravaOnServer` (dopo OAuth / refresh).
+  Future<({String access, String refresh, int expiresAtMs})?> getTokensForServer() async {
+    await _loadInitialTokens();
+    final access = _accessToken;
+    final refresh = _refreshToken;
+    if (access == null || refresh == null) return null;
+    final exp = _expiresAt ?? DateTime.now().add(const Duration(hours: 1));
+    return (
+      access: access,
+      refresh: refresh,
+      expiresAtMs: exp.millisecondsSinceEpoch,
+    );
   }
 
   Future<void> authenticate() async {
@@ -325,45 +332,6 @@ class StravaService {
     }
   }
 
-  Future<List<StravaActivity>> getRecentActivities({int days = 30}) async {
-    await _loadInitialTokens();
-    if (_isTokenExpired()) await _performTokenRefresh();
-
-    final after =
-        (DateTime.now().subtract(Duration(days: days)).millisecondsSinceEpoch ~/
-        1000);
-    final response = await http
-        .get(
-          Uri.parse(
-            'https://www.strava.com/api/v3/athlete/activities?per_page=200&after=$after',
-          ),
-          headers: {'Authorization': 'Bearer $_accessToken'},
-        )
-        .timeout(const Duration(seconds: 30));
-
-    if (response.statusCode == 200) {
-      final list = json.decode(response.body) as List;
-      return list
-          .map((e) => StravaActivity.fromJson(e as Map<String, dynamic>))
-          .toList();
-    }
-
-    // 401/403: token scaduto, revocato o permessi insufficienti → cancella e richiedi nuova autorizzazione
-    if (response.statusCode == 401 || response.statusCode == 403) {
-      await _clearTokens();
-      if (_isActivityReadPermissionError(response.body)) {
-        throw Exception(
-          'Il token Strava non ha i permessi per leggere le attività. '
-          'Riprova: verrà richiesta una nuova autorizzazione con i permessi corretti.',
-        );
-      }
-      throw Exception(
-        'Sessione Strava scaduta o revocata. Tocca Strava per riconnettere.',
-      );
-    }
-    throw Exception('Errore Strava: ${response.body}');
-  }
-
   /// Dettaglio completo (calories, laps) — chiama solo al tap per rispettare rate limit 100/15min
   Future<StravaActivity> getDetailedActivity(int activityId) async {
     await _loadInitialTokens();
@@ -383,212 +351,5 @@ class StravaService {
       );
     }
     throw Exception('Errore dettagli attività: ${response.body}');
-  }
-
-  static String _dateKey(DateTime date) =>
-      '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-
-  static DateTime _parseStravaDate(Map<String, dynamic> raw) {
-    final value = raw['start_date'] ?? raw['start_date_local'];
-    final parsed = value != null ? DateTime.tryParse(value.toString()) : null;
-    return parsed ?? DateTime.now();
-  }
-
-  static DateTime? _parseStoredDate(dynamic value) {
-    if (value is Timestamp) return value.toDate();
-    if (value is DateTime) return value;
-    if (value is String) return DateTime.tryParse(value);
-    return null;
-  }
-
-  static String _normalizeActivityType(String? rawType) {
-    final type = (rawType ?? '').toLowerCase().trim();
-    if (type == 'running') return 'run';
-    if (type == 'cycling' || type == 'bike') return 'ride';
-    if (type == 'walking' || type == 'hiking') return 'walk';
-    return type;
-  }
-
-  static bool _sameActivityType(String left, String right) {
-    if (left.isEmpty || right.isEmpty) return true;
-    const runLike = {'run', 'running', 'trailrun'};
-    const rideLike = {'ride', 'cycling', 'bike', 'virtualride'};
-    const walkLike = {'walk', 'walking', 'hike', 'hiking'};
-    if (runLike.contains(left) && runLike.contains(right)) return true;
-    if (rideLike.contains(left) && rideLike.contains(right)) return true;
-    if (walkLike.contains(left) && walkLike.contains(right)) return true;
-    return left == right;
-  }
-
-  static bool _matchesActivitySlot({
-    required DateTime candidateStart,
-    required DateTime incomingStart,
-    required String candidateType,
-    required String incomingType,
-  }) {
-    if (candidateStart.difference(incomingStart).abs() >
-        _activityMergeTolerance) {
-      return false;
-    }
-    return _sameActivityType(
-      _normalizeActivityType(candidateType),
-      _normalizeActivityType(incomingType),
-    );
-  }
-
-  static bool _hasGarminData(Map<String, dynamic>? data) {
-    if (data == null) return false;
-    return data['hasGarmin'] == true ||
-        data['source'] == 'garmin' ||
-        data['source'] == 'dual' ||
-        data['garmin_raw'] != null ||
-        data['garminActivityId'] != null;
-  }
-
-  static Map<String, dynamic>? _findMatchingActivity(
-    List<Map<String, dynamic>> existingDocs,
-    DateTime startDate,
-    String activityType,
-  ) {
-    for (final doc in existingDocs) {
-      final candidateStart =
-          _parseStoredDate(doc['startTime']) ?? _parseStoredDate(doc['date']);
-      if (candidateStart == null) continue;
-      final candidateType = doc['activityType']?.toString() ?? '';
-      if (_matchesActivitySlot(
-        candidateStart: candidateStart,
-        incomingStart: startDate,
-        candidateType: candidateType,
-        incomingType: activityType,
-      )) {
-        return doc;
-      }
-    }
-    return null;
-  }
-
-  static Map<String, dynamic> _buildUnifiedStravaDoc({
-    required String docId,
-    required Map<String, dynamic> raw,
-    required DateTime startDate,
-    required Map<String, dynamic>? existing,
-  }) {
-    final distanceM = (raw['distance'] as num?)?.toDouble() ?? 0.0;
-    final movingTimeSec = (raw['moving_time'] as num?)?.toInt() ?? 0;
-    final elapsedSec = (raw['elapsed_time'] as num?)?.toInt() ?? movingTimeSec;
-    final avgSpeed = (raw['average_speed'] as num?)?.toDouble();
-    final hasGarmin = _hasGarminData(existing);
-    final garminRaw = existing?['garmin_raw'] as Map<String, dynamic>?;
-
-    return {
-      'id': docId,
-      'source': hasGarmin ? 'dual' : 'strava',
-      'date': Timestamp.fromDate(startDate),
-      'startTime': Timestamp.fromDate(startDate),
-      'dateKey': _dateKey(startDate),
-      'calories': (raw['calories'] as num?)?.toDouble(),
-      'distanceKm': distanceM / 1000,
-      'activeMinutes': movingTimeSec / 60.0,
-      'activityType': raw['sport_type'] ?? raw['type'],
-      'activityName': raw['name'],
-      'deviceName': raw['device_name'],
-      'elevationGainM': (raw['total_elevation_gain'] as num?)?.toDouble(),
-      'avgHeartrate': (raw['average_heartrate'] as num?)?.toDouble(),
-      'maxHeartrate': (raw['max_heartrate'] as num?)?.toDouble(),
-      'avgSpeedKmh': avgSpeed != null ? avgSpeed * 3.6 : null,
-      'elapsedMinutes': elapsedSec / 60.0,
-      'hasGarmin': hasGarmin,
-      'hasStrava': true,
-      'garminActivityId': existing?['garminActivityId']?.toString(),
-      'stravaActivityId': raw['id']?.toString(),
-      'garmin_raw': garminRaw,
-      'strava_raw': raw,
-      'raw': raw,
-      'syncedAt': Timestamp.fromDate(DateTime.now()),
-    };
-  }
-
-  Future<void> saveToFirestore(
-    String uid,
-    List<StravaActivity> activities,
-  ) async {
-    final withRaw = activities.where((a) => a.rawForFirestore != null).toList();
-    if (withRaw.isEmpty) return;
-
-    final firestore = FirebaseFirestore.instance;
-    final activitiesRef = firestore
-        .collection('users')
-        .doc(uid)
-        .collection('activities');
-    final dailyLogsRef = firestore
-        .collection('users')
-        .doc(uid)
-        .collection('daily_logs');
-    final byDate = <String, List<StravaActivity>>{};
-
-    for (final act in withRaw) {
-      final raw = act.rawForFirestore!;
-      final date = _parseStravaDate(raw);
-      final dateStr = _dateKey(date);
-      byDate.putIfAbsent(dateStr, () => []).add(act);
-    }
-
-    for (final entry in byDate.entries) {
-      final dateStr = entry.key;
-      final acts = entry.value;
-      final existingSnapshot = await activitiesRef
-          .where('dateKey', isEqualTo: dateStr)
-          .get();
-      final existingDocs = existingSnapshot.docs
-          .map((doc) => {'id': doc.id, ...doc.data()})
-          .toList();
-
-      for (final act in acts) {
-        final raw = act.rawForFirestore!;
-        final startDate = _parseStravaDate(raw);
-        final activityType = (raw['sport_type'] ?? raw['type'] ?? '')
-            .toString();
-        final existing = _findMatchingActivity(
-          existingDocs,
-          startDate,
-          activityType,
-        );
-        final docId = existing?['id']?.toString() ?? 'strava_${act.id}';
-        final merged = _buildUnifiedStravaDoc(
-          docId: docId,
-          raw: raw,
-          startDate: startDate,
-          existing: existing,
-        );
-        await activitiesRef.doc(docId).set(merged, SetOptions(merge: true));
-
-        if (existing == null) {
-          existingDocs.add(merged);
-        } else {
-          final index = existingDocs.indexOf(existing);
-          existingDocs[index] = merged;
-        }
-      }
-
-      final finalDaySnapshot = await activitiesRef
-          .where('dateKey', isEqualTo: dateStr)
-          .get();
-      final activityIds = finalDaySnapshot.docs.map((doc) => doc.id).toList()
-        ..sort();
-      final totalBurned = finalDaySnapshot.docs.fold<double>(
-        0,
-        (runningTotal, doc) =>
-            runningTotal +
-            ((doc.data()['calories'] as num?)?.toDouble() ?? 0.0),
-      );
-
-      await dailyLogsRef.doc(dateStr).set({
-        'date': dateStr,
-        'activity_ids': activityIds,
-        'health_ref': dateStr,
-        'total_burned_kcal': totalBurned,
-        'timestamp': Timestamp.fromDate(DateTime.now()),
-      }, SetOptions(merge: true));
-    }
   }
 }
