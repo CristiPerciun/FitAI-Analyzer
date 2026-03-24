@@ -95,7 +95,8 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         if (error == null || error.isEmpty || next == prev) return;
         // Non mostrare errore per pull-to-refresh: l'utente ha scrollato, non serve SnackBar
         final trigger = next.$2 ?? '';
-        if (trigger.contains('pull_to_refresh')) {
+        if (trigger.contains('pull_to_refresh') ||
+            trigger.contains('settings_')) {
           ref.read(garminSyncNotifierProvider.notifier).clearError();
           return;
         }

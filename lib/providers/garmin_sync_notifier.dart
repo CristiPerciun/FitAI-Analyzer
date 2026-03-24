@@ -55,9 +55,13 @@ class GarminSyncNotifier extends Notifier<GarminSyncState> {
     if (trigger == 'login') {
       state = state.copyWith(isSyncing: true, error: null, trigger: trigger);
       final last = await service.getLastSuccessfulSync(uid);
+      final garminLinked = await service.isConnected(uid);
       final result = await service.deltaSync(
         uid: uid,
         lastSuccessfulSync: last,
+        sources: garminLinked
+            ? const ['garmin', 'strava']
+            : const ['strava'],
       );
       return _finishSync(ref, result, trigger);
     }

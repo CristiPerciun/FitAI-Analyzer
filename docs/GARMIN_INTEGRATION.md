@@ -184,3 +184,16 @@ Su Raspberry vedi `RPI_DEPLOY.md` nel repo server.
 Il messaggio nell’app arriva dal server (corpo `detail` di FastAPI). **Non sempre è un errore di password**: la libreria [python-garminconnect](https://github.com/cyberjunky/python-garminconnect) + [Garth](https://github.com/matin/garth) può fallire per SSO/oauth temporaneo, rate limit, o **MFA attivo** sull’account (l’endpoint attuale non chiede il codice 2FA).
 
 Sul Pi: aggiorna le dipendenze (`pip install -r requirements.txt`) e leggi il messaggio completo in SnackBar / risposta HTTP. Dettaglio: sezione **Login Garmin** nel `README.md` del repo **garmin-sync-server**.
+
+### 7.1 HTTP 429 su `sso.garmin.com` (Too Many Requests)
+
+Garmin limita gli accessi al widget SSO. **Non è un bug dell’app**: troppi tentativi di login ravvicinati (o più dispositivi/servizi sullo stesso account) possono far scattare il blocco per decine di minuti.
+
+Il **garmin-sync-server** (≥ 1.0.3) mitiga così:
+
+- **Backoff** su `users/{uid}.garmin_sso_rate_limited_until`: dopo un 429, il server rifiuta nuovi `POST /garmin/connect` fino alla scadenza (default **25 min**, env `GARMIN_SSO_BACKOFF_MINUTES`) per non peggiorare il blocco.
+- **Un solo login password alla volta** sul processo (`threading.Lock`).
+- **Ritardo avvio backfill** dopo login riuscito (default **90 s**, `GARMIN_BACKFILL_AFTER_CONNECT_DELAY_SEC`) per separare SSO e burst API.
+- **Disconnect** azzera `garmin_sso_rate_limited_until` così un nuovo ciclo non parte già in backoff (Garmin può comunque rispondere 429 finché non scade il loro limite).
+
+L’app, al **login Firebase**, chiama `sync/delta` solo **Strava** se `garmin_linked` è false, per evitare richieste Garmin inutili prima del collegamento.

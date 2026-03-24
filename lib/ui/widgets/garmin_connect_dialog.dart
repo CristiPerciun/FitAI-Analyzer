@@ -17,66 +17,19 @@ Future<bool?> showGarminConnectDialog(
   return showDialog<bool>(
     context: context,
     barrierDismissible: false,
-    builder: (ctx) => AlertDialog(
-      title: const Text('Collega Garmin Connect'),
-      content: Form(
-        key: formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Inserisci le credenziali del tuo account Garmin Connect. '
-                'Verranno validate dal server in modo sicuro.',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 20),
-              TextFormField(
-                controller: emailController,
-                decoration: const InputDecoration(
-                  labelText: 'Email Garmin',
-                  hintText: 'nome@email.com',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.emailAddress,
-                autocorrect: false,
-                validator: (v) {
-                  if (v == null || v.trim().isEmpty) return 'Inserisci l\'email';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: passwordController,
-                decoration: const InputDecoration(
-                  labelText: 'Password',
-                  border: OutlineInputBorder(),
-                ),
-                obscureText: true,
-                autocorrect: false,
-                validator: (v) {
-                  if (v == null || v.isEmpty) return 'Inserisci la password';
-                  return null;
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(null),
-          child: const Text('Annulla'),
-        ),
-        FilledButton(
-          onPressed: () async {
+    builder: (ctx) {
+      final submitting = <bool>[false];
+      return StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          Future<void> onConnect() async {
+            if (submitting[0]) return;
             if (!formKey.currentState!.validate()) return;
 
             final email = emailController.text.trim();
             final password = passwordController.text;
 
-            // Mostra loading
+            submitting[0] = true;
+            setDialogState(() {});
             if (!ctx.mounted) return;
             showDialog<void>(
               context: ctx,
@@ -112,7 +65,11 @@ Future<bool?> showGarminConnectDialog(
               };
             } finally {
               if (ctx.mounted) {
-                Navigator.of(ctx).pop(); // chiudi sempre il loading
+                Navigator.of(ctx).pop();
+              }
+              submitting[0] = false;
+              if (ctx.mounted) {
+                setDialogState(() {});
               }
             }
 
@@ -126,14 +83,83 @@ Future<bool?> showGarminConnectDialog(
                 SnackBar(
                   content: Text('Garmin: $msg'),
                   backgroundColor: Theme.of(ctx).colorScheme.error,
-                  duration: const Duration(seconds: 8),
+                  duration: const Duration(seconds: 10),
                 ),
               );
             }
-          },
-          child: const Text('Collega'),
-        ),
-      ],
-    ),
+          }
+
+          return AlertDialog(
+            title: const Text('Collega Garmin Connect'),
+            content: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Inserisci le credenziali del tuo account Garmin Connect. '
+                      'Se Garmin risponde "troppi tentativi" (429), attendi 20–30 minuti '
+                      'senza riprovare: nuovi login ravvicinati peggiorano il blocco.',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 20),
+                    TextFormField(
+                      controller: emailController,
+                      enabled: !submitting[0],
+                      decoration: const InputDecoration(
+                        labelText: 'Email Garmin',
+                        hintText: 'nome@email.com',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.emailAddress,
+                      autocorrect: false,
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) {
+                          return 'Inserisci l\'email';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: passwordController,
+                      enabled: !submitting[0],
+                      decoration: const InputDecoration(
+                        labelText: 'Password',
+                        border: OutlineInputBorder(),
+                      ),
+                      obscureText: true,
+                      autocorrect: false,
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return 'Inserisci la password';
+                        return null;
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: submitting[0] ? null : () => Navigator.of(ctx).pop(null),
+                child: const Text('Annulla'),
+              ),
+              FilledButton(
+                onPressed: submitting[0] ? null : () => onConnect(),
+                child: submitting[0]
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Collega'),
+              ),
+            ],
+          );
+        },
+      );
+    },
   );
 }

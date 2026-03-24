@@ -12,10 +12,46 @@ import '../utils/platform_firestore_fix.dart';
 
 final garminServiceProvider = Provider<GarminService>((ref) => GarminService());
 
-void _garminHttpLog(String message) {
+/// Probe URL / richieste OK: solo in debug (console troppo rumorosa altrimenti).
+void _garminHttpVerbose(String message) {
   if (kDebugMode) {
     debugPrint('[GarminHTTP] $message');
   }
+}
+
+/// Errori HTTP / timeout / corpo risposta: sempre su console (anche profile) per diagnosticare Pi/DuckDNS.
+void _garminHttpDiag(String message) {
+  debugPrint('[GarminHTTP] $message');
+}
+
+String _responseBodySnippet(String body, {int maxChars = 480}) {
+  final t = body.trim();
+  if (t.isEmpty) return '(corpo vuoto)';
+  final oneLine = t.replaceAll(RegExp(r'\s+'), ' ');
+  if (oneLine.length <= maxChars) return oneLine;
+  return '${oneLine.substring(0, maxChars)}…';
+}
+
+/// Messaggio utente + contesto quando il server non risponde 200 con JSON utile.
+String _connectFailureUserMessage({
+  required int statusCode,
+  required String baseUrl,
+  required String body,
+  required String? serverDetail,
+}) {
+  if (serverDetail != null && serverDetail.isNotEmpty) {
+    return serverDetail;
+  }
+  final snippet = _responseBodySnippet(body);
+  if (statusCode == 502 || statusCode == 503 || statusCode == 504) {
+    final looksLikeNginxHtml =
+        body.trim().startsWith('<') || snippet.toLowerCase().contains('bad gateway');
+    final nginxHint = looksLikeNginxHtml
+        ? ' Spesso è nginx/DuckDNS che non raggiunge uvicorn sul Pi (servizio spento o proxy).'
+        : ' Verifica che garmin-sync sul Pi sia attivo e raggiungibile dietro il proxy.';
+    return 'Server HTTP $statusCode ($baseUrl).$nginxHint Dettaglio: $snippet';
+  }
+  return 'Risposta server HTTP $statusCode da $baseUrl. $snippet';
 }
 
 /// URL LAN: quando sei a casa sulla stessa rete del Raspberry.
@@ -77,7 +113,7 @@ class GarminService {
         s.contains('host lookup');
     if (!likelyNetwork) return;
     _cachedBaseUrl = null;
-    _garminHttpLog('cache base URL azzerata dopo errore rete: $error');
+    _garminHttpDiag('cache base URL azzerata dopo errore rete: $error');
   }
 
   /// Risolve URL: prova LAN prima (192.168.1.200:8080), se fallisce usa REMOTE (DuckDNS).
@@ -86,14 +122,14 @@ class GarminService {
   Future<String> _resolveBaseUrl() async {
     final o = _serverUrlOverride?.trim();
     if (o != null && o.isNotEmpty) {
-      _garminHttpLog('URL server = override costruttore: $o');
+      _garminHttpVerbose('URL server = override costruttore: $o');
       return o;
     }
 
     if (dotenv.isInitialized) {
       final forced = dotenv.env['GARMIN_SERVER_URL']?.trim();
       if (forced != null && forced.isNotEmpty) {
-        _garminHttpLog(
+        _garminHttpVerbose(
           'URL server = GARMIN_SERVER_URL (auto-detect LAN/REMOTE disattivato): $forced',
         );
         return forced;
@@ -106,32 +142,32 @@ class GarminService {
     if (_cachedBaseUrl != null) {
       final cached = _cachedBaseUrl!;
       if (cached == lan) {
-        _garminHttpLog('Cache LAN ($lan): check rapido ${_lanRevalidateTimeout.inSeconds}s...');
+        _garminHttpVerbose('Cache LAN ($lan): check rapido ${_lanRevalidateTimeout.inSeconds}s...');
         try {
           final sw = Stopwatch()..start();
           final r = await _http
               .get(Uri.parse('$lan/'))
               .timeout(_lanRevalidateTimeout);
           if (r.statusCode == 200) {
-            _garminHttpLog(
+            _garminHttpVerbose(
               'LAN ancora OK (${sw.elapsedMilliseconds}ms) -> $lan',
             );
             return lan;
           }
-          _garminHttpLog('LAN risponde HTTP ${r.statusCode}, ricalcolo base URL');
+          _garminHttpVerbose('LAN risponde HTTP ${r.statusCode}, ricalcolo base URL');
         } on Object catch (e) {
-          _garminHttpLog(
+          _garminHttpVerbose(
             'LAN non raggiungibile (check rapido): $e -> probe completo / REMOTE',
           );
         }
         _cachedBaseUrl = null;
       } else {
-        _garminHttpLog('Cache REMOTE -> $cached');
+        _garminHttpVerbose('Cache REMOTE -> $cached');
         return cached;
       }
     }
 
-    _garminHttpLog(
+    _garminHttpVerbose(
       'Probe LAN ${_lanProbeTimeout.inSeconds}s: $lan (se timeout -> $remote)',
     );
     try {
@@ -139,15 +175,15 @@ class GarminService {
       final r = await _http.get(Uri.parse('$lan/')).timeout(_lanProbeTimeout);
       if (r.statusCode == 200) {
         _cachedBaseUrl = lan;
-        _garminHttpLog('LAN OK (${sw.elapsedMilliseconds}ms) -> base $lan');
+        _garminHttpVerbose('LAN OK (${sw.elapsedMilliseconds}ms) -> base $lan');
         return lan;
       }
-      _garminHttpLog('LAN HTTP ${r.statusCode} -> uso REMOTE');
+      _garminHttpVerbose('LAN HTTP ${r.statusCode} -> uso REMOTE');
     } on Object catch (e) {
-      _garminHttpLog('LAN non disponibile: $e -> uso REMOTE');
+      _garminHttpVerbose('LAN non disponibile: $e -> uso REMOTE');
     }
     _cachedBaseUrl = remote;
-    _garminHttpLog('Base URL finale -> $remote');
+    _garminHttpVerbose('Base URL finale -> $remote');
     return remote;
   }
 
@@ -230,7 +266,7 @@ class GarminService {
     final baseUrl = await _resolveBaseUrl();
     final uri = Uri.parse('$baseUrl/garmin/connect');
     try {
-      _garminHttpLog('POST $uri (connect, timeout ${_connectTimeout.inSeconds}s)');
+      _garminHttpVerbose('POST $uri (connect, timeout ${_connectTimeout.inSeconds}s)');
       final sw = Stopwatch()..start();
       final response = await _http
           .post(
@@ -243,12 +279,20 @@ class GarminService {
             }),
           )
           .timeout(_connectTimeout);
-      _garminHttpLog(
-        'POST /garmin/connect <- ${response.statusCode} in ${sw.elapsedMilliseconds}ms (uid len=${uid.length})',
-      );
+      final status = response.statusCode;
+      if (status == 200) {
+        _garminHttpVerbose(
+          'POST /garmin/connect <- $status in ${sw.elapsedMilliseconds}ms (uid len=${uid.length})',
+        );
+      } else {
+        _garminHttpDiag(
+          'POST /garmin/connect <- $status in ${sw.elapsedMilliseconds}ms '
+          'baseUrl=$baseUrl body=${_responseBodySnippet(response.body)}',
+        );
+      }
 
       final data = _tryDecodeJsonObject(response.body);
-      if (response.statusCode == 200 &&
+      if (status == 200 &&
           data != null &&
           data['success'] == true) {
         return {
@@ -257,10 +301,13 @@ class GarminService {
         };
       }
 
-      if (response.statusCode == 200 &&
+      if (status == 200 &&
           data != null &&
           data['success'] == false) {
         final msg = _serverDetailOrMessage(data);
+        if (msg.isNotEmpty) {
+          _garminHttpDiag('connect: server success=false detail=$msg');
+        }
         return {
           'success': false,
           'message': msg.isNotEmpty
@@ -271,21 +318,36 @@ class GarminService {
 
       final err = _serverDetailOrMessage(data);
       if (err.isNotEmpty) {
+        if (status == 429) {
+          return {
+            'success': false,
+            'message':
+                'Garmin ha limitato gli accessi (troppi tentativi). '
+                'Attendi 15–30 minuti, poi riprova.\n$err',
+          };
+        }
         return {'success': false, 'message': err};
       }
 
-      final snippet = response.body.length > 160
-          ? '${response.body.substring(0, 160)}…'
-          : response.body;
+      if (data == null && response.body.trim().isNotEmpty) {
+        _garminHttpDiag(
+          'connect: risposta non-JSON (Content-Type: '
+          '${response.headers['content-type'] ?? 'n/a'})',
+        );
+      }
+
       return {
         'success': false,
-        'message':
-            'Risposta server HTTP ${response.statusCode} da $baseUrl. '
-            '${snippet.isEmpty ? '(corpo vuoto)' : snippet}',
+        'message': _connectFailureUserMessage(
+          statusCode: status,
+          baseUrl: baseUrl,
+          body: response.body,
+          serverDetail: err.isNotEmpty ? err : null,
+        ),
       };
     } on TimeoutException catch (e) {
       _invalidateBaseUrlCacheOnNetworkFailure(e);
-      _garminHttpLog('connect TIMEOUT verso $baseUrl');
+      _garminHttpDiag('connect TIMEOUT verso $baseUrl ($e)');
       return {
         'success': false,
         'message':
@@ -296,7 +358,7 @@ class GarminService {
     } on Object catch (e) {
       _invalidateBaseUrlCacheOnNetworkFailure(e);
       final s = e.toString().toLowerCase();
-      _garminHttpLog('connect errore: $e');
+      _garminHttpDiag('connect errore: $e (baseUrl=$baseUrl)');
       if (s.contains('socket') ||
           s.contains('connection') ||
           s.contains('failed host lookup') ||
@@ -321,7 +383,7 @@ class GarminService {
     final baseUrl = await _resolveBaseUrl();
     final uri = Uri.parse('$baseUrl/garmin/disconnect');
     try {
-      _garminHttpLog('POST $uri (disconnect)');
+      _garminHttpVerbose('POST $uri (disconnect)');
       final sw = Stopwatch()..start();
       final response = await _http
           .post(
@@ -330,9 +392,17 @@ class GarminService {
             body: jsonEncode({'uid': uid}),
           )
           .timeout(const Duration(seconds: 30));
-      _garminHttpLog(
-        'POST /garmin/disconnect <- ${response.statusCode} in ${sw.elapsedMilliseconds}ms',
-      );
+      final dStatus = response.statusCode;
+      if (dStatus == 200) {
+        _garminHttpVerbose(
+          'POST /garmin/disconnect <- $dStatus in ${sw.elapsedMilliseconds}ms',
+        );
+      } else {
+        _garminHttpDiag(
+          'POST /garmin/disconnect <- $dStatus baseUrl=$baseUrl '
+          'body=${_responseBodySnippet(response.body)}',
+        );
+      }
 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       if (response.statusCode == 200 && data['success'] == true) {
@@ -347,12 +417,12 @@ class GarminService {
       };
     } on TimeoutException catch (e) {
       _invalidateBaseUrlCacheOnNetworkFailure(e);
-      _garminHttpLog('disconnect TIMEOUT verso $baseUrl');
+      _garminHttpDiag('disconnect TIMEOUT verso $baseUrl');
       return {'success': false, 'message': 'Server non risponde. Riprova.'};
     } on Exception catch (e) {
       _invalidateBaseUrlCacheOnNetworkFailure(e);
       final msg = e.toString().toLowerCase();
-      _garminHttpLog('disconnect errore: $e');
+      _garminHttpDiag('disconnect errore: $e (baseUrl=$baseUrl)');
       return {
         'success': false,
         'message': msg.contains('socket') || msg.contains('connection')
@@ -390,9 +460,10 @@ class GarminService {
     Future<Map<String, dynamic>> doRequest() async {
       final baseUrl = await _resolveBaseUrl();
       final uri = Uri.parse('$baseUrl/sync/delta');
-      _garminHttpLog(
+      _garminHttpVerbose(
         'POST $uri (delta, timeout ${_deltaTimeout.inSeconds}s)',
       );
+      final sw = Stopwatch()..start();
       final response = await _http
           .post(
             uri,
@@ -400,28 +471,59 @@ class GarminService {
             body: jsonEncode(body),
           )
           .timeout(_deltaTimeout);
+      final st = response.statusCode;
+      if (st == 200) {
+        _garminHttpVerbose('POST /sync/delta <- $st in ${sw.elapsedMilliseconds}ms');
+      } else {
+        _garminHttpDiag(
+          'POST /sync/delta <- $st in ${sw.elapsedMilliseconds}ms baseUrl=$baseUrl '
+          'body=${_responseBodySnippet(response.body)}',
+        );
+      }
 
-      if (response.statusCode >= 500 && response.statusCode < 600) {
+      if (st >= 500 && st < 600) {
         throw Exception('Server unavailable');
       }
 
       final raw = response.body.trim();
-      final data = raw.isEmpty
-          ? <String, dynamic>{}
-          : jsonDecode(raw) as Map<String, dynamic>;
+      Map<String, dynamic> data;
+      try {
+        data = raw.isEmpty
+            ? <String, dynamic>{}
+            : jsonDecode(raw) as Map<String, dynamic>;
+      } on Object catch (e) {
+        _garminHttpDiag('delta: JSON decode fallito: $e');
+        return {
+          'success': false,
+          'message': _connectFailureUserMessage(
+            statusCode: st,
+            baseUrl: baseUrl,
+            body: response.body,
+            serverDetail: null,
+          ),
+        };
+      }
 
-      if (response.statusCode == 200 && data['success'] == true) {
+      if (st == 200 && data['success'] == true) {
         return {
           'success': true,
           'message': data['message']?.toString() ?? 'Delta sync completata.',
         };
       }
 
+      final detail = _serverDetailOrMessage(data);
+      if (detail.isNotEmpty) {
+        return {'success': false, 'message': detail};
+      }
       return {
         'success': false,
-        'message': _serverDetailOrMessage(data).isNotEmpty
-            ? _serverDetailOrMessage(data)
-            : (data['message']?.toString() ?? 'Delta sync non riuscita.'),
+        'message': data['message']?.toString() ??
+            _connectFailureUserMessage(
+              statusCode: st,
+              baseUrl: baseUrl,
+              body: response.body,
+              serverDetail: null,
+            ),
       };
     }
 
@@ -534,7 +636,7 @@ class GarminService {
     Future<Map<String, dynamic>> doRequest() async {
       final baseUrl = await _resolveBaseUrl();
       final syncUri = Uri.parse('$baseUrl$path');
-      _garminHttpLog(
+      _garminHttpVerbose(
         'POST $syncUri ($logLabel, timeout ${timeout.inSeconds}s)',
       );
       final sw = Stopwatch()..start();
@@ -545,11 +647,17 @@ class GarminService {
             body: jsonEncode({'uid': uid}),
           )
           .timeout(timeout);
-      _garminHttpLog(
-        'POST $path <- ${response.statusCode} in ${sw.elapsedMilliseconds}ms',
-      );
+      final sc = response.statusCode;
+      if (sc == 200) {
+        _garminHttpVerbose('POST $path <- $sc in ${sw.elapsedMilliseconds}ms');
+      } else {
+        _garminHttpDiag(
+          'POST $path <- $sc in ${sw.elapsedMilliseconds}ms baseUrl=$baseUrl '
+          'body=${_responseBodySnippet(response.body)}',
+        );
+      }
 
-      if (response.statusCode >= 500 && response.statusCode < 600) {
+      if (sc >= 500 && sc < 600) {
         throw Exception('Server unavailable');
       }
 
@@ -558,7 +666,7 @@ class GarminService {
           ? <String, dynamic>{}
           : jsonDecode(body) as Map<String, dynamic>;
 
-      if (response.statusCode == 200 && data['success'] == true) {
+      if (sc == 200 && data['success'] == true) {
         return {
           'success': true,
           'message': data['message']?.toString() ?? 'Sync Garmin completata.',
@@ -570,7 +678,12 @@ class GarminService {
         'message':
             data['detail']?.toString() ??
             data['message']?.toString() ??
-            'Sync Garmin non riuscita.',
+            _connectFailureUserMessage(
+              statusCode: sc,
+              baseUrl: baseUrl,
+              body: response.body,
+              serverDetail: null,
+            ),
       };
     }
 
@@ -578,13 +691,13 @@ class GarminService {
       return await doRequest();
     } on TimeoutException catch (e) {
       _invalidateBaseUrlCacheOnNetworkFailure(e);
-      _garminHttpLog('$logLabel TIMEOUT (tentativo 1)');
+      _garminHttpDiag('$logLabel TIMEOUT (tentativo 1) baseUrl risolto al retry');
       await Future<void>.delayed(const Duration(seconds: 3));
       try {
         return await doRequest();
       } on TimeoutException catch (e2) {
         _invalidateBaseUrlCacheOnNetworkFailure(e2);
-        _garminHttpLog('$logLabel TIMEOUT (tentativo 2)');
+        _garminHttpDiag('$logLabel TIMEOUT (tentativo 2)');
         return {
           'success': false,
           'message':
@@ -593,7 +706,7 @@ class GarminService {
       } on Exception catch (e) {
         _invalidateBaseUrlCacheOnNetworkFailure(e);
         final msg = e.toString().toLowerCase();
-        _garminHttpLog('$logLabel errore dopo retry: $e');
+        _garminHttpDiag('$logLabel errore dopo retry: $e');
         return {
           'success': false,
           'message': msg.contains('socket') || msg.contains('connection')
@@ -608,7 +721,7 @@ class GarminService {
           msg.contains('connection') ||
           msg.contains('timeout') ||
           msg.contains('unavailable');
-      _garminHttpLog('$logLabel eccezione: $e (retry=$isRetryable)');
+      _garminHttpDiag('$logLabel eccezione: $e (retry=$isRetryable)');
       if (isRetryable) {
         await Future<void>.delayed(const Duration(seconds: 3));
         try {
@@ -616,7 +729,7 @@ class GarminService {
         } on Exception catch (e2) {
           _invalidateBaseUrlCacheOnNetworkFailure(e2);
           final m2 = e2.toString().toLowerCase();
-          _garminHttpLog('$logLabel errore tentativo 2: $e2');
+          _garminHttpDiag('$logLabel errore tentativo 2: $e2');
           return {
             'success': false,
             'message': m2.contains('socket') || m2.contains('connection')
