@@ -84,6 +84,13 @@ String _responseBodySnippet(String body, {int maxChars = 480}) {
   return '${oneLine.substring(0, maxChars)}…';
 }
 
+String? _extractGarminLoginUrl(String raw) {
+  final match = RegExp(
+    r'https://sso\.garmin\.com/sso/signin\?[^\s"}]+',
+  ).firstMatch(raw);
+  return match?.group(0);
+}
+
 /// Messaggio utente + contesto quando il server non risponde 200 con JSON utile.
 String _connectFailureUserMessage({
   required int statusCode,
@@ -412,12 +419,19 @@ class GarminService {
       }
       final data = _tryDecodeJsonObject(response.body);
       if (data != null) {
+        final message = _serverDetailOrMessage(data);
+        final loginUrl =
+            (data['loginUrl'] is String &&
+                (data['loginUrl'] as String).isNotEmpty)
+            ? data['loginUrl'] as String
+            : _extractGarminLoginUrl(message);
         return {
           'success': data['success'] == true,
-          'message': _serverDetailOrMessage(data),
+          'message': message,
           if (data['mfaRequired'] == true) 'mfaRequired': true,
           if (data['loginSessionId'] is String)
             'loginSessionId': data['loginSessionId'],
+          if (loginUrl != null) 'loginUrl': loginUrl,
         };
       }
       return {

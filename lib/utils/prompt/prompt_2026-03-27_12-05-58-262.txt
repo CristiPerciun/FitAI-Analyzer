@@ -1,0 +1,90 @@
+# CONTESTO PER ANALISI HOME - Longevity Path e Obiettivi Settimanali
+
+## 1. PROFILO UTENTE (onboarding)
+Main goal: Longevità | Età: 34 | Peso: 54.0 kg | Altezza: 156.0 cm | Allenamenti/sett: 5 | Sonno medio: 7.0h
+
+## 2. RIASSUNTO 2 MESI (medie settimanali)
+Settimana 2026-02-09: km_tot=50.3, workouts=2, passi_med=0, sonno_med=0, kcal_med=0, VO2Max=—, FitnessAge=—
+Settimana 2026-02-16: km_tot=0.6, workouts=1, passi_med=0, sonno_med=0, kcal_med=0, VO2Max=—, FitnessAge=—
+Settimana 2026-03-09: km_tot=0.0, workouts=1, passi_med=0, sonno_med=0, kcal_med=0, VO2Max=—, FitnessAge=—
+Settimana 2026-03-16: km_tot=5.1, workouts=5, passi_med=0, sonno_med=0, kcal_med=0, VO2Max=—, FitnessAge=—
+Settimana 2026-03-23: km_tot=5.6, workouts=3, passi_med=7094, sonno_med=0, kcal_med=0, VO2Max=—, FitnessAge=—
+
+
+## 3. DATI DETTAGLIATI ULTIMI 7 GIORNI (attività + daily_health)
+--- 2026-03-27 ---
+Attività: 0 | Bruciate: 0 kcal
+Nutrizione: nessun dato
+Passi: null | Body Battery: null | Sonno: null | VO2Max: — | Fitness Age: —
+
+--- 2026-03-26 ---
+Attività: 1 | Bruciate: 248 kcal
+Nutrizione: nessun dato
+  - running: 2.8 km
+Passi: 7094 | Body Battery: null | Sonno: null | VO2Max: — | Fitness Age: —
+
+--- 2026-03-25 ---
+
+--- 2026-03-24 ---
+Attività: 1 | Bruciate: 252 kcal
+Nutrizione: nessun dato
+  - running: 2.8 km
+
+--- 2026-03-23 ---
+Attività: 1 | Bruciate: 154 kcal
+Nutrizione: nessun dato
+  - indoor_cardio: 
+
+--- 2026-03-22 ---
+Attività: 1 | Bruciate: 229 kcal
+Nutrizione: nessun dato
+  - running: 2.7 km
+
+--- 2026-03-21 ---
+
+
+
+## 4. NOTE E OBIETTIVI
+Nessuna nota.
+
+## 5. DIARIO EVOLUZIONE UTENTE (quadro generale)
+Documento unico che contiene la storia evolutiva dell'utente: statistiche reali, andamento attività/nutrizione/biometrici, come sta evolvendo. Si aggiorna ad ogni analisi.
+
+# DIARIO EVOLUZIONE UTENTE
+
+Questo diario contiene l'andamento dell'utente basato su dati reali:
+statistiche, attività, nutrizione, biometrici (passi, sonno, VO2Max, Fitness Age).
+Si aggiorna ad ogni analisi AI con l'evoluzione del giorno.
+
+---
+
+## Profilo
+Main goal: Longevità | Età: 34 | Peso: 54.0 kg | Altezza: 156.0 cm | Allenamenti/sett: 5 | Sonno medio: 7.0h
+
+Nessun dato storico ancora. Sincronizza Strava/Garmin e registra pasti.
+
+
+---
+MAIN GOAL (4 vie) DA RISPETTARE: Longevità
+
+Sei un esperto di longevità (Peter Attia, Outlive). Genera un piano di longevità che:
+1. Metti al centro il main goal (4 vie) dell'utente; rispetta anche training e nutrizione se presenti nel contesto
+2. 4 micro-obiettivi per OGGI (Cuore, Forza, Alimentazione, Recupero)
+3. 1 macro-obiettivo SETTIMANALE (7 giorni)
+4. 1 consiglio STRATEGICO a lungo termine
+5. database_update: sintesi dell'EVOLUZIONE di oggi (dati reali, trend, progressi) da appendere al diario. NON consigli AI, ma cosa è successo concretamente.
+
+Rispondi ESCLUSIVAMENTE in formato JSON con questa struttura:
+{
+  "cuore": "...",
+  "forza": "...",
+  "alimentazione": "...",
+  "recupero": "...",
+  "weekly_sprint": "...",
+  "strategic_advice": "...",
+  "database_update": {
+    "historical_context_summary": "Sintesi evoluzione di oggi: cosa è successo (attività, nutrizione, metriche), trend rilevati, progressi. Max 300 caratteri.",
+    "detected_trends": "Esempio: calo VO2Max, deficit proteico, miglioramento sonno",
+    "status_score": 1-100
+  }
+}

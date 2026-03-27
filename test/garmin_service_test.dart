@@ -51,6 +51,33 @@ void main() {
       expect(result['loginSessionId'], 'abc');
     });
 
+    test('connect2Start estrae il loginUrl Garmin da un 429', () async {
+      final garminSigninUrl =
+          'https://sso.garmin.com/sso/signin?id=gauth-widget&service=https%3A%2F%2Fsso.garmin.com%2Fsso%2Fembed';
+      final mock = MockClient((request) async {
+        return http.Response(
+          jsonEncode({
+            'detail':
+                'Error in request: 429 Client Error: Too Many Requests for url: $garminSigninUrl',
+          }),
+          429,
+        );
+      });
+
+      final svc = GarminService(
+        httpClient: mock,
+        serverUrlOverride: 'https://example.test',
+      );
+      final result = await svc.connect2Start(
+        uid: 'u2',
+        email: 'user@garmin.com',
+        password: 'secret2',
+      );
+
+      expect(result['success'], false);
+      expect(result['loginUrl'], garminSigninUrl);
+    });
+
     test('connect2VerifyMfa invia POST /garmin/connect2/verify-mfa', () async {
       final mock = MockClient((request) async {
         expect(request.method, 'POST');

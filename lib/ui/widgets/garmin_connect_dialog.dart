@@ -1,22 +1,9 @@
 import 'package:fitai_analyzer/app.dart';
-import 'package:fitai_analyzer/services/garmin_oauth_callback.dart';
 import 'package:fitai_analyzer/services/garmin_service.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
-
-const _garminBrowserCallbackUrl = 'myhealthsync://garmin/callback';
-
-String _buildGarminBrowserLoginUrl() {
-  return Uri.parse('https://sso.garmin.com/portal/sso/en-US/sign-in')
-      .replace(
-        queryParameters: {
-          'clientId': 'GarminConnect',
-          'service': _garminBrowserCallbackUrl,
-        },
-      )
-      .toString();
-}
 
 bool _shouldUseGarminBrowserFallback(String message) {
   final m = message.toLowerCase();
@@ -50,24 +37,30 @@ Future<bool?> showGarminConnectDialog(
       final lastConnectAttempt = <DateTime?>[null];
       return StatefulBuilder(
         builder: (ctx, setDialogState) {
-          Future<Map<String, dynamic>> runBrowserFallback(String email) async {
-            final waitFuture = GarminOAuthCallback.instance.waitForCallback();
-            final launched = await launchUrl(
-              Uri.parse(_buildGarminBrowserLoginUrl()),
-              mode: LaunchMode.externalApplication,
-            );
-            if (!launched) {
+          Future<Map<String, dynamic>> runBrowserFallback(
+            String email,
+            String loginUrl,
+          ) async {
+            if (kIsWeb) {
               return {
                 'success': false,
-                'message': 'Impossibile aprire Garmin nel browser.',
+                'message':
+                    'Login Garmin via browser automatico non supportato sul web.',
               };
             }
-            final ticketOrUrl = await waitFuture;
+            final result = await FlutterWebAuth2.authenticate(
+              url: loginUrl,
+              callbackUrlScheme: 'https',
+              options: const FlutterWebAuth2Options(
+                httpsHost: 'sso.garmin.com',
+                httpsPath: '/sso/embed',
+              ),
+            );
             return ref
                 .read(garminServiceProvider)
                 .connect3ExchangeTicket(
                   uid: uid,
-                  ticketOrUrl: ticketOrUrl,
+                  ticketOrUrl: result,
                   email: email,
                 );
           }
@@ -133,10 +126,13 @@ Future<bool?> showGarminConnectDialog(
                     .read(garminServiceProvider)
                     .connect2Start(uid: uid, email: email, password: password);
                 final msg = result['message']?.toString() ?? '';
+                final loginUrl = result['loginUrl']?.toString();
                 if (result['success'] != true &&
                     result['mfaRequired'] != true &&
+                    loginUrl != null &&
+                    loginUrl.isNotEmpty &&
                     _shouldUseGarminBrowserFallback(msg)) {
-                  result = await runBrowserFallback(email);
+                  result = await runBrowserFallback(email, loginUrl);
                 }
               }
             } on Object catch (e) {
@@ -197,7 +193,7 @@ Future<bool?> showGarminConnectDialog(
                     Text(
                       awaitingMfa[0]
                           ? 'Inserisci il codice MFA richiesto da Garmin per completare il collegamento.'
-                          : 'Inserisci le credenziali Garmin. L\'app prova prima il login server-side; se Garmin blocca il login automatico passa al browser e completa il token in automatico.',
+                          : 'Inserisci le credenziali Garmin. L\'app prova prima il login server-side; se Garmin risponde con il link SSO del fallback, apre quel link e cattura automaticamente il ticket finale.',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                     const SizedBox(height: 20),
