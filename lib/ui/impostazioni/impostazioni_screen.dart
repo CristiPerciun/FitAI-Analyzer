@@ -104,7 +104,7 @@ class ImpostazioniScreen extends ConsumerWidget {
                 : 'Connect Garmin',
             subtitle: isGarminConnected
                 ? 'Account collegato. Tocca per sincronizzare (il server usa il token salvato, niente password).'
-                : 'Collega account Garmin Connect (una volta; poi il token resta sul server ~1 anno).',
+                : 'Collega account Garmin Connect. Se Garmin blocca il login automatico, l\'app passa al browser e completa il token.',
             onTap: () => _onConnectGarmin(context, ref),
           ),
           if (isGarminConnected)
@@ -148,8 +148,7 @@ class ImpostazioniScreen extends ConsumerWidget {
   }
 
   Future<void> _onConnectStrava(BuildContext context, WidgetRef ref) async {
-    final connected =
-        ref.read(stravaConnectedProvider).valueOrNull ?? false;
+    final connected = ref.read(stravaConnectedProvider).valueOrNull ?? false;
     if (connected) {
       final uid = ref.read(authNotifierProvider).user?.uid;
       if (uid == null) {
@@ -158,10 +157,9 @@ class ImpostazioniScreen extends ConsumerWidget {
         }
         return;
       }
-      final ok = await ref.read(garminSyncNotifierProvider.notifier).syncNow(
-            uid: uid,
-            trigger: 'settings_strava_refresh',
-          );
+      final ok = await ref
+          .read(garminSyncNotifierProvider.notifier)
+          .syncNow(uid: uid, trigger: 'settings_strava_refresh');
       ref.invalidate(activitiesStreamProvider);
       ref.invalidate(activitiesByDateProvider);
       if (!context.mounted) return;
@@ -171,7 +169,8 @@ class ImpostazioniScreen extends ConsumerWidget {
           const SnackBar(content: Text('Strava: dati aggiornati dal server.')),
         );
       } else {
-        final err = ref.read(garminSyncNotifierProvider).error ??
+        final err =
+            ref.read(garminSyncNotifierProvider).error ??
             'Sincronizzazione non riuscita.';
         messenger?.showSnackBar(
           SnackBar(
@@ -184,7 +183,9 @@ class ImpostazioniScreen extends ConsumerWidget {
       return;
     }
 
-    await ref.read(authNotifierProvider.notifier).startOAuth(
+    await ref
+        .read(authNotifierProvider.notifier)
+        .startOAuth(
           'strava',
           onSuccess: () {
             ref.invalidate(activitiesStreamProvider);
@@ -216,12 +217,12 @@ class ImpostazioniScreen extends ConsumerWidget {
       }
       return;
     }
-    final alreadyLinked = ref.read(garminConnectedProvider).valueOrNull ?? false;
+    final alreadyLinked =
+        ref.read(garminConnectedProvider).valueOrNull ?? false;
     if (alreadyLinked) {
-      final ok = await ref.read(garminSyncNotifierProvider.notifier).syncNow(
-            uid: uid,
-            trigger: 'settings_tap_linked',
-          );
+      final ok = await ref
+          .read(garminSyncNotifierProvider.notifier)
+          .syncNow(uid: uid, trigger: 'settings_tap_linked');
       ref.invalidate(activitiesStreamProvider);
       ref.invalidate(dailyHealthStreamProvider);
       if (!context.mounted) return;
@@ -231,7 +232,8 @@ class ImpostazioniScreen extends ConsumerWidget {
           const SnackBar(content: Text('Garmin: dati aggiornati dal server.')),
         );
       } else {
-        final err = ref.read(garminSyncNotifierProvider).error ??
+        final err =
+            ref.read(garminSyncNotifierProvider).error ??
             'Sincronizzazione non riuscita.';
         messenger?.showSnackBar(
           SnackBar(
@@ -251,16 +253,7 @@ class ImpostazioniScreen extends ConsumerWidget {
       scaffoldMessengerKey.currentState?.showSnackBar(
         const SnackBar(content: Text('✅ Garmin collegato!')),
       );
-      // Sync leggera server (oggi/ieri + attività recenti)
-      await ref.read(garminSyncNotifierProvider.notifier).syncNow(
-            uid: uid,
-            trigger: 'garmin_login',
-          );
-      if (context.mounted) {
-        ref.invalidate(activitiesStreamProvider);
-        ref.invalidate(dailyHealthStreamProvider);
-        ref.invalidate(activitiesByDateProvider);
-      }
+      await _runGarminPostLoginSync(context, ref, uid);
     }
   }
 
@@ -314,6 +307,43 @@ class ImpostazioniScreen extends ConsumerWidget {
     }
   }
 
+  Future<void> _runGarminPostLoginSync(
+    BuildContext context,
+    WidgetRef ref,
+    String uid,
+  ) async {
+    final service = ref.read(garminServiceProvider);
+    var result = await service.syncToday(uid: uid);
+    if (result['success'] != true) {
+      await Future<void>.delayed(const Duration(seconds: 2));
+      result = await service.syncToday(uid: uid);
+    }
+
+    ref.invalidate(garminConnectedProvider);
+    ref.invalidate(activitiesStreamProvider);
+    ref.invalidate(dailyHealthStreamProvider);
+    ref.invalidate(activitiesByDateProvider);
+    ref.invalidate(longevityHomePackageProvider);
+
+    if (!context.mounted) return;
+    if (result['success'] == true) {
+      scaffoldMessengerKey.currentState?.showSnackBar(
+        const SnackBar(
+          content: Text('Garmin: dati biometrici e attività aggiornati.'),
+        ),
+      );
+    } else {
+      final msg = result['message']?.toString() ?? 'Sync Garmin non riuscita.';
+      scaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text('Garmin sync: $msg'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+          duration: const Duration(seconds: 8),
+        ),
+      );
+    }
+  }
+
   Future<void> _onAddGeminiKey(BuildContext context, WidgetRef ref) async {
     final saved = await showGeminiApiKeyDialog(context, ref);
     if (saved) {
@@ -325,10 +355,7 @@ class ImpostazioniScreen extends ConsumerWidget {
 }
 
 class _ProfileTile extends StatelessWidget {
-  const _ProfileTile({
-    required this.userName,
-    required this.onTap,
-  });
+  const _ProfileTile({required this.userName, required this.onTap});
 
   final String userName;
   final VoidCallback onTap;

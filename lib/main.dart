@@ -3,8 +3,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:fitai_analyzer/app.dart';
 import 'package:fitai_analyzer/firebase_options.dart';
+import 'package:fitai_analyzer/services/garmin_oauth_callback.dart';
 import 'package:fitai_analyzer/services/strava_oauth_callback.dart';
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,16 +27,17 @@ void main() async {
     } catch (_) {}
   }
 
-  // Deep link per Strava OAuth (fallback iOS quando ASWebAuthenticationSession non apre)
-  _setupStravaOAuthDeepLinks();
+  // Deep link OAuth custom-scheme per Strava e Garmin browser login.
+  _setupOAuthDeepLinks();
 
   runApp(const ProviderScope(child: MyApp()));
 }
 
-void _setupStravaOAuthDeepLinks() {
+void _setupOAuthDeepLinks() {
   final appLinks = AppLinks();
   void handleLink(Uri? uri) {
     StravaOAuthCallback.instance.handleUri(uri);
+    GarminOAuthCallback.instance.handleUri(uri);
   }
 
   appLinks.uriLinkStream.listen(handleLink);

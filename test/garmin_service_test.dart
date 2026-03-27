@@ -14,26 +14,25 @@ void main() {
         normalizeGarminServerBaseUrl(' http://192.168.1.200/ '),
         'http://192.168.1.200',
       );
-      expect(
-        normalizeGarminServerBaseUrl('http://h:8080///'),
-        'http://h:8080',
-      );
+      expect(normalizeGarminServerBaseUrl('http://h:8080///'), 'http://h:8080');
     });
   });
 
   group('GarminService HTTP verso garmin-sync-server', () {
-    test('connect invia POST /garmin/connect con uid, email, password', () async {
-      late http.BaseRequest captured;
+    test('connect2Start invia POST /garmin/connect2/start', () async {
       final mock = MockClient((request) async {
-        captured = request;
         expect(request.method, 'POST');
-        expect(request.url.toString(), endsWith('/garmin/connect'));
+        expect(request.url.path, '/garmin/connect2/start');
         final body = jsonDecode(request.body) as Map<String, dynamic>;
-        expect(body['uid'], 'firebase-uid-1');
+        expect(body['uid'], 'u2');
         expect(body['email'], 'user@garmin.com');
-        expect(body['password'], 'secret');
+        expect(body['password'], 'secret2');
         return http.Response(
-          jsonEncode({'success': true, 'message': 'ok'}),
+          jsonEncode({
+            'success': false,
+            'mfaRequired': true,
+            'loginSessionId': 'abc',
+          }),
           200,
         );
       });
@@ -42,20 +41,24 @@ void main() {
         httpClient: mock,
         serverUrlOverride: 'https://example.test',
       );
-      final result = await svc.connect(
-        uid: 'firebase-uid-1',
+      final result = await svc.connect2Start(
+        uid: 'u2',
         email: 'user@garmin.com',
-        password: 'secret',
+        password: 'secret2',
       );
 
-      expect(result['success'], true);
-      expect(captured.headers['content-type'], contains('application/json'));
+      expect(result['mfaRequired'], true);
+      expect(result['loginSessionId'], 'abc');
     });
 
-    test('connect puo forzare fresh_login nel body JSON', () async {
+    test('connect2VerifyMfa invia POST /garmin/connect2/verify-mfa', () async {
       final mock = MockClient((request) async {
+        expect(request.method, 'POST');
+        expect(request.url.path, '/garmin/connect2/verify-mfa');
         final body = jsonDecode(request.body) as Map<String, dynamic>;
-        expect(body['fresh_login'], true);
+        expect(body['uid'], 'u3');
+        expect(body['login_session_id'], 'sess-1');
+        expect(body['mfa_code'], '123456');
         return http.Response(
           jsonEncode({'success': true, 'message': 'ok'}),
           200,
@@ -66,61 +69,44 @@ void main() {
         httpClient: mock,
         serverUrlOverride: 'https://example.test',
       );
-      final result = await svc.connect(
-        uid: 'firebase-uid-1',
-        email: 'user@garmin.com',
-        password: 'secret',
-        freshLogin: true,
+      final result = await svc.connect2VerifyMfa(
+        uid: 'u3',
+        loginSessionId: 'sess-1',
+        mfaCode: '123456',
       );
 
       expect(result['success'], true);
     });
 
     test(
-      'connect: password con # + apice % nel body JSON identica a quella inserita',
+      'connect3ExchangeTicket invia POST /garmin/connect3/exchange-ticket',
       () async {
-        // Stesso tipo di caratteri che in password Garmin complesse (UTF-8 / JSON sicuro).
-        const trickyPassword = r"a#b+c'd%e%f";
         final mock = MockClient((request) async {
-          final map = jsonDecode(request.body) as Map<String, dynamic>;
-          expect(map['password'], trickyPassword);
-          return http.Response(jsonEncode({'success': true, 'message': 'ok'}), 200);
+          expect(request.method, 'POST');
+          expect(request.url.path, '/garmin/connect3/exchange-ticket');
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          expect(body['uid'], 'u4');
+          expect(body['ticket_or_url'], contains('ticket=ST-'));
+          expect(body['email'], 'user@garmin.com');
+          return http.Response(
+            jsonEncode({'success': true, 'message': 'ok'}),
+            200,
+          );
         });
+
         final svc = GarminService(
           httpClient: mock,
           serverUrlOverride: 'https://example.test',
         );
-        final r = await svc.connect(
-          uid: 'u',
-          email: 'x@y.z',
-          password: trickyPassword,
+        final result = await svc.connect3ExchangeTicket(
+          uid: 'u4',
+          ticketOrUrl: 'https://sso.garmin.com/sso/embed?ticket=ST-abc',
+          email: 'user@garmin.com',
         );
-        expect(r['success'], true);
+
+        expect(result['success'], true);
       },
     );
-
-    test('connect con 401 dal server espone il messaggio (credenziali Garmin)', () async {
-      final mock = MockClient((request) async {
-        return http.Response(
-          jsonEncode({'detail': 'Credenziali Garmin non valide'}),
-          401,
-          headers: {'content-type': 'application/json'},
-        );
-      });
-
-      final svc = GarminService(
-        httpClient: mock,
-        serverUrlOverride: 'https://example.test',
-      );
-      final result = await svc.connect(
-        uid: 'u',
-        email: 'a@b.c',
-        password: 'wrong',
-      );
-
-      expect(result['success'], false);
-      expect(result['message'], contains('Credenziali'));
-    });
 
     test('syncToday invia POST /garmin/sync-today con uid', () async {
       final mock = MockClient((request) async {
@@ -144,15 +130,17 @@ void main() {
     });
 
     test('deltaSync invia POST /sync/delta con lastSuccessfulSync', () async {
-      final expectedMs =
-          DateTime.utc(2024, 6, 1, 12).millisecondsSinceEpoch;
+      final expectedMs = DateTime.utc(2024, 6, 1, 12).millisecondsSinceEpoch;
       final mock = MockClient((request) async {
         expect(request.url.path, '/sync/delta');
         final m = jsonDecode(request.body) as Map<String, dynamic>;
         expect(m['uid'], 'u1');
         expect(m['sources'], ['garmin', 'strava']);
         expect(m['lastSuccessfulSync'], expectedMs);
-        return http.Response(jsonEncode({'success': true, 'message': 'ok'}), 200);
+        return http.Response(
+          jsonEncode({'success': true, 'message': 'ok'}),
+          200,
+        );
       });
       final svc = GarminService(
         httpClient: mock,
@@ -220,34 +208,35 @@ void main() {
     });
 
     test(
-        'senza override: probe GET LAN default poi POST /garmin/sync-today',
-        () async {
-      final calls = <String>[];
-      final mock = MockClient((request) async {
-        calls.add('${request.method} ${request.url}');
-        if (request.method == 'GET' &&
-            request.url.host == '192.168.1.200' &&
-            request.url.path == '/') {
-          return http.Response('{"status":"ok"}', 200);
-        }
-        if (request.method == 'POST' &&
-            request.url.path == '/garmin/sync-today') {
-          return http.Response(
-            jsonEncode({'success': true, 'message': 'ok'}),
-            200,
-          );
-        }
-        return http.Response('not found', 404);
-      });
+      'senza override: probe GET LAN default poi POST /garmin/sync-today',
+      () async {
+        final calls = <String>[];
+        final mock = MockClient((request) async {
+          calls.add('${request.method} ${request.url}');
+          if (request.method == 'GET' &&
+              request.url.host == '192.168.1.200' &&
+              request.url.path == '/') {
+            return http.Response('{"status":"ok"}', 200);
+          }
+          if (request.method == 'POST' &&
+              request.url.path == '/garmin/sync-today') {
+            return http.Response(
+              jsonEncode({'success': true, 'message': 'ok'}),
+              200,
+            );
+          }
+          return http.Response('not found', 404);
+        });
 
-      final svc = GarminService(httpClient: mock);
-      final result = await svc.syncToday(uid: 'uid-lan');
+        final svc = GarminService(httpClient: mock);
+        final result = await svc.syncToday(uid: 'uid-lan');
 
-      expect(result['success'], true);
-      expect(calls.length, greaterThanOrEqualTo(2));
-      expect(calls.first, contains('GET'));
-      expect(calls.first, contains('192.168.1.200'));
-      expect(calls.any((c) => c.contains('/garmin/sync-today')), true);
-    });
+        expect(result['success'], true);
+        expect(calls.length, greaterThanOrEqualTo(2));
+        expect(calls.first, contains('GET'));
+        expect(calls.first, contains('192.168.1.200'));
+        expect(calls.any((c) => c.contains('/garmin/sync-today')), true);
+      },
+    );
   });
 }

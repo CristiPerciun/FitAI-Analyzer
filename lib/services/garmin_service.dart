@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show debugPrint, kDebugMode, visibleForTesting;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
@@ -34,14 +35,16 @@ void _garminHttpDiag(String message) {
 
 String _headersOneLine(Map<String, String> h) {
   final keys = h.keys.toList()..sort();
-  return keys.map((k) {
-    final v = h[k] ?? '';
-    if (k.toLowerCase() == 'authorization') {
-      return '$k: Bearer *** (len=${v.length})';
-    }
-    final short = v.length > 48 ? '${v.substring(0, 48)}…' : v;
-    return '$k: $short';
-  }).join('; ');
+  return keys
+      .map((k) {
+        final v = h[k] ?? '';
+        if (k.toLowerCase() == 'authorization') {
+          return '$k: Bearer *** (len=${v.length})';
+        }
+        final short = v.length > 48 ? '${v.substring(0, 48)}…' : v;
+        return '$k: $short';
+      })
+      .join('; ');
 }
 
 void _garminTraceHttpResponse({
@@ -59,8 +62,9 @@ void _garminTraceHttpResponse({
   final body = omitBody
       ? '(omesso: endpoint sensibile)'
       : _responseBodySnippet(response.body, maxChars: 400);
-  final reqH =
-      requestHeaders != null ? _headersOneLine(requestHeaders) : '(n/a)';
+  final reqH = requestHeaders != null
+      ? _headersOneLine(requestHeaders)
+      : '(n/a)';
   final respH = _headersOneLine(response.headers);
   debugPrint(
     '[GarminHTTP] trace $label $method $uri → ${response.statusCode} '
@@ -93,7 +97,8 @@ String _connectFailureUserMessage({
   final snippet = _responseBodySnippet(body);
   if (statusCode == 502 || statusCode == 503 || statusCode == 504) {
     final looksLikeNginxHtml =
-        body.trim().startsWith('<') || snippet.toLowerCase().contains('bad gateway');
+        body.trim().startsWith('<') ||
+        snippet.toLowerCase().contains('bad gateway');
     final nginxHint = looksLikeNginxHtml
         ? ' Spesso è nginx/DuckDNS che non raggiunge uvicorn sul Pi (servizio spento o proxy).'
         : ' Verifica che garmin-sync sul Pi sia attivo e raggiungibile dietro il proxy.';
@@ -117,9 +122,7 @@ String get _garminServerUrlLan {
   const def = 'http://192.168.1.200';
   if (!dotenv.isInitialized) return normalizeGarminServerBaseUrl(def);
   final u = dotenv.env['GARMIN_SERVER_URL_LAN']?.trim();
-  return normalizeGarminServerBaseUrl(
-    (u != null && u.isNotEmpty) ? u : def,
-  );
+  return normalizeGarminServerBaseUrl((u != null && u.isNotEmpty) ? u : def);
 }
 
 /// URL remoto: quando sei fuori casa (DuckDNS + HTTPS).
@@ -127,9 +130,7 @@ String get _garminServerUrlRemote {
   const def = 'https://myrasberrysyncgar.duckdns.org';
   if (!dotenv.isInitialized) return normalizeGarminServerBaseUrl(def);
   final u = dotenv.env['GARMIN_SERVER_URL_REMOTE']?.trim();
-  return normalizeGarminServerBaseUrl(
-    (u != null && u.isNotEmpty) ? u : def,
-  );
+  return normalizeGarminServerBaseUrl((u != null && u.isNotEmpty) ? u : def);
 }
 
 /// URL legacy (compatibilita): se impostato, usa solo quello.
@@ -144,11 +145,9 @@ String get garminServerUrl {
 /// I dati sono scritti dal garmin-sync-server Python (es. su Raspberry Pi).
 /// Collezioni: users/{uid}/activities, users/{uid}/daily_health
 class GarminService {
-  GarminService({
-    http.Client? httpClient,
-    String? serverUrlOverride,
-  })  : _http = httpClient ?? http.Client(),
-        _serverUrlOverride = serverUrlOverride;
+  GarminService({http.Client? httpClient, String? serverUrlOverride})
+    : _http = httpClient ?? http.Client(),
+      _serverUrlOverride = serverUrlOverride;
 
   final http.Client _http;
   final String? _serverUrlOverride;
@@ -167,7 +166,8 @@ class GarminService {
 
   void _invalidateBaseUrlCacheOnNetworkFailure(Object error) {
     final s = error.toString().toLowerCase();
-    final likelyNetwork = error is TimeoutException ||
+    final likelyNetwork =
+        error is TimeoutException ||
         s.contains('socket') ||
         s.contains('connection') ||
         s.contains('failed host lookup') ||
@@ -204,7 +204,9 @@ class GarminService {
     if (_cachedBaseUrl != null) {
       final cached = _cachedBaseUrl!;
       if (cached == lan) {
-        _garminHttpVerbose('Cache LAN ($lan): check rapido ${_lanRevalidateTimeout.inSeconds}s...');
+        _garminHttpVerbose(
+          'Cache LAN ($lan): check rapido ${_lanRevalidateTimeout.inSeconds}s...',
+        );
         try {
           final sw = Stopwatch()..start();
           final r = await _http
@@ -223,7 +225,9 @@ class GarminService {
             );
             return lan;
           }
-          _garminHttpVerbose('LAN risponde HTTP ${r.statusCode}, ricalcolo base URL');
+          _garminHttpVerbose(
+            'LAN risponde HTTP ${r.statusCode}, ricalcolo base URL',
+          );
         } on Object catch (e) {
           _garminHttpVerbose(
             'LAN non raggiungibile (check rapido): $e -> probe completo / REMOTE',
@@ -332,33 +336,67 @@ class GarminService {
     return '';
   }
 
-  /// Invia credenziali Garmin al server per collegare l'account.
-  /// Il server valida su Garmin Connect e salva i tokens.
-  Future<Map<String, dynamic>> connect({
+  Future<Map<String, dynamic>> connect2Start({
     required String uid,
     required String email,
     required String password,
-    bool freshLogin = false,
+  }) async {
+    return _connect2Post(
+      path: '/garmin/connect2/start',
+      body: {'uid': uid, 'email': email.trim(), 'password': password},
+      logLabel: 'garmin/connect2/start',
+    );
+  }
+
+  Future<Map<String, dynamic>> connect2VerifyMfa({
+    required String uid,
+    required String loginSessionId,
+    required String mfaCode,
+  }) async {
+    return _connect2Post(
+      path: '/garmin/connect2/verify-mfa',
+      body: {
+        'uid': uid,
+        'login_session_id': loginSessionId,
+        'mfa_code': mfaCode.trim(),
+      },
+      logLabel: 'garmin/connect2/verify-mfa',
+    );
+  }
+
+  Future<Map<String, dynamic>> connect3ExchangeTicket({
+    required String uid,
+    required String ticketOrUrl,
+    String? email,
+  }) async {
+    return _connect2Post(
+      path: '/garmin/connect3/exchange-ticket',
+      body: {
+        'uid': uid,
+        'ticket_or_url': ticketOrUrl,
+        if (email != null && email.trim().isNotEmpty) 'email': email.trim(),
+      },
+      logLabel: 'garmin/connect3/exchange-ticket',
+    );
+  }
+
+  Future<Map<String, dynamic>> _connect2Post({
+    required String path,
+    required Map<String, dynamic> body,
+    required String logLabel,
   }) async {
     final baseUrl = await _resolveBaseUrl();
-    final uri = Uri.parse('$baseUrl/garmin/connect');
+    final uri = Uri.parse('$baseUrl$path');
     try {
-      _garminHttpVerbose('POST $uri (connect, timeout ${_connectTimeout.inSeconds}s)');
+      _garminHttpVerbose(
+        'POST $uri ($logLabel, timeout ${_connectTimeout.inSeconds}s)',
+      );
       final sw = Stopwatch()..start();
       final response = await _http
-          .post(
-            uri,
-            headers: _jsonHeaders,
-            body: jsonEncode({
-              'uid': uid,
-              'email': email.trim(),
-              'password': password,
-              'fresh_login': freshLogin,
-            }),
-          )
+          .post(uri, headers: _jsonHeaders, body: jsonEncode(body))
           .timeout(_connectTimeout);
       _garminTraceHttpResponse(
-        label: 'garmin/connect',
+        label: logLabel,
         uri: uri,
         method: 'POST',
         response: response,
@@ -366,93 +404,42 @@ class GarminService {
         requestHeaders: _jsonHeaders,
       );
       final status = response.statusCode;
-      if (status == 200) {
-        _garminHttpVerbose(
-          'POST /garmin/connect <- $status in ${sw.elapsedMilliseconds}ms (uid len=${uid.length})',
-        );
-      } else {
+      if (status != 200) {
         _garminHttpDiag(
-          'POST /garmin/connect <- $status in ${sw.elapsedMilliseconds}ms '
+          'POST $path <- $status in ${sw.elapsedMilliseconds}ms '
           'baseUrl=$baseUrl body=${_responseBodySnippet(response.body)}',
         );
       }
-
       final data = _tryDecodeJsonObject(response.body);
-      if (status == 200 &&
-          data != null &&
-          data['success'] == true) {
+      if (data != null) {
         return {
-          'success': true,
-          'message': data['message']?.toString() ?? 'Garmin collegato!',
+          'success': data['success'] == true,
+          'message': _serverDetailOrMessage(data),
+          if (data['mfaRequired'] == true) 'mfaRequired': true,
+          if (data['loginSessionId'] is String)
+            'loginSessionId': data['loginSessionId'],
         };
       }
-
-      if (status == 200 &&
-          data != null &&
-          data['success'] == false) {
-        final msg = _serverDetailOrMessage(data);
-        if (msg.isNotEmpty) {
-          _garminHttpDiag('connect: server success=false detail=$msg');
-        }
-        return {
-          'success': false,
-          'message': msg.isNotEmpty
-              ? msg
-              : 'Login Garmin non completato.',
-        };
-      }
-
-      final err = _serverDetailOrMessage(data);
-      if (err.isNotEmpty) {
-        return {'success': false, 'message': err};
-      }
-
-      if (data == null && response.body.trim().isNotEmpty) {
-        _garminHttpDiag(
-          'connect: risposta non-JSON (Content-Type: '
-          '${response.headers['content-type'] ?? 'n/a'})',
-        );
-      }
-
       return {
         'success': false,
         'message': _connectFailureUserMessage(
           statusCode: status,
           baseUrl: baseUrl,
           body: response.body,
-          serverDetail: err.isNotEmpty ? err : null,
+          serverDetail: null,
         ),
       };
     } on TimeoutException catch (e) {
       _invalidateBaseUrlCacheOnNetworkFailure(e);
-      _garminHttpDiag('connect TIMEOUT verso $baseUrl ($e)');
+      _garminHttpDiag('$logLabel TIMEOUT verso $baseUrl ($e)');
       return {
         'success': false,
-        'message':
-            'Timeout: il server non ha risposto in tempo ($baseUrl). '
-            'Fuori casa assicurati che GARMIN_SERVER_URL non forzi solo la LAN; '
-            "l'app usa REMOTE se la LAN non risponde.",
+        'message': 'Timeout durante Garmin Connect 2 verso $baseUrl.',
       };
     } on Object catch (e) {
       _invalidateBaseUrlCacheOnNetworkFailure(e);
-      final s = e.toString().toLowerCase();
-      _garminHttpDiag('connect errore: $e (baseUrl=$baseUrl)');
-      if (s.contains('socket') ||
-          s.contains('connection') ||
-          s.contains('failed host lookup') ||
-          s.contains('network')) {
-        return {
-          'success': false,
-          'message':
-              'Server non raggiungibile ($baseUrl). '
-              'In LAN: stesso Wi-Fi del Pi. Fuori: verifica DuckDNS / REMOTE in .env '
-              "e che GARMIN_SERVER_URL non punti solo all'IP interno.",
-        };
-      }
-      return {
-        'success': false,
-        'message': 'Errore di rete: $e',
-      };
+      _garminHttpDiag('$logLabel errore: $e (baseUrl=$baseUrl)');
+      return {'success': false, 'message': 'Errore di rete: $e'};
     }
   }
 
@@ -464,11 +451,7 @@ class GarminService {
       _garminHttpVerbose('POST $uri (disconnect)');
       final sw = Stopwatch()..start();
       final response = await _http
-          .post(
-            uri,
-            headers: _jsonHeaders,
-            body: jsonEncode({'uid': uid}),
-          )
+          .post(uri, headers: _jsonHeaders, body: jsonEncode({'uid': uid}))
           .timeout(const Duration(seconds: 30));
       _garminTraceHttpResponse(
         label: 'garmin/disconnect',
@@ -534,13 +517,12 @@ class GarminService {
     Timestamp? lastSuccessfulSync,
     List<String> sources = const ['garmin', 'strava'],
   }) async {
-    final body = <String, dynamic>{
-      'uid': uid,
-      'sources': sources,
-    };
+    final body = <String, dynamic>{'uid': uid, 'sources': sources};
     if (lastSuccessfulSync != null) {
-      body['lastSuccessfulSync'] =
-          lastSuccessfulSync.toDate().toUtc().millisecondsSinceEpoch;
+      body['lastSuccessfulSync'] = lastSuccessfulSync
+          .toDate()
+          .toUtc()
+          .millisecondsSinceEpoch;
     }
 
     Future<Map<String, dynamic>> doRequest() async {
@@ -551,11 +533,7 @@ class GarminService {
       );
       final sw = Stopwatch()..start();
       final response = await _http
-          .post(
-            uri,
-            headers: _jsonHeaders,
-            body: jsonEncode(body),
-          )
+          .post(uri, headers: _jsonHeaders, body: jsonEncode(body))
           .timeout(_deltaTimeout);
       _garminTraceHttpResponse(
         label: 'sync/delta',
@@ -567,7 +545,9 @@ class GarminService {
       );
       final st = response.statusCode;
       if (st == 200) {
-        _garminHttpVerbose('POST /sync/delta <- $st in ${sw.elapsedMilliseconds}ms');
+        _garminHttpVerbose(
+          'POST /sync/delta <- $st in ${sw.elapsedMilliseconds}ms',
+        );
       } else {
         _garminHttpDiag(
           'POST /sync/delta <- $st in ${sw.elapsedMilliseconds}ms baseUrl=$baseUrl '
@@ -611,7 +591,8 @@ class GarminService {
       }
       return {
         'success': false,
-        'message': data['message']?.toString() ??
+        'message':
+            data['message']?.toString() ??
             _connectFailureUserMessage(
               statusCode: st,
               baseUrl: baseUrl,
@@ -675,11 +656,7 @@ class GarminService {
     try {
       final swReg = Stopwatch()..start();
       final response = await _http
-          .post(
-            uri,
-            headers: _jsonHeaders,
-            body: jsonEncode(body),
-          )
+          .post(uri, headers: _jsonHeaders, body: jsonEncode(body))
           .timeout(const Duration(seconds: 45));
       _garminTraceHttpResponse(
         label: 'strava/register-tokens',
@@ -691,10 +668,13 @@ class GarminService {
         omitBody: true,
       );
       final data = _tryDecodeJsonObject(response.body);
-      if (response.statusCode == 200 && data != null && data['success'] == true) {
+      if (response.statusCode == 200 &&
+          data != null &&
+          data['success'] == true) {
         return {
           'success': true,
-          'message': data['message']?.toString() ?? 'Strava registrato sul server.',
+          'message':
+              data['message']?.toString() ?? 'Strava registrato sul server.',
         };
       }
       return {
@@ -710,17 +690,15 @@ class GarminService {
   }
 
   /// Rimuove token Strava lato server (solo Firestore server-side).
-  Future<Map<String, dynamic>> disconnectStravaOnServer({required String uid}) async {
+  Future<Map<String, dynamic>> disconnectStravaOnServer({
+    required String uid,
+  }) async {
     final baseUrl = await _resolveBaseUrl();
     final uri = Uri.parse('$baseUrl/strava/disconnect');
     try {
       final swSd = Stopwatch()..start();
       final response = await _http
-          .post(
-            uri,
-            headers: _jsonHeaders,
-            body: jsonEncode({'uid': uid}),
-          )
+          .post(uri, headers: _jsonHeaders, body: jsonEncode({'uid': uid}))
           .timeout(const Duration(seconds: 30));
       _garminTraceHttpResponse(
         label: 'strava/disconnect',
@@ -732,7 +710,9 @@ class GarminService {
         omitBody: true,
       );
       final data = _tryDecodeJsonObject(response.body);
-      if (response.statusCode == 200 && data != null && data['success'] == true) {
+      if (response.statusCode == 200 &&
+          data != null &&
+          data['success'] == true) {
         return {'success': true};
       }
       return {'success': false};
@@ -755,11 +735,7 @@ class GarminService {
       );
       final sw = Stopwatch()..start();
       final response = await _http
-          .post(
-            syncUri,
-            headers: _jsonHeaders,
-            body: jsonEncode({'uid': uid}),
-          )
+          .post(syncUri, headers: _jsonHeaders, body: jsonEncode({'uid': uid}))
           .timeout(timeout);
       _garminTraceHttpResponse(
         label: logLabel,
@@ -813,7 +789,9 @@ class GarminService {
       return await doRequest();
     } on TimeoutException catch (e) {
       _invalidateBaseUrlCacheOnNetworkFailure(e);
-      _garminHttpDiag('$logLabel TIMEOUT (tentativo 1) baseUrl risolto al retry');
+      _garminHttpDiag(
+        '$logLabel TIMEOUT (tentativo 1) baseUrl risolto al retry',
+      );
       await Future<void>.delayed(const Duration(seconds: 3));
       try {
         return await doRequest();
@@ -839,7 +817,8 @@ class GarminService {
     } on Exception catch (e) {
       _invalidateBaseUrlCacheOnNetworkFailure(e);
       final msg = e.toString().toLowerCase();
-      final isRetryable = msg.contains('socket') ||
+      final isRetryable =
+          msg.contains('socket') ||
           msg.contains('connection') ||
           msg.contains('timeout') ||
           msg.contains('unavailable');

@@ -1,10 +1,35 @@
 import 'package:fitai_analyzer/app.dart';
+import 'package:fitai_analyzer/services/garmin_oauth_callback.dart';
 import 'package:fitai_analyzer/services/garmin_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-/// Dialog per collegare Garmin Connect (email + password).
-/// Invia le credenziali al garmin-sync-server che valida su Garmin.
+const _garminBrowserCallbackUrl = 'myhealthsync://garmin/callback';
+
+String _buildGarminBrowserLoginUrl() {
+  return Uri.parse('https://sso.garmin.com/portal/sso/en-US/sign-in')
+      .replace(
+        queryParameters: {
+          'clientId': 'GarminConnect',
+          'service': _garminBrowserCallbackUrl,
+        },
+      )
+      .toString();
+}
+
+bool _shouldUseGarminBrowserFallback(String message) {
+  final m = message.toLowerCase();
+  return m.contains('429') ||
+      m.contains('too many requests') ||
+      m.contains('sso.garmin.com') ||
+      m.contains('/sso/signin');
+}
+
+/// Dialog principale per collegare Garmin Connect.
+/// 1) prova login server-side diretto (`connect2`)
+/// 2) se Garmin rate-limita il login automatico, apre il browser e cattura il ticket
+/// 3) scambia il ticket sul server e salva il token
 Future<bool?> showGarminConnectDialog(
   BuildContext context,
   WidgetRef ref, {
@@ -12,6 +37,7 @@ Future<bool?> showGarminConnectDialog(
 }) async {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
+  final mfaController = TextEditingController();
   final formKey = GlobalKey<FormState>();
 
   return showDialog<bool>(
@@ -19,9 +45,33 @@ Future<bool?> showGarminConnectDialog(
     barrierDismissible: false,
     builder: (ctx) {
       final submitting = <bool>[false];
+      final awaitingMfa = <bool>[false];
+      final loginSessionId = <String?>[null];
       final lastConnectAttempt = <DateTime?>[null];
       return StatefulBuilder(
         builder: (ctx, setDialogState) {
+          Future<Map<String, dynamic>> runBrowserFallback(String email) async {
+            final waitFuture = GarminOAuthCallback.instance.waitForCallback();
+            final launched = await launchUrl(
+              Uri.parse(_buildGarminBrowserLoginUrl()),
+              mode: LaunchMode.externalApplication,
+            );
+            if (!launched) {
+              return {
+                'success': false,
+                'message': 'Impossibile aprire Garmin nel browser.',
+              };
+            }
+            final ticketOrUrl = await waitFuture;
+            return ref
+                .read(garminServiceProvider)
+                .connect3ExchangeTicket(
+                  uid: uid,
+                  ticketOrUrl: ticketOrUrl,
+                  email: email,
+                );
+          }
+
           Future<void> onConnect() async {
             if (submitting[0]) return;
             if (!formKey.currentState!.validate()) return;
@@ -70,17 +120,27 @@ Future<bool?> showGarminConnectDialog(
 
             late Map<String, dynamic> result;
             try {
-              result = await ref.read(garminServiceProvider).connect(
-                    uid: uid,
-                    email: email,
-                    password: password,
-                    freshLogin: true,
-                  );
+              if (awaitingMfa[0]) {
+                result = await ref
+                    .read(garminServiceProvider)
+                    .connect2VerifyMfa(
+                      uid: uid,
+                      loginSessionId: loginSessionId[0] ?? '',
+                      mfaCode: mfaController.text,
+                    );
+              } else {
+                result = await ref
+                    .read(garminServiceProvider)
+                    .connect2Start(uid: uid, email: email, password: password);
+                final msg = result['message']?.toString() ?? '';
+                if (result['success'] != true &&
+                    result['mfaRequired'] != true &&
+                    _shouldUseGarminBrowserFallback(msg)) {
+                  result = await runBrowserFallback(email);
+                }
+              }
             } on Object catch (e) {
-              result = {
-                'success': false,
-                'message': 'Errore imprevisto: $e',
-              };
+              result = {'success': false, 'message': 'Errore imprevisto: $e'};
             } finally {
               if (ctx.mounted) {
                 Navigator.of(ctx).pop();
@@ -95,6 +155,20 @@ Future<bool?> showGarminConnectDialog(
 
             if (result['success'] == true) {
               Navigator.of(ctx).pop(true);
+            } else if (result['mfaRequired'] == true &&
+                result['loginSessionId'] is String) {
+              awaitingMfa[0] = true;
+              loginSessionId[0] = result['loginSessionId'] as String;
+              setDialogState(() {});
+              scaffoldMessengerKey.currentState?.showSnackBar(
+                SnackBar(
+                  content: Text(
+                    result['message']?.toString() ??
+                        'Garmin richiede un codice MFA.',
+                  ),
+                  duration: const Duration(seconds: 8),
+                ),
+              );
             } else {
               final msg = result['message']?.toString() ?? 'Errore sconosciuto';
               scaffoldMessengerKey.currentState?.showSnackBar(
@@ -108,7 +182,11 @@ Future<bool?> showGarminConnectDialog(
           }
 
           return AlertDialog(
-            title: const Text('Collega Garmin Connect'),
+            title: Text(
+              awaitingMfa[0]
+                  ? 'Collega Garmin Connect - MFA'
+                  : 'Collega Garmin Connect',
+            ),
             content: Form(
               key: formKey,
               child: SingleChildScrollView(
@@ -117,50 +195,74 @@ Future<bool?> showGarminConnectDialog(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Inserisci le credenziali del tuo account Garmin Connect. '
-                      'Il collegamento passa dal tuo server FitAI che contatta Garmin.',
+                      awaitingMfa[0]
+                          ? 'Inserisci il codice MFA richiesto da Garmin per completare il collegamento.'
+                          : 'Inserisci le credenziali Garmin. L\'app prova prima il login server-side; se Garmin blocca il login automatico passa al browser e completa il token in automatico.',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                     const SizedBox(height: 20),
-                    TextFormField(
-                      controller: emailController,
-                      enabled: !submitting[0],
-                      decoration: const InputDecoration(
-                        labelText: 'Email Garmin',
-                        hintText: 'nome@email.com',
-                        border: OutlineInputBorder(),
+                    if (!awaitingMfa[0]) ...[
+                      TextFormField(
+                        controller: emailController,
+                        enabled: !submitting[0],
+                        decoration: const InputDecoration(
+                          labelText: 'Email Garmin',
+                          hintText: 'nome@email.com',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.emailAddress,
+                        autocorrect: false,
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) {
+                            return 'Inserisci l\'email';
+                          }
+                          return null;
+                        },
                       ),
-                      keyboardType: TextInputType.emailAddress,
-                      autocorrect: false,
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty) {
-                          return 'Inserisci l\'email';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: passwordController,
-                      enabled: !submitting[0],
-                      decoration: const InputDecoration(
-                        labelText: 'Password',
-                        border: OutlineInputBorder(),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: passwordController,
+                        enabled: !submitting[0],
+                        decoration: const InputDecoration(
+                          labelText: 'Password',
+                          border: OutlineInputBorder(),
+                        ),
+                        obscureText: true,
+                        autocorrect: false,
+                        validator: (v) {
+                          if (v == null || v.isEmpty) {
+                            return 'Inserisci la password';
+                          }
+                          return null;
+                        },
                       ),
-                      obscureText: true,
-                      autocorrect: false,
-                      validator: (v) {
-                        if (v == null || v.isEmpty) return 'Inserisci la password';
-                        return null;
-                      },
-                    ),
+                    ] else ...[
+                      TextFormField(
+                        controller: mfaController,
+                        enabled: !submitting[0],
+                        decoration: const InputDecoration(
+                          labelText: 'Codice MFA',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        autocorrect: false,
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) {
+                            return 'Inserisci il codice MFA';
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
                   ],
                 ),
               ),
             ),
             actions: [
               TextButton(
-                onPressed: submitting[0] ? null : () => Navigator.of(ctx).pop(null),
+                onPressed: submitting[0]
+                    ? null
+                    : () => Navigator.of(ctx).pop(null),
                 child: const Text('Annulla'),
               ),
               FilledButton(
@@ -171,7 +273,7 @@ Future<bool?> showGarminConnectDialog(
                         height: 22,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Collega'),
+                    : Text(awaitingMfa[0] ? 'Verifica MFA' : 'Collega'),
               ),
             ],
           );
