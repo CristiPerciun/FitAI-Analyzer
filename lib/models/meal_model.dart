@@ -1,4 +1,5 @@
 import 'package:fitai_analyzer/utils/meal_constants.dart';
+import 'package:flutter/material.dart';
 
 /// Documento pasto nella sottocollezione meals (Livello 1 - dettaglio).
 /// Percorso: /users/{uid}/daily_logs/{date}/meals/{mealId}
@@ -68,4 +69,26 @@ class MealModel {
       rawAiAnalysis: data['raw_ai_analysis'] as String? ?? '',
     );
   }
+}
+class DailyNutrient {
+  final String day;
+  final double value;
+
+  DailyNutrient(this.day, this.value);
+}
+
+class NutrientGoal {
+  final String title;
+  final String unit;
+  final double target;
+  final List<DailyNutrient> weeklyData;
+  final Color color;
+
+  NutrientGoal({
+    required this.title,
+    required this.unit,
+    required this.target,
+    required this.weeklyData,
+    required this.color,
+  });
 }

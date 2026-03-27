@@ -1,9 +1,24 @@
 import 'package:fitai_analyzer/app.dart';
+import 'package:fitai_analyzer/services/garmin_oauth_callback.dart';
 import 'package:fitai_analyzer/services/garmin_service.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+const _garminMobileCallbackUrl = 'myhealthsync://garmin/callback';
+
+String _buildGarminMobileBrowserLoginUrl(String loginUrl) {
+  final uri = Uri.parse(loginUrl);
+  final query = Map<String, String>.from(uri.queryParameters);
+  query['service'] = _garminMobileCallbackUrl;
+  query['source'] = _garminMobileCallbackUrl;
+  query['redirectAfterAccountLoginUrl'] = _garminMobileCallbackUrl;
+  query['redirectAfterAccountCreationUrl'] = _garminMobileCallbackUrl;
+  return uri.replace(queryParameters: query).toString();
+}
 
 bool _shouldUseGarminBrowserFallback(String message) {
   final m = message.toLowerCase();
@@ -47,6 +62,27 @@ Future<bool?> showGarminConnectDialog(
                 'message':
                     'Login Garmin via browser automatico non supportato sul web.',
               };
+            }
+            if (defaultTargetPlatform == TargetPlatform.iOS) {
+              final waitFuture = GarminOAuthCallback.instance.waitForCallback();
+              final launched = await launchUrl(
+                Uri.parse(_buildGarminMobileBrowserLoginUrl(loginUrl)),
+                mode: LaunchMode.externalApplication,
+              );
+              if (!launched) {
+                return {
+                  'success': false,
+                  'message': 'Impossibile aprire Garmin in Safari.',
+                };
+              }
+              final ticketOrUrl = await waitFuture;
+              return ref
+                  .read(garminServiceProvider)
+                  .connect3ExchangeTicket(
+                    uid: uid,
+                    ticketOrUrl: ticketOrUrl,
+                    email: email,
+                  );
             }
             final result = await FlutterWebAuth2.authenticate(
               url: loginUrl,

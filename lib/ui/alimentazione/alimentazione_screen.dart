@@ -21,6 +21,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:fitai_analyzer/ui/widgets/NutritionChartCard.dart';
 
 String get _galleryButtonLabel {
   if (kIsWeb) return 'Scegli dall\'archivio';
@@ -393,8 +394,9 @@ class AlimentazioneScreen extends ConsumerWidget {
                       ),
                     ),
                   );
+                  
                 },
-              )
+              )    
             else
               Container(
                 padding: const EdgeInsets.all(16),
@@ -420,6 +422,28 @@ class AlimentazioneScreen extends ConsumerWidget {
                                 .colorScheme
                                 .onSurfaceVariant,
                           ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                height: 300,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  children: [
+                    NutritionChartCard(
+                      goal: NutrientGoal(
+                        title: "Calorie", unit: "kcal", target: 2400, color: Colors.blueAccent,
+                        weeklyData: [DailyNutrient("L", 2100), DailyNutrient("M", 2500), DailyNutrient("M", 1900), DailyNutrient("G", 2400), DailyNutrient("V", 2200), DailyNutrient("S", 2800), DailyNutrient("D", 2300)],
+                      ),
+                    ),
+                    NutritionChartCard(
+                      goal: NutrientGoal(
+                        title: "Proteine", unit: "g", target: 150, color: Colors.purpleAccent,
+                        weeklyData: [DailyNutrient("L", 140), DailyNutrient("M", 160), DailyNutrient("M", 150), DailyNutrient("G", 155), DailyNutrient("V", 145), DailyNutrient("S", 130), DailyNutrient("D", 150)],
+                      ),
                     ),
                   ],
                 ),
@@ -602,6 +626,64 @@ class AlimentazioneScreen extends ConsumerWidget {
   }
 }
 
+class NutritionPage extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    // Esempio dati basati su Progetto Invictus (es. 70kg utente)
+    final List<NutrientGoal> myGoals = [
+      NutrientGoal(
+        title: "Calorie",
+        unit: "kcal",
+        target: 2400,
+        color: Colors.blueAccent,
+        weeklyData: [DailyNutrient("L", 2100), DailyNutrient("M", 2500), DailyNutrient("M", 1900), DailyNutrient("G", 2400), DailyNutrient("V", 2200), DailyNutrient("S", 2800), DailyNutrient("D", 2300)],
+      ),
+      NutrientGoal(
+        title: "Proteine",
+        unit: "g",
+        target: 150, // 2.1g * kg
+        color: Colors.purpleAccent,
+        weeklyData: [DailyNutrient("L", 140), DailyNutrient("M", 160), DailyNutrient("M", 150), DailyNutrient("G", 155), DailyNutrient("V", 145), DailyNutrient("S", 130), DailyNutrient("D", 150)],
+      ),
+      NutrientGoal(
+        title: "Grassi",
+        unit: "g",
+        target: 70, // 1g * kg
+        color: Colors.orangeAccent,
+        weeklyData: [DailyNutrient("L", 65), DailyNutrient("M", 80), DailyNutrient("M", 60), DailyNutrient("G", 70), DailyNutrient("V", 72), DailyNutrient("S", 90), DailyNutrient("D", 70)],
+      ),
+    ];
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(20.0),
+              child: Text("Alimentazione", style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+            ),
+            // IL CONTENITORE DELLO SCROLL
+            SizedBox(
+              height: 350, // Altezza della card
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(), // Effetto rimbalzo iOS style
+                itemCount: myGoals.length,
+                itemBuilder: (context, index) {
+                  return NutritionChartCard(goal: myGoals[index]);
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Obiettivi operativi Gemini sotto la card Colazione / Pranzo / Cena.
 class _MealAiObjectivesCard extends ConsumerWidget {
   const _MealAiObjectivesCard({required this.pastoKey});
@@ -739,12 +821,15 @@ class _NutritionOnboardingCard extends StatelessWidget {
               onPressed: onConfigure,
               child: const Text('Configura obiettivo mangiare'),
             ),
-          ],
+          ], 
         ),
       ),
     );
+
+
   }
 }
+
 
 /// Card pasto per una data specifica, legge i pasti dal provider.
 class _MealCardForDate extends ConsumerWidget {

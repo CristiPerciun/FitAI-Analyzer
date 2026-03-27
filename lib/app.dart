@@ -5,6 +5,7 @@ import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/sync_backfill_status_provider.dart';
 import 'package:fitai_analyzer/services/aggregation_service.dart';
+import 'package:fitai_analyzer/services/garmin_oauth_callback.dart';
 import 'package:fitai_analyzer/providers/theme_mode_provider.dart';
 import 'package:fitai_analyzer/routes/app_router.dart';
 import 'package:fitai_analyzer/services/strava_oauth_callback.dart';
@@ -41,6 +42,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       // Quando l'app torna attiva (es. da Safari/Chrome), controlla link in sospeso
       AppLinks().getLatestLink().then((uri) {
         StravaOAuthCallback.instance.handleUri(uri);
+        GarminOAuthCallback.instance.handleUri(uri);
       });
     }
   }

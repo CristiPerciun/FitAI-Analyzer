@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:fitai_analyzer/services/garmin_oauth_callback.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fitai_analyzer/services/garmin_service.dart'
     show GarminService, normalizeGarminServerBaseUrl;
@@ -19,6 +20,18 @@ void main() {
   });
 
   group('GarminService HTTP verso garmin-sync-server', () {
+    test('GarminOAuthCallback completa con ticket da custom scheme', () async {
+      final future = GarminOAuthCallback.instance.waitForCallback();
+      final handled = GarminOAuthCallback.instance.handleUri(
+        Uri.parse('myhealthsync://garmin/callback?ticket=ST-abc'),
+      );
+      expect(handled, true);
+      await expectLater(
+        future,
+        completion('myhealthsync://garmin/callback?ticket=ST-abc'),
+      );
+    });
+
     test('connect2Start invia POST /garmin/connect2/start', () async {
       final mock = MockClient((request) async {
         expect(request.method, 'POST');
