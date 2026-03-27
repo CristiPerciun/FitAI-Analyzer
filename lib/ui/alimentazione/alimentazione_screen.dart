@@ -22,6 +22,9 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, Tar
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:fitai_analyzer/ui/widgets/NutritionChartCard.dart';
+import 'package:smooth_page_indicator/smooth_page_indicator.dart';
+import 'package:fitai_analyzer/utils/activity_utils.dart';
+
 
 String get _galleryButtonLabel {
   if (kIsWeb) return 'Scegli dall\'archivio';
@@ -49,6 +52,8 @@ bool get _isCameraSupported =>
 /// Qui andranno tutte le funzionalità: analizza piatto, storico pasti, ecc.
 class AlimentazioneScreen extends ConsumerWidget {
   const AlimentazioneScreen({super.key});
+
+static final PageController _chartPageController = PageController();
 
   Future<void> _onAnalisiPiatto(
     BuildContext context,
@@ -541,6 +546,9 @@ class AlimentazioneScreen extends ConsumerWidget {
                     ..._buildMealCardsForDate(context, ref, dateKey),
                     const SizedBox(height: 24),
                   ]),
+                  const SizedBox(height: 24),
+           _buildWeeklyChartsSection(context, ref, nutritionGoal),
+          const SizedBox(height: 40),
           ],
         ),
       ),
@@ -1160,4 +1168,86 @@ class _Chip extends StatelessWidget {
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
     );
   }
+}
+Widget _buildWeeklyChartsSection(BuildContext context, WidgetRef ref, dynamic nutritionGoal) {
+  final cs = Theme.of(context).colorScheme;
+  
+  // Dati reali: qui dovresti mappare i dati dal tuo provider. 
+  // Per ora manteniamo la struttura per il test grafico.
+  final List<NutrientGoal> myGoals = [
+    NutrientGoal(
+      title: "Calorie", unit: "kcal", target: nutritionGoal?.calorieTarget ?? 2000, color: Colors.blueAccent,
+      weeklyData: [DailyNutrient("L", 2100), DailyNutrient("M", 2500), DailyNutrient("M", 1900), DailyNutrient("G", 2400), DailyNutrient("V", 2200), DailyNutrient("S", 2800), DailyNutrient("D", 2300)],
+    ),
+    NutrientGoal(
+      title: "Proteine", unit: "g", target: 150, color: Colors.purpleAccent,
+      weeklyData: [DailyNutrient("L", 140), DailyNutrient("M", 160), DailyNutrient("M", 150), DailyNutrient("G", 155), DailyNutrient("V", 145), DailyNutrient("S", 130), DailyNutrient("D", 150)],
+    ),
+    NutrientGoal(
+      title: "Grassi", unit: "g", target: 70, color: Colors.orangeAccent,
+      weeklyData: [DailyNutrient("L", 65), DailyNutrient("M", 80), DailyNutrient("M", 60), DailyNutrient("G", 70), DailyNutrient("V", 72), DailyNutrient("S", 90), DailyNutrient("D", 70)],
+    ),
+  ];
+
+ return Column(
+  children: [
+    SizedBox(
+      height: 340, // Un po' più di altezza per gestire lo scaling delle card
+      child: ScrollConfiguration(
+        // Utilizziamo la classe che hai messo in activity_utility.dart
+        behavior: MyCustomScrollBehavior(), 
+        child: PageView.builder(
+          controller: AlimentazioneScreen._chartPageController,
+          physics: const BouncingScrollPhysics(),
+          itemCount: myGoals.length,
+          itemBuilder: (context, index) {
+            return AnimatedBuilder(
+              animation: AlimentazioneScreen._chartPageController,
+              builder: (context, child) {
+                // Calcoliamo la posizione della pagina per l'effetto visivo
+                double value = 0.0;
+                if (AlimentazioneScreen._chartPageController.position.haveDimensions) {
+                  value = (AlimentazioneScreen._chartPageController.page ?? 0) - index;
+                } else {
+                  // Fallback iniziale prima che il controller sia pronto
+                  value = (0.0 - index);
+                }
+
+                // Logica Stack: 
+                // La card attiva è scala 1.0, quelle "sotto" si rimpiccioliscono (0.9)
+                // e svaniscono leggermente (opacity)
+                double scale = (1 - (value.abs() * 0.15)).clamp(0.85, 1.0);
+                double opacity = (1 - (value.abs() * 0.4)).clamp(0.5, 1.0);
+
+                return Transform.scale(
+                  scale: scale,
+                  child: Opacity(
+                    opacity: opacity,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                      child: NutritionChartCard(goal: myGoals[index]),
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    ),
+    const SizedBox(height: 12),
+    // Indicatori di pagina (Puntini)
+    SmoothPageIndicator(
+      controller: AlimentazioneScreen._chartPageController,
+      count: myGoals.length,
+      effect: ExpandingDotsEffect(
+        dotHeight: 8,
+        dotWidth: 8,
+        activeDotColor: cs.primary,
+        dotColor: cs.outlineVariant,
+        expansionFactor: 3, // Rende il puntino attivo più lungo
+      ),
+    ),
+  ],
+);
 }

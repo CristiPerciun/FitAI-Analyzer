@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui';
 
 /// Utility condivise per attività (Strava, Garmin, FitnessData).
 /// Usato da StravaActivityCard, CompactActivityCard, GarminActivityDetailCard.
@@ -50,4 +51,17 @@ class ActivityUtils {
     final min = m % 60;
     return h > 0 ? '$h h $min min' : '$min min';
   }
+
+  
+}
+
+
+class MyCustomScrollBehavior extends MaterialScrollBehavior {
+  // Consente lo scroll trascinando con il mouse (fondamentale su Windows)
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.trackpad,
+      };
 }

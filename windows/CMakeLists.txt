@@ -99,6 +99,20 @@ add_subdirectory("runner")
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
+# Profile uses the same /MD runtime as Release. firebase_core only sets
+# IMPORTED_LOCATION_DEBUG/RELEASE on Firebase prebuilt libs; Profile would
+# otherwise link Debug .lib and fail (e.g. _calloc_dbg / _CrtDbgReport).
+set(_FIREBASE_CPP_IMPORT_LIBS firebase_app firebase_auth firebase_storage firebase_firestore)
+foreach(_fblib IN LISTS _FIREBASE_CPP_IMPORT_LIBS)
+  if(TARGET ${_fblib})
+    get_target_property(_imp_dbg ${_fblib} IMPORTED_LOCATION_DEBUG)
+    if(_imp_dbg)
+      string(REPLACE "Debug" "Release" _imp_prof ${_imp_dbg})
+      set_target_properties(${_fblib} PROPERTIES
+        IMPORTED_LOCATION_PROFILE "${_imp_prof}")
+    endif()
+  endif()
+endforeach()
 
 # === Installation ===
 # Support files are copied into place next to the executable, so that it can
