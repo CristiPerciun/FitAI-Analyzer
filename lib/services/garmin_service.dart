@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, visibleForTesting;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
@@ -12,7 +12,15 @@ import '../utils/platform_firestore_fix.dart';
 
 final garminServiceProvider = Provider<GarminService>((ref) => GarminService());
 
-/// Probe URL / richieste OK: solo in debug (console troppo rumorosa altrimenti).
+/// Trace multi‑riga (header, body snippet): solo se `.env` ha `GARMIN_HTTP_TRACE=1`
+/// (anche in release/profile — utile sul dispositivo).
+bool _garminHttpTraceFromEnv() {
+  if (!dotenv.isInitialized) return false;
+  final v = dotenv.env['GARMIN_HTTP_TRACE']?.trim().toLowerCase() ?? '';
+  return v == '1' || v == 'true' || v == 'yes' || v == 'on';
+}
+
+/// Probe URL / richieste OK: solo in debug (console gestibile).
 void _garminHttpVerbose(String message) {
   if (kDebugMode) {
     debugPrint('[GarminHTTP] $message');
@@ -22,6 +30,46 @@ void _garminHttpVerbose(String message) {
 /// Errori HTTP / timeout / corpo risposta: sempre su console (anche profile) per diagnosticare Pi/DuckDNS.
 void _garminHttpDiag(String message) {
   debugPrint('[GarminHTTP] $message');
+}
+
+String _headersOneLine(Map<String, String> h) {
+  final keys = h.keys.toList()..sort();
+  return keys.map((k) {
+    final v = h[k] ?? '';
+    if (k.toLowerCase() == 'authorization') {
+      return '$k: Bearer *** (len=${v.length})';
+    }
+    final short = v.length > 48 ? '${v.substring(0, 48)}…' : v;
+    return '$k: $short';
+  }).join('; ');
+}
+
+void _garminTraceHttpResponse({
+  required String label,
+  required Uri uri,
+  required String method,
+  required http.Response response,
+  required int elapsedMs,
+  Map<String, String>? requestHeaders,
+  bool omitBody = false,
+}) {
+  if (!_garminHttpTraceFromEnv()) return;
+  final ct = response.headers['content-type'] ?? 'n/a';
+  final cl = response.headers['content-length'] ?? 'n/a';
+  final body = omitBody
+      ? '(omesso: endpoint sensibile)'
+      : _responseBodySnippet(response.body, maxChars: 400);
+  final reqH =
+      requestHeaders != null ? _headersOneLine(requestHeaders) : '(n/a)';
+  final respH = _headersOneLine(response.headers);
+  debugPrint(
+    '[GarminHTTP] trace $label $method $uri → ${response.statusCode} '
+    '${elapsedMs}ms\n'
+    '  req_headers: $reqH\n'
+    '  resp: content-type=$ct content-length=$cl\n'
+    '  resp_headers: $respH\n'
+    '  body: $body',
+  );
 }
 
 String _responseBodySnippet(String body, {int maxChars = 480}) {
@@ -54,27 +102,41 @@ String _connectFailureUserMessage({
   return 'Risposta server HTTP $statusCode da $baseUrl. $snippet';
 }
 
-/// URL LAN: quando sei a casa sulla stessa rete del Raspberry.
-/// Es: http://192.168.1.200:8080
+/// Normalizza base URL (spazi, slash finali). Utile se nginx è su :80 senza path.
+@visibleForTesting
+String normalizeGarminServerBaseUrl(String raw) {
+  var s = raw.trim();
+  while (s.endsWith('/')) {
+    s = s.substring(0, s.length - 1);
+  }
+  return s;
+}
+
+/// URL LAN: stesso Wi‑Fi del Pi (spesso nginx :80, es. `http://192.168.1.200`).
 String get _garminServerUrlLan {
-  if (!dotenv.isInitialized) return 'http://192.168.1.200:8080';
+  const def = 'http://192.168.1.200';
+  if (!dotenv.isInitialized) return normalizeGarminServerBaseUrl(def);
   final u = dotenv.env['GARMIN_SERVER_URL_LAN']?.trim();
-  return (u != null && u.isNotEmpty) ? u : 'http://192.168.1.200:8080';
+  return normalizeGarminServerBaseUrl(
+    (u != null && u.isNotEmpty) ? u : def,
+  );
 }
 
 /// URL remoto: quando sei fuori casa (DuckDNS + HTTPS).
-/// Es: https://myrasberrysyncgar.duckdns.org
 String get _garminServerUrlRemote {
-  if (!dotenv.isInitialized) return 'https://myrasberrysyncgar.duckdns.org';
+  const def = 'https://myrasberrysyncgar.duckdns.org';
+  if (!dotenv.isInitialized) return normalizeGarminServerBaseUrl(def);
   final u = dotenv.env['GARMIN_SERVER_URL_REMOTE']?.trim();
-  return (u != null && u.isNotEmpty) ? u : 'https://myrasberrysyncgar.duckdns.org';
+  return normalizeGarminServerBaseUrl(
+    (u != null && u.isNotEmpty) ? u : def,
+  );
 }
 
 /// URL legacy (compatibilita): se impostato, usa solo quello.
 String get garminServerUrl {
   if (!dotenv.isInitialized) return _garminServerUrlLan;
   final u = dotenv.env['GARMIN_SERVER_URL']?.trim();
-  if (u != null && u.isNotEmpty) return u;
+  if (u != null && u.isNotEmpty) return normalizeGarminServerBaseUrl(u);
   return _garminServerUrlLan;
 }
 
@@ -148,6 +210,13 @@ class GarminService {
           final r = await _http
               .get(Uri.parse('$lan/'))
               .timeout(_lanRevalidateTimeout);
+          _garminTraceHttpResponse(
+            label: 'resolveBaseUrl LAN revalidate',
+            uri: Uri.parse('$lan/'),
+            method: 'GET',
+            response: r,
+            elapsedMs: sw.elapsedMilliseconds,
+          );
           if (r.statusCode == 200) {
             _garminHttpVerbose(
               'LAN ancora OK (${sw.elapsedMilliseconds}ms) -> $lan',
@@ -173,6 +242,13 @@ class GarminService {
     try {
       final sw = Stopwatch()..start();
       final r = await _http.get(Uri.parse('$lan/')).timeout(_lanProbeTimeout);
+      _garminTraceHttpResponse(
+        label: 'resolveBaseUrl LAN probe',
+        uri: Uri.parse('$lan/'),
+        method: 'GET',
+        response: r,
+        elapsedMs: sw.elapsedMilliseconds,
+      );
       if (r.statusCode == 200) {
         _cachedBaseUrl = lan;
         _garminHttpVerbose('LAN OK (${sw.elapsedMilliseconds}ms) -> base $lan');
@@ -279,6 +355,14 @@ class GarminService {
             }),
           )
           .timeout(_connectTimeout);
+      _garminTraceHttpResponse(
+        label: 'garmin/connect',
+        uri: uri,
+        method: 'POST',
+        response: response,
+        elapsedMs: sw.elapsedMilliseconds,
+        requestHeaders: _jsonHeaders,
+      );
       final status = response.statusCode;
       if (status == 200) {
         _garminHttpVerbose(
@@ -318,14 +402,6 @@ class GarminService {
 
       final err = _serverDetailOrMessage(data);
       if (err.isNotEmpty) {
-        if (status == 429) {
-          return {
-            'success': false,
-            'message':
-                'Garmin ha limitato gli accessi (troppi tentativi). '
-                'Attendi 15–30 minuti, poi riprova.\n$err',
-          };
-        }
         return {'success': false, 'message': err};
       }
 
@@ -392,6 +468,14 @@ class GarminService {
             body: jsonEncode({'uid': uid}),
           )
           .timeout(const Duration(seconds: 30));
+      _garminTraceHttpResponse(
+        label: 'garmin/disconnect',
+        uri: uri,
+        method: 'POST',
+        response: response,
+        elapsedMs: sw.elapsedMilliseconds,
+        requestHeaders: _jsonHeaders,
+      );
       final dStatus = response.statusCode;
       if (dStatus == 200) {
         _garminHttpVerbose(
@@ -471,6 +555,14 @@ class GarminService {
             body: jsonEncode(body),
           )
           .timeout(_deltaTimeout);
+      _garminTraceHttpResponse(
+        label: 'sync/delta',
+        uri: uri,
+        method: 'POST',
+        response: response,
+        elapsedMs: sw.elapsedMilliseconds,
+        requestHeaders: _jsonHeaders,
+      );
       final st = response.statusCode;
       if (st == 200) {
         _garminHttpVerbose('POST /sync/delta <- $st in ${sw.elapsedMilliseconds}ms');
@@ -579,6 +671,7 @@ class GarminService {
       body['expires_at'] = expiresAtMs;
     }
     try {
+      final swReg = Stopwatch()..start();
       final response = await _http
           .post(
             uri,
@@ -586,6 +679,15 @@ class GarminService {
             body: jsonEncode(body),
           )
           .timeout(const Duration(seconds: 45));
+      _garminTraceHttpResponse(
+        label: 'strava/register-tokens',
+        uri: uri,
+        method: 'POST',
+        response: response,
+        elapsedMs: swReg.elapsedMilliseconds,
+        requestHeaders: _jsonHeaders,
+        omitBody: true,
+      );
       final data = _tryDecodeJsonObject(response.body);
       if (response.statusCode == 200 && data != null && data['success'] == true) {
         return {
@@ -610,6 +712,7 @@ class GarminService {
     final baseUrl = await _resolveBaseUrl();
     final uri = Uri.parse('$baseUrl/strava/disconnect');
     try {
+      final swSd = Stopwatch()..start();
       final response = await _http
           .post(
             uri,
@@ -617,6 +720,15 @@ class GarminService {
             body: jsonEncode({'uid': uid}),
           )
           .timeout(const Duration(seconds: 30));
+      _garminTraceHttpResponse(
+        label: 'strava/disconnect',
+        uri: uri,
+        method: 'POST',
+        response: response,
+        elapsedMs: swSd.elapsedMilliseconds,
+        requestHeaders: _jsonHeaders,
+        omitBody: true,
+      );
       final data = _tryDecodeJsonObject(response.body);
       if (response.statusCode == 200 && data != null && data['success'] == true) {
         return {'success': true};
@@ -647,6 +759,14 @@ class GarminService {
             body: jsonEncode({'uid': uid}),
           )
           .timeout(timeout);
+      _garminTraceHttpResponse(
+        label: logLabel,
+        uri: syncUri,
+        method: 'POST',
+        response: response,
+        elapsedMs: sw.elapsedMilliseconds,
+        requestHeaders: _jsonHeaders,
+      );
       final sc = response.statusCode;
       if (sc == 200) {
         _garminHttpVerbose('POST $path <- $sc in ${sw.elapsedMilliseconds}ms');

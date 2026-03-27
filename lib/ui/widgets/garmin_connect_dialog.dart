@@ -19,11 +19,28 @@ Future<bool?> showGarminConnectDialog(
     barrierDismissible: false,
     builder: (ctx) {
       final submitting = <bool>[false];
+      final lastConnectAttempt = <DateTime?>[null];
       return StatefulBuilder(
         builder: (ctx, setDialogState) {
           Future<void> onConnect() async {
             if (submitting[0]) return;
             if (!formKey.currentState!.validate()) return;
+
+            final now = DateTime.now();
+            final prev = lastConnectAttempt[0];
+            if (prev != null &&
+                now.difference(prev) < const Duration(seconds: 5)) {
+              scaffoldMessengerKey.currentState?.showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Attendi qualche secondo tra un tentativo e l’altro.',
+                  ),
+                  duration: Duration(seconds: 3),
+                ),
+              );
+              return;
+            }
+            lastConnectAttempt[0] = now;
 
             final email = emailController.text.trim();
             final password = passwordController.text;
@@ -100,8 +117,7 @@ Future<bool?> showGarminConnectDialog(
                   children: [
                     Text(
                       'Inserisci le credenziali del tuo account Garmin Connect. '
-                      'Se Garmin risponde "troppi tentativi" (429), attendi 20–30 minuti '
-                      'senza riprovare: nuovi login ravvicinati peggiorano il blocco.',
+                      'Il collegamento passa dal tuo server FitAI che contatta Garmin.',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                     const SizedBox(height: 20),

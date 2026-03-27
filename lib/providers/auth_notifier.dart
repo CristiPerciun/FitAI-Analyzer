@@ -88,7 +88,7 @@ class AuthNotifier extends Notifier<AuthState> {
         error: userMsg,
         currentService: null,
       );
-      rethrow;
+      // Non rilanciare: evita Unhandled Exception; l’UI legge già state.error (es. dialog in Impostazioni).
     }
   }
 

@@ -1,12 +1,26 @@
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:fitai_analyzer/services/garmin_service.dart';
+import 'package:fitai_analyzer/services/garmin_service.dart'
+    show GarminService, normalizeGarminServerBaseUrl;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  group('normalizeGarminServerBaseUrl', () {
+    test('rimuove slash finali e trim', () {
+      expect(
+        normalizeGarminServerBaseUrl(' http://192.168.1.200/ '),
+        'http://192.168.1.200',
+      );
+      expect(
+        normalizeGarminServerBaseUrl('http://h:8080///'),
+        'http://h:8080',
+      );
+    });
+  });
+
   group('GarminService HTTP verso garmin-sync-server', () {
     test('connect invia POST /garmin/connect con uid, email, password', () async {
       late http.BaseRequest captured;
@@ -37,6 +51,29 @@ void main() {
       expect(result['success'], true);
       expect(captured.headers['content-type'], contains('application/json'));
     });
+
+    test(
+      'connect: password con # + apice % nel body JSON identica a quella inserita',
+      () async {
+        // Stesso tipo di caratteri che in password Garmin complesse (UTF-8 / JSON sicuro).
+        const trickyPassword = r"a#b+c'd%e%f";
+        final mock = MockClient((request) async {
+          final map = jsonDecode(request.body) as Map<String, dynamic>;
+          expect(map['password'], trickyPassword);
+          return http.Response(jsonEncode({'success': true, 'message': 'ok'}), 200);
+        });
+        final svc = GarminService(
+          httpClient: mock,
+          serverUrlOverride: 'https://example.test',
+        );
+        final r = await svc.connect(
+          uid: 'u',
+          email: 'x@y.z',
+          password: trickyPassword,
+        );
+        expect(r['success'], true);
+      },
+    );
 
     test('connect con 401 dal server espone il messaggio (credenziali Garmin)', () async {
       final mock = MockClient((request) async {
@@ -156,6 +193,37 @@ void main() {
       final result = await svc.disconnect(uid: 'x');
 
       expect(result['success'], true);
+    });
+
+    test(
+        'senza override: probe GET LAN default poi POST /garmin/sync-today',
+        () async {
+      final calls = <String>[];
+      final mock = MockClient((request) async {
+        calls.add('${request.method} ${request.url}');
+        if (request.method == 'GET' &&
+            request.url.host == '192.168.1.200' &&
+            request.url.path == '/') {
+          return http.Response('{"status":"ok"}', 200);
+        }
+        if (request.method == 'POST' &&
+            request.url.path == '/garmin/sync-today') {
+          return http.Response(
+            jsonEncode({'success': true, 'message': 'ok'}),
+            200,
+          );
+        }
+        return http.Response('not found', 404);
+      });
+
+      final svc = GarminService(httpClient: mock);
+      final result = await svc.syncToday(uid: 'uid-lan');
+
+      expect(result['success'], true);
+      expect(calls.length, greaterThanOrEqualTo(2));
+      expect(calls.first, contains('GET'));
+      expect(calls.first, contains('192.168.1.200'));
+      expect(calls.any((c) => c.contains('/garmin/sync-today')), true);
     });
   });
 }

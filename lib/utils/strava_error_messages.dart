@@ -28,6 +28,20 @@ String stravaErrorToUserMessage(Object e) {
         'Salva le impostazioni e riprova.';
   }
 
+  // Server sync (garmin-sync-server) senza credenziali API Strava
+  if (msg.contains('STRAVA_CLIENT_ID') ||
+      msg.contains('STRAVA_CLIENT_SECRET') ||
+      msg.contains('Server senza STRAVA')) {
+    return 'Il server di sync (Raspberry / DuckDNS) non ha configurato Strava.\n\n'
+        'Sul Pi, nel file ambiente del servizio (es. /etc/default/garmin-sync-env) '
+        'o in garmin-sync-server/.env, imposta:\n'
+        '• STRAVA_CLIENT_ID\n'
+        '• STRAVA_CLIENT_SECRET\n\n'
+        'Devono essere gli stessi valori dell’app Strava su '
+        'https://www.strava.com/settings/api\n'
+        'Poi: sudo systemctl restart garmin-sync (o equivalente).';
+  }
+
   // Timeout
   if (msg.contains('Timeout') || msg.contains('timeout')) {
     return 'Tempo scaduto durante la connessione a Strava. '
