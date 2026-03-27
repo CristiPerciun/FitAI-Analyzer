@@ -52,6 +52,30 @@ void main() {
       expect(captured.headers['content-type'], contains('application/json'));
     });
 
+    test('connect puo forzare fresh_login nel body JSON', () async {
+      final mock = MockClient((request) async {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body['fresh_login'], true);
+        return http.Response(
+          jsonEncode({'success': true, 'message': 'ok'}),
+          200,
+        );
+      });
+
+      final svc = GarminService(
+        httpClient: mock,
+        serverUrlOverride: 'https://example.test',
+      );
+      final result = await svc.connect(
+        uid: 'firebase-uid-1',
+        email: 'user@garmin.com',
+        password: 'secret',
+        freshLogin: true,
+      );
+
+      expect(result['success'], true);
+    });
+
     test(
       'connect: password con # + apice % nel body JSON identica a quella inserita',
       () async {

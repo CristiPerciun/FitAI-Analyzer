@@ -338,6 +338,7 @@ class GarminService {
     required String uid,
     required String email,
     required String password,
+    bool freshLogin = false,
   }) async {
     final baseUrl = await _resolveBaseUrl();
     final uri = Uri.parse('$baseUrl/garmin/connect');
@@ -352,6 +353,7 @@ class GarminService {
               'uid': uid,
               'email': email.trim(),
               'password': password,
+              'fresh_login': freshLogin,
             }),
           )
           .timeout(_connectTimeout);

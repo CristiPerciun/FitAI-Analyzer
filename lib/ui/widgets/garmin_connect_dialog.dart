@@ -74,6 +74,7 @@ Future<bool?> showGarminConnectDialog(
                     uid: uid,
                     email: email,
                     password: password,
+                    freshLogin: true,
                   );
             } on Object catch (e) {
               result = {
