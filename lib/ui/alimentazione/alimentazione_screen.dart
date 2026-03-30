@@ -2,7 +2,9 @@ import 'dart:typed_data';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitai_analyzer/models/meal_model.dart';
+import 'package:fitai_analyzer/models/user_profile.dart' show NutritionGoal;
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
+import 'package:fitai_analyzer/providers/nutrition_chart_provider.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/providers/user_profile_notifier.dart';
 import 'package:fitai_analyzer/ui/onboarding/nutrition_goal_screen.dart';
@@ -25,6 +27,18 @@ import 'package:fitai_analyzer/ui/widgets/NutritionChartCard.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:fitai_analyzer/utils/activity_utils.dart';
 
+double? _macroNum(Map<String, dynamic>? m, List<String> keys) {
+  if (m == null) return null;
+  for (final k in keys) {
+    final v = m[k];
+    if (v is num) return v.toDouble();
+    final s = v?.toString();
+    if (s == null) continue;
+    final parsed = double.tryParse(s);
+    if (parsed != null) return parsed;
+  }
+  return null;
+}
 
 String get _galleryButtonLabel {
   if (kIsWeb) return 'Scegli dall\'archivio';
@@ -42,18 +56,15 @@ String get _galleryButtonLabel {
   }
 }
 
-/// Su Windows/macOS/Linux la fotocamera non è supportata da image_picker.
 bool get _isCameraSupported =>
     !kIsWeb &&
     (defaultTargetPlatform == TargetPlatform.iOS ||
         defaultTargetPlatform == TargetPlatform.android);
 
-/// Pagina dedicata all'alimentazione.
-/// Qui andranno tutte le funzionalità: analizza piatto, storico pasti, ecc.
 class AlimentazioneScreen extends ConsumerWidget {
   const AlimentazioneScreen({super.key});
 
-static final PageController _chartPageController = PageController();
+  static final PageController _chartPageController = PageController();
 
   Future<void> _onAnalisiPiatto(
     BuildContext context,
@@ -64,18 +75,12 @@ static final PageController _chartPageController = PageController();
   }) async {
     var uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
-      // Su iOS dopo reload la sessione può non essere ancora ripristinata.
-      // Se l'utente va direttamente su Alimentazione senza Strava, non ha mai fatto login.
-      // In entrambi i casi: tenta login anonimo (come per Strava).
       try {
         await ref.read(authNotifierProvider.notifier).signInAnonymously();
         uid = FirebaseAuth.instance.currentUser?.uid;
       } catch (e) {
         if (context.mounted) {
-          showErrorDialog(
-            context,
-            'Impossibile autenticarsi. Riprova. ($e)',
-          );
+          showErrorDialog(context, 'Impossibile autenticarsi. Riprova. ($e)');
         }
         return;
       }
@@ -92,29 +97,21 @@ static final PageController _chartPageController = PageController();
       if (!saved || !context.mounted) return;
     }
 
-    // Su desktop (Windows/macOS/Linux) la fotocamera non è supportata.
-    final source = _isCameraSupported
-        ? imageSource
-        : ImageSource.gallery;
+    final source = _isCameraSupported ? imageSource : ImageSource.gallery;
 
     final picker = ImagePicker();
-    final xFile = await picker.pickImage(
-      source: source,
-      imageQuality: 85,
-    );
+    final xFile = await picker.pickImage(source: source, imageQuality: 85);
     if (xFile == null || !context.mounted) return;
 
     final bytes = await xFile.readAsBytes();
-    final mimeType = xFile.path.toLowerCase().endsWith('.png')
-        ? 'image/png'
-        : 'image/jpeg';
+    final mimeType = xFile.path.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
 
     if (!context.mounted) return;
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        content: const LoadingIndicator(message: 'Analisi nutrizione in corso...'),
+      builder: (ctx) => const AlertDialog(
+        content: LoadingIndicator(message: 'Analisi nutrizione in corso...'),
       ),
     );
 
@@ -133,8 +130,7 @@ static final PageController _chartPageController = PageController();
       }
 
       if (context.mounted) {
-        _showNutritionDialog(context, ref, result,
-            uid: uid!, mealLabel: mealLabel, dateStr: dateStr);
+        _showNutritionDialog(context, ref, result, uid: uid!, mealLabel: mealLabel, dateStr: dateStr);
       }
     } catch (e) {
       if (context.mounted) {
@@ -172,15 +168,11 @@ static final PageController _chartPageController = PageController();
                 );
             if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Analisi salvata'),
-                ),
+                const SnackBar(content: Text('Analisi salvata')),
               );
             }
           } catch (e) {
-            if (context.mounted) {
-              showErrorDialog(context, e.toString());
-            }
+            if (context.mounted) showErrorDialog(context, e.toString());
           }
         },
       ),
@@ -196,9 +188,7 @@ static final PageController _chartPageController = PageController();
     showModalBottomSheet(
       context: context,
       backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
         final theme = Theme.of(ctx);
         final colorScheme = theme.colorScheme;
@@ -211,72 +201,37 @@ static final PageController _chartPageController = PageController();
               children: [
                 Text(
                   'Aggiungi $mealLabel',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface,
-                      ),
+                  style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 24),
                 if (_isCameraSupported)
                   FilledButton.icon(
                     onPressed: () {
                       Navigator.of(ctx).pop();
-                      _onAnalisiPiatto(context, ref,
-                          mealLabel: mealLabel,
-                          dateStr: dateStr,
-                          imageSource: ImageSource.camera);
+                      _onAnalisiPiatto(context, ref, mealLabel: mealLabel, dateStr: dateStr, imageSource: ImageSource.camera);
                     },
                     icon: const Icon(Icons.camera_alt),
                     label: const Text('Scatta foto'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: colorScheme.primary,
-                      foregroundColor: colorScheme.onPrimary,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
                   ),
                 if (_isCameraSupported) const SizedBox(height: 12),
                 FilledButton.icon(
                   onPressed: () {
                     Navigator.of(ctx).pop();
-                    _onAnalisiPiatto(context, ref,
-                        mealLabel: mealLabel,
-                        dateStr: dateStr,
-                        imageSource: ImageSource.gallery);
+                    _onAnalisiPiatto(context, ref, mealLabel: mealLabel, dateStr: dateStr, imageSource: ImageSource.gallery);
                   },
                   icon: const Icon(Icons.photo_library),
                   label: Text(_galleryButtonLabel),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: colorScheme.primary,
-                    foregroundColor: colorScheme.onPrimary,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
                 ),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
                   onPressed: () {
                     Navigator.of(ctx).pop();
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Inserimento manuale $mealLabel (in arrivo)'),
-                      ),
+                      SnackBar(content: Text('Inserimento manuale $mealLabel (in arrivo)')),
                     );
                   },
                   icon: Icon(Icons.edit, color: colorScheme.primary),
                   label: Text('Manualmente', style: TextStyle(color: colorScheme.primary)),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: colorScheme.primary,
-                    side: BorderSide(color: colorScheme.primary),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
                 ),
               ],
             ),
@@ -304,10 +259,7 @@ static final PageController _chartPageController = PageController();
                     ),
               ),
               if (meal.timestamp.isNotEmpty)
-                Text(
-                  'Orario: ${meal.timestamp}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
+                Text('Orario: ${meal.timestamp}'),
               const SizedBox(height: 12),
               Wrap(
                 spacing: 8,
@@ -320,15 +272,8 @@ static final PageController _chartPageController = PageController();
               ),
               if (meal.rawAiAnalysis.isNotEmpty) ...[
                 const SizedBox(height: 16),
-                Text(
-                  'Consiglio',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  meal.rawAiAnalysis,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
+                const Text('Consiglio', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(meal.rawAiAnalysis),
               ],
             ],
           ),
@@ -356,8 +301,9 @@ static final PageController _chartPageController = PageController();
             : [selectedDate];
 
     final nutritionGoal = ref.watch(nutritionGoalProvider);
+    final planAi = ref.watch(nutritionMealPlanAiStreamProvider).valueOrNull;
+    final aiMacroGiornalieri = planAi?.macroGiornalieri;
 
-    // Somma calorie assunte per le date visualizzate
     int calorieAssunte = 0;
     for (final d in displayDates) {
       final byType = ref.watch(mealsForDateByTypeProvider(d)).valueOrNull ?? {};
@@ -368,14 +314,16 @@ static final PageController _chartPageController = PageController();
       }
     }
 
-    final obiettivoKcal = nutritionGoal?.calorieTarget.round();
-    final rimanenti =
-        obiettivoKcal != null ? obiettivoKcal - calorieAssunte : null;
+    // Obiettivo "vero" usato sia nei grafici sia nella card: quello calcolato dall'IA.
+    // Fallback: se il piano AI non esiste ancora, usiamo l'obiettivo configurato dall'utente.
+    final obiettivoKcal = (_macroNum(aiMacroGiornalieri, ['kcal', 'calories']) ??
+            nutritionGoal?.calorieTarget ??
+            0)
+        .round();
+    final rimanenti = obiettivoKcal - calorieAssunte;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Alimentazione'),
-      ),
+      appBar: AppBar(title: const Text('Alimentazione')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -384,24 +332,22 @@ static final PageController _chartPageController = PageController();
             if (nutritionGoal == null)
               _NutritionOnboardingCard(
                 onConfigure: () {
-                  Navigator.of(context).push<void>(
-                    MaterialPageRoute<void>(
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
                       builder: (_) => NutritionGoalScreen(
                         onSuccess: () {
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Obiettivo mangiare salvato'),
-                            ),
-                          );
-                          Navigator.of(context).pop();
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Obiettivo mangiare salvato')),
+                            );
+                            Navigator.of(context).pop();
+                          }
                         },
                       ),
                     ),
                   );
-                  
                 },
-              )    
+              )
             else
               Container(
                 padding: const EdgeInsets.all(16),
@@ -423,36 +369,13 @@ static final PageController _chartPageController = PageController();
                     Text(
                       'Obiettivo − Calorie assunte = Rimanenti',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 24),
-              SizedBox(
-                height: 300,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  children: [
-                    NutritionChartCard(
-                      goal: NutrientGoal(
-                        title: "Calorie", unit: "kcal", target: 2400, color: Colors.blueAccent,
-                        weeklyData: [DailyNutrient("L", 2100), DailyNutrient("M", 2500), DailyNutrient("M", 1900), DailyNutrient("G", 2400), DailyNutrient("V", 2200), DailyNutrient("S", 2800), DailyNutrient("D", 2300)],
-                      ),
-                    ),
-                    NutritionChartCard(
-                      goal: NutrientGoal(
-                        title: "Proteine", unit: "g", target: 150, color: Colors.purpleAccent,
-                        weeklyData: [DailyNutrient("L", 140), DailyNutrient("M", 160), DailyNutrient("M", 150), DailyNutrient("G", 155), DailyNutrient("V", 145), DailyNutrient("S", 130), DailyNutrient("D", 150)],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+
             if (nutritionGoal != null) ...[
               const SizedBox(height: 16),
               Consumer(
@@ -464,45 +387,23 @@ static final PageController _chartPageController = PageController();
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       FilledButton.tonalIcon(
-                        onPressed: gen
-                            ? null
-                            : () => _onGenerateNutritionMealPlan(context, ref),
+                        onPressed: gen ? null : () => _onGenerateNutritionMealPlan(context, ref),
                         icon: gen
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                             : const Icon(Icons.restaurant_menu),
                         label: Text(
                           gen
                               ? 'Generazione piano...'
-                              : (plan?.hasAnyObjective == true
-                                  ? 'Aggiorna obiettivi pasti (AI)'
-                                  : 'Genera obiettivi pasti (AI)'),
+                              : (plan?.hasAnyObjective == true ? 'Aggiorna obiettivi pasti (AI)' : 'Genera obiettivi pasti (AI)'),
                         ),
                       ),
                       if (plan != null && plan.macroGiornalieri.isNotEmpty) ...[
                         const SizedBox(height: 10),
                         Text(
                           _macroSummaryLine(plan.macroGiornalieri),
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
-                        ),
-                      ],
-                      if (plan != null &&
-                          plan.aderenzaScore != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          'Aderenza piano (stima): ${plan.aderenzaScore}%',
-                          style:
-                              Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    color: Theme.of(context).colorScheme.primary,
-                                  ),
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
                         ),
                       ],
                     ],
@@ -510,6 +411,7 @@ static final PageController _chartPageController = PageController();
                 },
               ),
             ],
+
             const SizedBox(height: 20),
             Text(
               'Date',
@@ -521,16 +423,12 @@ static final PageController _chartPageController = PageController();
             const SizedBox(height: 8),
             DateFilterChips(
               selectedDate: selectedDate,
-              onDateSelected: (d) =>
-                  ref.read(selectedMealDateFilterProvider.notifier).state = d,
+              onDateSelected: (d) => ref.read(selectedMealDateFilterProvider.notifier).state = d,
             ),
+
             const SizedBox(height: 20),
             if (displayDates.isEmpty)
-              ..._buildMealCardsForDate(
-                context,
-                ref,
-                DateTime.now().toIso8601String().split('T')[0],
-              )
+              ..._buildMealCardsForDate(context, ref, todayStr)
             else
               ...displayDates.expand((dateKey) => [
                     Padding(
@@ -546,9 +444,10 @@ static final PageController _chartPageController = PageController();
                     ..._buildMealCardsForDate(context, ref, dateKey),
                     const SizedBox(height: 24),
                   ]),
-                  const SizedBox(height: 24),
-           _buildWeeklyChartsSection(context, ref, nutritionGoal),
-          const SizedBox(height: 40),
+
+            const SizedBox(height: 24),
+            _buildWeeklyChartsSection(context, ref, nutritionGoal, aiMacroGiornalieri),
+            const SizedBox(height: 40),
           ],
         ),
       ),
@@ -574,16 +473,152 @@ static final PageController _chartPageController = PageController();
     return parts.isEmpty ? '' : 'Macro giornalieri (da piano AI): ${parts.join(' · ')}';
   }
 
-  Future<void> _onGenerateNutritionMealPlan(
+  List<Widget> _buildMealCardsForDate(BuildContext context, WidgetRef ref, String dateStr) {
+    return [
+      for (var i = 0; i < MealConstants.mealTypes.length; i++) ...[
+        if (i > 0) const SizedBox(height: 16),
+        _MealCardForDate(
+          dateStr: dateStr,
+          label: MealConstants.mealTypes[i],
+          onTap: () => _showAggiungiPastoSheet(context, ref, MealConstants.mealLabels[i], dateStr),
+          onMealTap: (meal) => _showMealDetailDialog(context, meal),
+        ),
+        _MealAiObjectivesCard(pastoKey: MealConstants.mealLabels[i]),
+      ],
+    ];
+  }
+
+  // ====================== SEZIONE GRAFICO IN BASSO ======================
+  Widget _buildWeeklyChartsSection(
     BuildContext context,
     WidgetRef ref,
-  ) async {
+    NutritionGoal? nutritionGoal,
+    Map<String, dynamic>? aiMacroGiornalieri,
+  ) {
+    final cs = Theme.of(context).colorScheme;
+    final profile = ref.watch(userProfileNotifierProvider).profile;
+    final chartAsync = ref.watch(nutritionChartDataProvider);
+
+    final kcalTarget = _macroNum(aiMacroGiornalieri, ['kcal', 'calories']) ??
+        nutritionGoal?.calorieTarget ??
+        2000.0;
+
+    final proteinTarget = _macroNum(aiMacroGiornalieri, ['proteine_g', 'protein_g']) ??
+        (nutritionGoal != null && profile != null && profile.weightKg > 0
+            ? nutritionGoal.proteinGPerKg * profile.weightKg
+            : 150.0);
+
+    final fatTarget = _macroNum(aiMacroGiornalieri, ['grassi_g', 'fat_g']) ??
+        (nutritionGoal != null &&
+                nutritionGoal.calorieTarget > 0 &&
+                nutritionGoal.fatPercentage > 0
+            ? (nutritionGoal.calorieTarget * nutritionGoal.fatPercentage / 100) / 9.0
+            : 70.0);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Trend Settimanale Nutrizione',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        chartAsync.when(
+          data: (chartData) {
+            final goals = <NutrientGoal>[
+              NutrientGoal(
+                title: 'Calorie',
+                unit: 'kcal',
+                target: kcalTarget,
+                color: Colors.blueAccent,
+                weeklyData: chartData.caloriesData,
+              ),
+              NutrientGoal(
+                title: 'Proteine',
+                unit: 'g',
+                target: proteinTarget,
+                color: Colors.purpleAccent,
+                weeklyData: chartData.proteinData,
+              ),
+              NutrientGoal(
+                title: 'Grassi',
+                unit: 'g',
+                target: fatTarget,
+                color: Colors.orangeAccent,
+                weeklyData: chartData.fatData,
+              ),
+            ];
+
+            return SizedBox(
+              height: 340,
+              child: ScrollConfiguration(
+                behavior: MyCustomScrollBehavior(),
+                child: PageView.builder(
+                  controller: AlimentazioneScreen._chartPageController,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: goals.length,
+                  itemBuilder: (context, index) {
+                    return AnimatedBuilder(
+                      animation: AlimentazioneScreen._chartPageController,
+                      builder: (context, child) {
+                        double value = 0.0;
+                        if (AlimentazioneScreen._chartPageController.position.haveDimensions) {
+                          value = (AlimentazioneScreen._chartPageController.page ?? 0) - index;
+                        } else {
+                          value = 0.0 - index;
+                        }
+                        final scale = (1 - (value.abs() * 0.15)).clamp(0.85, 1.0);
+                        final opacity = (1 - (value.abs() * 0.4)).clamp(0.5, 1.0);
+
+                        return Transform.scale(
+                          scale: scale,
+                          child: Opacity(
+                            opacity: opacity,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                              child: NutritionChartCard(goal: goals[index]),
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            );
+          },
+          loading: () => const SizedBox(
+            height: 340,
+            child: Center(child: CircularProgressIndicator()),
+          ),
+          error: (error, stack) => SizedBox(
+            height: 340,
+            child: Center(child: Text('Errore caricamento grafico: $error')),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Center(  
+          child: SmoothPageIndicator(
+            controller: AlimentazioneScreen._chartPageController,
+            count: 3,
+            effect: ExpandingDotsEffect(
+              dotHeight: 8,
+              dotWidth: 8,
+              activeDotColor: cs.primary,
+              dotColor: cs.outlineVariant,
+              expansionFactor: 3,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _onGenerateNutritionMealPlan(BuildContext context, WidgetRef ref) async {
     var uid = ref.read(authNotifierProvider).user?.uid;
     uid ??= FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
-      if (context.mounted) {
-        showErrorDialog(context, 'Utente non autenticato.');
-      }
+      if (context.mounted) showErrorDialog(context, 'Utente non autenticato.');
       return;
     }
 
@@ -608,181 +643,9 @@ static final PageController _chartPageController = PageController();
       ref.read(nutritionMealPlanGeneratingProvider.notifier).state = false;
     }
   }
-
-  List<Widget> _buildMealCardsForDate(
-    BuildContext context,
-    WidgetRef ref,
-    String dateStr,
-  ) {
-    return [
-      for (var i = 0; i < MealConstants.mealTypes.length; i++) ...[
-        if (i > 0) const SizedBox(height: 16),
-        _MealCardForDate(
-          dateStr: dateStr,
-          label: MealConstants.mealTypes[i],
-          onTap: () => _showAggiungiPastoSheet(
-            context,
-            ref,
-            MealConstants.mealLabels[i],
-            dateStr,
-          ),
-          onMealTap: (meal) => _showMealDetailDialog(context, meal),
-        ),
-        _MealAiObjectivesCard(pastoKey: MealConstants.mealLabels[i]),
-      ],
-    ];
-  }
 }
 
-class NutritionPage extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    // Esempio dati basati su Progetto Invictus (es. 70kg utente)
-    final List<NutrientGoal> myGoals = [
-      NutrientGoal(
-        title: "Calorie",
-        unit: "kcal",
-        target: 2400,
-        color: Colors.blueAccent,
-        weeklyData: [DailyNutrient("L", 2100), DailyNutrient("M", 2500), DailyNutrient("M", 1900), DailyNutrient("G", 2400), DailyNutrient("V", 2200), DailyNutrient("S", 2800), DailyNutrient("D", 2300)],
-      ),
-      NutrientGoal(
-        title: "Proteine",
-        unit: "g",
-        target: 150, // 2.1g * kg
-        color: Colors.purpleAccent,
-        weeklyData: [DailyNutrient("L", 140), DailyNutrient("M", 160), DailyNutrient("M", 150), DailyNutrient("G", 155), DailyNutrient("V", 145), DailyNutrient("S", 130), DailyNutrient("D", 150)],
-      ),
-      NutrientGoal(
-        title: "Grassi",
-        unit: "g",
-        target: 70, // 1g * kg
-        color: Colors.orangeAccent,
-        weeklyData: [DailyNutrient("L", 65), DailyNutrient("M", 80), DailyNutrient("M", 60), DailyNutrient("G", 70), DailyNutrient("V", 72), DailyNutrient("S", 90), DailyNutrient("D", 70)],
-      ),
-    ];
-
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Padding(
-              padding: EdgeInsets.all(20.0),
-              child: Text("Alimentazione", style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
-            ),
-            // IL CONTENITORE DELLO SCROLL
-            SizedBox(
-              height: 350, // Altezza della card
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(), // Effetto rimbalzo iOS style
-                itemCount: myGoals.length,
-                itemBuilder: (context, index) {
-                  return NutritionChartCard(goal: myGoals[index]);
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Obiettivi operativi Gemini sotto la card Colazione / Pranzo / Cena.
-class _MealAiObjectivesCard extends ConsumerWidget {
-  const _MealAiObjectivesCard({required this.pastoKey});
-
-  /// `colazione` | `pranzo` | `cena` (allineato a [MealConstants.mealLabels]).
-  final String pastoKey;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final ng = ref.watch(nutritionGoalProvider);
-    if (ng == null) return const SizedBox.shrink();
-
-    final plan = ref.watch(nutritionMealPlanAiStreamProvider).valueOrNull;
-    if (plan == null || !plan.hasAnyObjective) {
-      return const SizedBox.shrink();
-    }
-
-    final List<String> items;
-    switch (pastoKey) {
-      case 'colazione':
-        items = plan.obiettiviColazione;
-        break;
-      case 'cena':
-        items = plan.obiettiviCena;
-        break;
-      case 'pranzo':
-      default:
-        items = plan.obiettiviPranzo;
-        break;
-    }
-    if (items.isEmpty) return const SizedBox.shrink();
-
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Material(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.flag_outlined, size: 18, color: cs.primary),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Obiettivi per questo pasto',
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: cs.onSurface,
-                        ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              for (final t in items)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '• ',
-                        style: TextStyle(
-                          color: cs.primary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Expanded(
-                        child: Text(
-                          t,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                height: 1.35,
-                                color: cs.onSurfaceVariant,
-                              ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Invito a completare sub-onboarding Obiettivo Mangiare (al posto dei numeri placeholder).
+// ====================== WIDGETS AUSILIARI ======================
 class _NutritionOnboardingCard extends StatelessWidget {
   const _NutritionOnboardingCard({required this.onConfigure});
 
@@ -817,29 +680,20 @@ class _NutritionOnboardingCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'Imposta preferenze, obiettivo nutrizionale e target calorico '
-              '(evidenza CREA / ISSN). Poi vedrai qui obiettivo giornaliero, '
-              'calorie assunte e kcal rimanenti con i tuoi dati reali.',
+              'Imposta preferenze, obiettivo nutrizionale e target calorico. Poi vedrai qui obiettivo giornaliero, calorie assunte e kcal rimanenti.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: cs.onPrimaryContainer.withValues(alpha: 0.92),
                   ),
             ),
             const SizedBox(height: 16),
-            FilledButton(
-              onPressed: onConfigure,
-              child: const Text('Configura obiettivo mangiare'),
-            ),
-          ], 
+            FilledButton(onPressed: onConfigure, child: const Text('Configura obiettivo mangiare')),
+          ],
         ),
       ),
     );
-
-
   }
 }
 
-
-/// Card pasto per una data specifica, legge i pasti dal provider.
 class _MealCardForDate extends ConsumerWidget {
   const _MealCardForDate({
     required this.dateStr,
@@ -866,7 +720,6 @@ class _MealCardForDate extends ConsumerWidget {
   }
 }
 
-/// Card pasto (Colazione/Pranzo/Cena) con lista piatti e pulsante aggiungi.
 class _MealCard extends StatelessWidget {
   const _MealCard({
     required this.label,
@@ -913,11 +766,7 @@ class _MealCard extends StatelessWidget {
                         color: cardTheme.contentColor.withValues(alpha: 0.3),
                         shape: BoxShape.circle,
                       ),
-                      child: Icon(
-                        Icons.add,
-                        color: cardTheme.contentColor,
-                        size: 24,
-                      ),
+                      child: Icon(Icons.add, color: cardTheme.contentColor, size: 24),
                     ),
                   ],
                 ),
@@ -925,14 +774,8 @@ class _MealCard extends StatelessWidget {
             ),
           ),
           if (meals.isNotEmpty) ...[
-            Divider(
-              height: 1,
-              color: cardTheme.contentColor.withValues(alpha: 0.4),
-            ),
-            ...meals.map((meal) => _MealTile(
-                  meal: meal,
-                  onTap: () => onMealTap(meal),
-                )),
+            Divider(height: 1, color: cardTheme.contentColor.withValues(alpha: 0.4)),
+            ...meals.map((meal) => _MealTile(meal: meal, onTap: () => onMealTap(meal))),
           ],
         ],
       ),
@@ -940,12 +783,8 @@ class _MealCard extends StatelessWidget {
   }
 }
 
-/// Riga singolo piatto: titolo + calorie, tappabile per dettagli.
 class _MealTile extends StatelessWidget {
-  const _MealTile({
-    required this.meal,
-    required this.onTap,
-  });
+  const _MealTile({required this.meal, required this.onTap});
 
   final MealModel meal;
   final VoidCallback onTap;
@@ -965,9 +804,7 @@ class _MealTile extends StatelessWidget {
               Expanded(
                 child: Text(
                   meal.displayTitle,
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: cardTheme.contentColor,
-                      ),
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: cardTheme.contentColor),
                 ),
               ),
               Text(
@@ -978,11 +815,7 @@ class _MealTile extends StatelessWidget {
                     ),
               ),
               const SizedBox(width: 8),
-              Icon(
-                Icons.chevron_right,
-                color: cardTheme.contentColorMuted,
-                size: 20,
-              ),
+              Icon(Icons.chevron_right, color: cardTheme.contentColorMuted, size: 20),
             ],
           ),
         ),
@@ -991,7 +824,6 @@ class _MealTile extends StatelessWidget {
   }
 }
 
-/// Dialog analisi nutrizione con controlli +/- per modificare i valori.
 class _NutritionEditDialog extends StatefulWidget {
   const _NutritionEditDialog({
     required this.initialNut,
@@ -1019,14 +851,12 @@ class _NutritionEditDialogState extends State<_NutritionEditDialog> {
   @override
   void initState() {
     super.initState();
-    _calories = _num(widget.initialNut['total_calories'] ?? widget.initialNut['calories'] ?? 0).round();
-    _protein = _num(widget.initialNut['protein_g'] ?? widget.initialNut['protein'] ?? 0).round();
-    _carbs = _num(widget.initialNut['carbs_g'] ?? widget.initialNut['carbs'] ?? 0).round();
-    _fat = _num(widget.initialNut['fat_g'] ?? widget.initialNut['fat'] ?? 0).round();
-    _sugar = _num(widget.initialNut['sugar_g'] ?? widget.initialNut['sugar'] ?? 0).round();
+    _calories = (widget.initialNut['total_calories'] ?? widget.initialNut['calories'] ?? 0) as int;
+    _protein = (widget.initialNut['protein_g'] ?? widget.initialNut['protein'] ?? 0) as int;
+    _carbs = (widget.initialNut['carbs_g'] ?? widget.initialNut['carbs'] ?? 0) as int;
+    _fat = (widget.initialNut['fat_g'] ?? widget.initialNut['fat'] ?? 0) as int;
+    _sugar = (widget.initialNut['sugar_g'] ?? widget.initialNut['sugar'] ?? 0) as int;
   }
-
-  double _num(dynamic v) => (v is num) ? v.toDouble() : double.tryParse(v.toString()) ?? 0;
 
   Map<String, dynamic> _buildModifiedNut() {
     final m = Map<String, dynamic>.from(widget.initialNut);
@@ -1038,49 +868,6 @@ class _NutritionEditDialogState extends State<_NutritionEditDialog> {
     return m;
   }
 
-  Widget _buildStepper(String label, int value, ValueChanged<int> onChanged, {String suffix = 'g'}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 90,
-            child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
-          ),
-          IconButton.filled(
-            onPressed: () => onChanged(value - 1),
-            icon: const Icon(Icons.remove),
-            style: IconButton.styleFrom(
-              padding: const EdgeInsets.all(8),
-              minimumSize: const Size(36, 36),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: SizedBox(
-              width: 48,
-              child: Text(
-                '$value$suffix',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-            ),
-          ),
-          IconButton.filled(
-            onPressed: () => onChanged(value + 1),
-            icon: const Icon(Icons.add),
-            style: IconButton.styleFrom(
-              padding: const EdgeInsets.all(8),
-              minimumSize: const Size(36, 36),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -1088,69 +875,49 @@ class _NutritionEditDialogState extends State<_NutritionEditDialog> {
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildStepper('Calorie', _calories.clamp(0, 9999), (v) {
-              setState(() => _calories = v.clamp(0, 9999));
-            }, suffix: ' kcal'),
-            _buildStepper('Proteine', _protein.clamp(0, 999), (v) {
-              setState(() => _protein = v.clamp(0, 999));
-            }),
-            _buildStepper('Carbs', _carbs.clamp(0, 999), (v) {
-              setState(() => _carbs = v.clamp(0, 999));
-            }),
-            _buildStepper('Grassi', _fat.clamp(0, 999), (v) {
-              setState(() => _fat = v.clamp(0, 999));
-            }),
-            _buildStepper('Zuccheri', _sugar.clamp(0, 999), (v) {
-              setState(() => _sugar = v.clamp(0, 999));
-            }),
+            _buildStepper('Calorie', _calories, (v) => setState(() => _calories = v.clamp(0, 9999)), suffix: ' kcal'),
+            _buildStepper('Proteine', _protein, (v) => setState(() => _protein = v.clamp(0, 999))),
+            _buildStepper('Carbs', _carbs, (v) => setState(() => _carbs = v.clamp(0, 999))),
+            _buildStepper('Grassi', _fat, (v) => setState(() => _fat = v.clamp(0, 999))),
+            _buildStepper('Zuccheri', _sugar, (v) => setState(() => _sugar = v.clamp(0, 999))),
             if (widget.foods.isNotEmpty) ...[
               const SizedBox(height: 16),
-              Text(
-                'Alimenti',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-              const SizedBox(height: 4),
+              const Text('Alimenti', style: TextStyle(fontWeight: FontWeight.bold)),
               ...widget.foods.take(8).map((e) {
                 final m = e is Map ? e as Map<String, dynamic> : <String, dynamic>{};
-                final name = m['name'] ?? '?';
-                final cals = m['calories'];
-                final portion = m['portion'];
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Text(
-                    '• $name${cals != null ? ' (${(cals as num).round()} kcal)' : ''}${portion != null ? ' - $portion' : ''}',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                );
+                return Text('• ${m['name'] ?? '?'}');
               }),
             ],
             if (widget.advice.isNotEmpty) ...[
               const SizedBox(height: 16),
-              Text(
-                'Consiglio',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                widget.advice,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
+              const Text('Consiglio', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text(widget.advice),
             ],
           ],
         ),
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Annulla'),
-        ),
-        FilledButton(
-          onPressed: () => widget.onSave(_buildModifiedNut()),
-          child: const Text('Salva'),
-        ),
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Annulla')),
+        FilledButton(onPressed: () => widget.onSave(_buildModifiedNut()), child: const Text('Salva')),
       ],
+    );
+  }
+
+  Widget _buildStepper(String label, int value, ValueChanged<int> onChanged, {String suffix = 'g'}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          SizedBox(width: 90, child: Text(label)),
+          IconButton.filled(onPressed: () => onChanged(value - 1), icon: const Icon(Icons.exposure_minus_1)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text('$value$suffix', style: const TextStyle(fontWeight: FontWeight.bold)),
+          ),
+          IconButton.filled(onPressed: () => onChanged(value + 1), icon: const Icon(Icons.add)),
+        ],
+      ),
     );
   }
 }
@@ -1163,91 +930,61 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Chip(
-      label: Text('$label: $value'),
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    );
+    return Chip(label: Text('$label: $value'));
   }
 }
-Widget _buildWeeklyChartsSection(BuildContext context, WidgetRef ref, dynamic nutritionGoal) {
-  final cs = Theme.of(context).colorScheme;
-  
-  // Dati reali: qui dovresti mappare i dati dal tuo provider. 
-  // Per ora manteniamo la struttura per il test grafico.
-  final List<NutrientGoal> myGoals = [
-    NutrientGoal(
-      title: "Calorie", unit: "kcal", target: nutritionGoal?.calorieTarget ?? 2000, color: Colors.blueAccent,
-      weeklyData: [DailyNutrient("L", 2100), DailyNutrient("M", 2500), DailyNutrient("M", 1900), DailyNutrient("G", 2400), DailyNutrient("V", 2200), DailyNutrient("S", 2800), DailyNutrient("D", 2300)],
-    ),
-    NutrientGoal(
-      title: "Proteine", unit: "g", target: 150, color: Colors.purpleAccent,
-      weeklyData: [DailyNutrient("L", 140), DailyNutrient("M", 160), DailyNutrient("M", 150), DailyNutrient("G", 155), DailyNutrient("V", 145), DailyNutrient("S", 130), DailyNutrient("D", 150)],
-    ),
-    NutrientGoal(
-      title: "Grassi", unit: "g", target: 70, color: Colors.orangeAccent,
-      weeklyData: [DailyNutrient("L", 65), DailyNutrient("M", 80), DailyNutrient("M", 60), DailyNutrient("G", 70), DailyNutrient("V", 72), DailyNutrient("S", 90), DailyNutrient("D", 70)],
-    ),
-  ];
 
- return Column(
-  children: [
-    SizedBox(
-      height: 340, // Un po' più di altezza per gestire lo scaling delle card
-      child: ScrollConfiguration(
-        // Utilizziamo la classe che hai messo in activity_utility.dart
-        behavior: MyCustomScrollBehavior(), 
-        child: PageView.builder(
-          controller: AlimentazioneScreen._chartPageController,
-          physics: const BouncingScrollPhysics(),
-          itemCount: myGoals.length,
-          itemBuilder: (context, index) {
-            return AnimatedBuilder(
-              animation: AlimentazioneScreen._chartPageController,
-              builder: (context, child) {
-                // Calcoliamo la posizione della pagina per l'effetto visivo
-                double value = 0.0;
-                if (AlimentazioneScreen._chartPageController.position.haveDimensions) {
-                  value = (AlimentazioneScreen._chartPageController.page ?? 0) - index;
-                } else {
-                  // Fallback iniziale prima che il controller sia pronto
-                  value = (0.0 - index);
-                }
+class _MealAiObjectivesCard extends ConsumerWidget {
+  const _MealAiObjectivesCard({required this.pastoKey});
 
-                // Logica Stack: 
-                // La card attiva è scala 1.0, quelle "sotto" si rimpiccioliscono (0.9)
-                // e svaniscono leggermente (opacity)
-                double scale = (1 - (value.abs() * 0.15)).clamp(0.85, 1.0);
-                double opacity = (1 - (value.abs() * 0.4)).clamp(0.5, 1.0);
+  final String pastoKey;
 
-                return Transform.scale(
-                  scale: scale,
-                  child: Opacity(
-                    opacity: opacity,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-                      child: NutritionChartCard(goal: myGoals[index]),
-                    ),
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final plan = ref.watch(nutritionMealPlanAiStreamProvider).valueOrNull;
+    if (plan == null || !plan.hasAnyObjective) return const SizedBox.shrink();
+
+    final List<String> items = switch (pastoKey) {
+      'colazione' => plan.obiettiviColazione,
+      'cena' => plan.obiettiviCena,
+      _ => plan.obiettiviPranzo,
+    };
+
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Material(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.flag_outlined, size: 18, color: cs.primary),
+                  const SizedBox(width: 8),
+                  Text('Obiettivi per questo pasto', style: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              for (final t in items)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    children: [
+                      Text('• ', style: TextStyle(color: cs.primary, fontWeight: FontWeight.bold)),
+                      Expanded(child: Text(t, style: Theme.of(context).textTheme.bodySmall)),
+                    ],
                   ),
-                );
-              },
-            );
-          },
+                ),
+            ],
+          ),
         ),
       ),
-    ),
-    const SizedBox(height: 12),
-    // Indicatori di pagina (Puntini)
-    SmoothPageIndicator(
-      controller: AlimentazioneScreen._chartPageController,
-      count: myGoals.length,
-      effect: ExpandingDotsEffect(
-        dotHeight: 8,
-        dotWidth: 8,
-        activeDotColor: cs.primary,
-        dotColor: cs.outlineVariant,
-        expansionFactor: 3, // Rende il puntino attivo più lungo
-      ),
-    ),
-  ],
-);
+    );
+  }
 }

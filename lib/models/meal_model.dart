@@ -1,39 +1,58 @@
 import 'package:fitai_analyzer/utils/meal_constants.dart';
 import 'package:flutter/material.dart';
-
-/// Documento pasto nella sottocollezione meals (Livello 1 - dettaglio).
-/// Percorso: /users/{uid}/daily_logs/{date}/meals/{mealId}
-///
-/// Usato per "Com'è andato il pranzo?" - l'IA legge il dettaglio del singolo piatto.
+/// Modello aggiornato per un singolo pasto salvato in Firestore.
+/// Ogni pasto arriva già **scomposto** da Gemini con grammi di macro.
+/// Struttura standardizzata, chiara e futura-proof per grafici + analisi storica.
 class MealModel {
-  /// Nome del piatto (es. "Pollo e Broccoli").
+  /// Nome del piatto (es. "Pollo e Broccoli" o "Pranzo: Pollo e Broccoli").
   final String dishName;
 
-  /// Calorie del piatto.
+  /// Calorie totali del pasto.
   final int calories;
 
-  /// Macros: pro, carb, fat (grammi).
-  final Map<String, num> macros;
+  /// Grammi di proteine.
+  final double proteinG;
+
+  /// Grammi di carboidrati.
+  final double carbsG;
+
+  /// Grammi di grassi.
+  final double fatG;
+
+  /// Grammatura totale del piatto (opzionale, utile per porzioni).
+  final double? portionGrams;
+
+  /// Lista ingredienti riconosciuti da Gemini (nuovo campo).
+  final List<String> ingredients;
 
   /// Orario del pasto (es. "12:30").
   final String timestamp;
 
-  /// Tipo pasto: "Colazione", "Pranzo", "Cena".
+  /// Tipo pasto: "Colazione", "Pranzo", "Cena", "Spuntino".
   final String mealType;
 
-  /// Analisi raw da Gemini (consigli nutrizionali).
+  /// Analisi raw completa restituita da Gemini (consigli + testo).
   final String rawAiAnalysis;
+
+  /// Livello di confidenza dell'IA (0.0 - 1.0).
+  final double aiConfidence;
 
   const MealModel({
     required this.dishName,
     required this.calories,
-    required this.macros,
+    required this.proteinG,
+    required this.carbsG,
+    required this.fatG,
+    this.portionGrams,
+    this.ingredients = const [],
     required this.timestamp,
     required this.mealType,
     required this.rawAiAnalysis,
+    this.aiConfidence = 0.85,
   });
 
-  /// Titolo senza prefisso (es. "Pranzo: Pollo" → "Pollo").
+  /// Titolo pulito senza prefisso (es. "Pranzo: Pollo" → "Pollo").
+  /// Mantenuto per compatibilità con UI esistente.
   String get displayTitle {
     for (final t in MealConstants.mealTypes) {
       final prefix = '$t: ';
@@ -44,32 +63,69 @@ class MealModel {
     return dishName;
   }
 
+  /// Getter comodo per grafici e calcoli (chiavi standard).
+  Map<String, double> get macros => {
+        'protein_g': proteinG,
+        'carbs_g': carbsG,
+        'fat_g': fatG,
+      };
+
+  /// Map per salvare su Firestore (chiavi ESPLICITE e standard).
   Map<String, dynamic> toFirestore() => {
         'dish_name': dishName,
         'calories': calories,
-        'macros': macros,
+        'protein_g': proteinG,
+        'carbs_g': carbsG,
+        'fat_g': fatG,
+        'portion_grams': portionGrams,
+        'ingredients': ingredients,
         'timestamp': timestamp,
         'meal_type': mealType,
         'raw_ai_analysis': rawAiAnalysis,
+        'ai_confidence': aiConfidence,
       };
 
+  /// Factory da Firestore con **retro-compatibilità completa**.
+  /// Legge sia la nuova struttura (campi flat) che la vecchia (Map macros).
   factory MealModel.fromFirestore(Map<String, dynamic> data) {
+    // Supporto vecchia struttura (macros map)
     final macrosRaw = data['macros'] as Map<String, dynamic>? ?? {};
-    final macros = <String, num>{
-      'pro': (macrosRaw['pro'] ?? macrosRaw['protein_g'] ?? 0) as num,
-      'carb': (macrosRaw['carb'] ?? macrosRaw['carbs_g'] ?? 0) as num,
-      'fat': (macrosRaw['fat'] ?? macrosRaw['fat_g'] ?? 0) as num,
-    };
+
+    final protein = (data['protein_g'] as num? ??
+            macrosRaw['pro'] ??
+            macrosRaw['protein_g'] ??
+            0)
+        .toDouble();
+
+    final carbs = (data['carbs_g'] as num? ??
+            macrosRaw['carb'] ??
+            macrosRaw['carbs_g'] ??
+            0)
+        .toDouble();
+
+    final fat = (data['fat_g'] as num? ??
+            macrosRaw['fat'] ??
+            macrosRaw['fat_g'] ??
+            0)
+        .toDouble();
+
     return MealModel(
-      dishName: data['dish_name'] as String? ?? 'Piatto',
+      dishName: data['dish_name'] as String? ?? 'Piatto sconosciuto',
       calories: (data['calories'] as num?)?.toInt() ?? 0,
-      macros: macros,
+      proteinG: protein,
+      carbsG: carbs,
+      fatG: fat,
+      portionGrams: (data['portion_grams'] as num?)?.toDouble(),
+      ingredients: List<String>.from(data['ingredients'] ?? []),
       timestamp: data['timestamp'] as String? ?? '',
       mealType: data['meal_type'] as String? ?? '',
       rawAiAnalysis: data['raw_ai_analysis'] as String? ?? '',
+      aiConfidence: (data['ai_confidence'] as num?)?.toDouble() ?? 0.85,
     );
   }
 }
+
+/// Helper per grafici (lasciato invariato perché non riguarda il salvataggio pasto).
 class DailyNutrient {
   final String day;
   final double value;
@@ -77,6 +133,7 @@ class DailyNutrient {
   DailyNutrient(this.day, this.value);
 }
 
+/// Helper per obiettivi nutrizionali (lasciato invariato).
 class NutrientGoal {
   final String title;
   final String unit;

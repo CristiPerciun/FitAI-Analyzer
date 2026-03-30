@@ -34,7 +34,7 @@ class NutritionChartCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    "${goal.target.toInt()} ${goal.unit}",
+                    "${goal.target.round()} ${goal.unit}",
                     style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
                   ),
                 ],

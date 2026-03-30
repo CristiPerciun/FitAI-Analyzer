@@ -191,7 +191,9 @@ class MainProfileSinglePageFieldsState
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
-          key: ValueKey(_mainGoal),
+          // Evita ValueKey(null) durante il primo build (quando _mainGoal è null)
+          // che genera l'errore runtime: "Duplicate keys found".
+          key: const ValueKey('mainGoalDropdown'),
           initialValue: _mainGoal,
           decoration: const InputDecoration(
             labelText: 'Obiettivo principale',
@@ -232,7 +234,7 @@ class MainProfileSinglePageFieldsState
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
-          key: ValueKey(_gender),
+          key: const ValueKey('genderDropdown'),
           initialValue: _gender,
           decoration: const InputDecoration(
             labelText: 'Sesso biologico',
@@ -288,7 +290,7 @@ class MainProfileSinglePageFieldsState
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<int>(
-          key: ValueKey(_trainingDaysPerWeek),
+          key: const ValueKey('trainingDaysDropdown'),
           initialValue: _trainingDaysPerWeek,
           decoration: const InputDecoration(
             labelText: 'Giorni di allenamento a settimana',
@@ -301,7 +303,7 @@ class MainProfileSinglePageFieldsState
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
-          key: ValueKey(_equipment),
+          key: const ValueKey('equipmentDropdown'),
           initialValue: _equipment,
           decoration: const InputDecoration(
             labelText: 'Attrezzatura disponibile',

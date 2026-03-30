@@ -2,6 +2,18 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'user_profile.g.dart';
 
+double _toDouble(dynamic v, {double fallback = 0.0}) {
+  if (v is num) return v.toDouble();
+  if (v == null) return fallback;
+  return double.tryParse(v.toString()) ?? fallback;
+}
+
+int _toInt(dynamic v, {int fallback = 0}) {
+  if (v is num) return v.toInt();
+  if (v == null) return fallback;
+  return int.tryParse(v.toString()) ?? fallback;
+}
+
 /// Obiettivo allenamento (ramo separato dal [UserProfile.mainGoal] a 4 vie).
 /// Da compilare con onboarding / impostazioni dedicato; struttura pronta per Firestore.
 @JsonSerializable()
@@ -91,7 +103,27 @@ class NutritionGoal {
     m['nutrition_objective'] = m['nutrition_objective'] ??
         (m['main_goal'] as String?) ??
         'mantenimento';
-    return _$NutritionGoalFromJson(m);
+
+    // Firestore può contenere numeri come `String` (es. "2000").
+    // Per evitare crash nei cast `as num`, facciamo parse robusti.
+    return NutritionGoal(
+      nutritionObjective: (m['nutrition_objective'] as String?) ?? 'mantenimento',
+      calorieTarget: _toDouble(m['calorie_target'], fallback: 0.0),
+      proteinGPerKg: _toInt(m['protein_g_per_kg'], fallback: 0),
+      carbsPercentage: _toInt(m['carbs_percentage'], fallback: 0),
+      fatPercentage: _toInt(m['fat_percentage'], fallback: 0),
+      speed: (m['speed'] as String?) ?? 'media',
+      mealsPerDay: _toInt(m['meals_per_day'], fallback: 3),
+      timingImportante: (m['timing_importante'] as bool?) ?? false,
+      style: (m['style'] as String?) ?? 'mediterraneo',
+      preferences: (m['preferences'] as List<dynamic>?)
+              ?.map((e) => e?.toString() ?? '')
+              .where((s) => s.isNotEmpty)
+              .toList() ??
+          const [],
+      useSupplements: (m['use_supplements'] as bool?) ?? false,
+      extraNotes: (m['extra_notes'] as String?) ?? '',
+    );
   }
 
   Map<String, dynamic> toJson() => _$NutritionGoalToJson(this);
@@ -195,8 +227,34 @@ class UserProfile {
     this.nutritionGoal,
   });
 
-  factory UserProfile.fromJson(Map<String, dynamic> json) =>
-      _$UserProfileFromJson(json);
+  // Robustizza i parse: Firestore può salvare numeri come `String`.
+  factory UserProfile.fromJson(Map<String, dynamic> json) {
+    final m = Map<String, dynamic>.from(json);
+    return UserProfile(
+      mainGoal: (m['main_goal'] as String?) ?? '',
+      age: _toInt(m['age'], fallback: 30),
+      gender: (m['gender'] as String?) ?? 'male',
+      heightCm: _toDouble(m['height_cm'], fallback: 170),
+      weightKg: _toDouble(m['weight_kg'], fallback: 70),
+      trainingDaysPerWeek: _toInt(m['training_days_per_week'], fallback: 4),
+      equipment: (m['equipment'] as String?) ?? 'full_gym',
+      takesMedications: (m['takes_medications'] as bool?) ?? false,
+      medicationsList: (m['medications_list'] as String?) ?? '',
+      healthConditions: (m['health_conditions'] as String?) ?? '',
+      avgSleepHours: _toDouble(m['avg_sleep_hours'], fallback: 7.0),
+      sleepImportance: _toInt(m['sleep_importance'], fallback: 3),
+      trainingGoal: m['training_goal'] == null
+          ? null
+          : TrainingGoal.fromJson(
+              Map<String, dynamic>.from(m['training_goal'] as Map),
+            ),
+      nutritionGoal: m['nutrition_goal'] == null
+          ? null
+          : NutritionGoal.fromJson(
+              Map<String, dynamic>.from(m['nutrition_goal'] as Map),
+            ),
+    );
+  }
 
   Map<String, dynamic> toJson() => _$UserProfileToJson(this);
 }

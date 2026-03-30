@@ -9,8 +9,8 @@ import 'gemini_service.dart';
 
 /// Servizio per salvataggio dati nutrizione (Gemini foto piatto) su Firestore.
 /// Strategia a Tre Livelli:
-/// - Livello 1: meals subcollection (dettaglio singolo pasto per "Com'è andato il pranzo?")
-/// - Livello 2: nutrition_summary su daily_log (trend settimanale senza scaricare ogni pasto)
+/// - Livello 1: meals subcollection (dettaglio singolo pasto)
+/// - Livello 2: nutrition_summary su daily_log (trend settimanale)
 /// - Livello 3: baseline_profile usa medie da nutrition_summary
 final nutritionServiceProvider = Provider<NutritionService>((ref) {
   return NutritionService(
@@ -30,10 +30,7 @@ class NutritionService {
   final GeminiService _geminiService;
 
   /// Salva il pasto nella sottocollezione meals e aggiorna nutrition_summary sul daily_log.
-  /// [uid] - ID utente Firebase
-  /// [nutritionGemini] - Risposta Gemini: dish_name, total_calories, protein_g, carbs_g, fat_g, advice, longevity_score
-  /// [mealLabel] - Opzionale: "Colazione", "Pranzo", "Cena" (per arricchire dish_name)
-  /// [date] - Data opzionale (default: oggi)
+  /// Usa il **NUOVO MealModel** (campi flat proteinG / carbsG / fatG + ingredients + aiConfidence).
   Future<void> saveToFirestore(
     String uid,
     Map<String, dynamic> nutritionGemini, {
@@ -52,42 +49,61 @@ class NutritionService {
         .doc(dateStr);
     final mealsRef = dailyRef.collection('meals');
 
-    // Estrai dati da Gemini
+    // ====================== ESTRAZIONE DATI DA GEMINI ======================
     final dishName = _extractDishName(nutritionGemini, mealLabel);
-    final pro = _num(nutritionGemini['protein_g'] ?? nutritionGemini['protein'] ?? 0);
-    final carb = _num(nutritionGemini['carbs_g'] ?? nutritionGemini['carbs'] ?? 0);
-    final fat = _num(nutritionGemini['fat_g'] ?? nutritionGemini['fat'] ?? 0);
-    final kcal = _num(nutritionGemini['total_calories'] ?? nutritionGemini['calories'] ?? 0);
+
+    final proteinG = _num(nutritionGemini['protein_g'] ?? nutritionGemini['protein'] ?? 0);
+    final carbsG = _num(nutritionGemini['carbs_g'] ?? nutritionGemini['carbs'] ?? 0);
+    final fatG = _num(nutritionGemini['fat_g'] ?? nutritionGemini['fat'] ?? 0);
+    final calories = _num(nutritionGemini['total_calories'] ?? nutritionGemini['calories'] ?? 0);
+
     final advice = nutritionGemini['advice'] as String? ?? '';
     final longevityScore = _num(nutritionGemini['longevity_score'] ?? 0);
 
+    // Parsing ingredienti (campo già restituito da Gemini)
+    final foods = nutritionGemini['foods'] as List<dynamic>? ?? [];
+    final ingredients = foods
+        .map((f) => (f as Map<String, dynamic>?)?['name'] as String? ?? '')
+        .where((name) => name.isNotEmpty)
+        .toList();
+
     final mealType = mealLabel != null
         ? mealLabel.substring(0, 1).toUpperCase() + mealLabel.substring(1)
-        : '';
+        : 'Pasto';
+
+    // ====================== NUOVO MEALMODEL ======================
     final meal = MealModel(
       dishName: dishName,
-      calories: kcal.round(),
-      macros: {'pro': pro, 'carb': carb, 'fat': fat},
+      calories: calories.round(),
+      proteinG: proteinG,
+      carbsG: carbsG,
+      fatG: fatG,
+      portionGrams: null, // Gemini non restituisce ancora grammatura totale
+      ingredients: ingredients,
       timestamp: timeStr,
       mealType: mealType,
       rawAiAnalysis: advice,
+      aiConfidence: 0.85, // default (migliorabile in futuro con score Gemini)
     );
 
     await firestore.runTransaction((tx) async {
-      // 1. Aggiungi pasto in meals subcollection
+      // 1. Salva pasto nella subcollection (usa il nuovo toFirestore())
       final mealRef = mealsRef.doc();
       tx.set(mealRef, meal.toFirestore());
 
-      // 2. Leggi daily_log corrente per aggregare nutrition_summary
+      // 2. Leggi daily_log corrente per aggregare
       final dailySnap = await tx.get(dailyRef);
       final currentData = dailySnap.data() ?? {};
       final existingSummary = currentData['nutrition_summary'] as Map<String, dynamic>? ?? {};
 
-      final totalKcal = _num(existingSummary['total_kcal'] ?? 0) + kcal;
-      final totalProtein = _num(existingSummary['total_protein'] ?? 0) + pro;
-      final totalCarbs = _num(existingSummary['total_carbs'] ?? 0) + carb;
-      final totalFat = _num(existingSummary['total_fat'] ?? 0) + fat;
+      // Aggregazione con chiavi nuove (_g) + retro-compatibilità
+      final totalKcal = _num(existingSummary['total_kcal'] ?? 0) + calories;
+      final totalProtein = _num(existingSummary['total_protein_g'] ?? existingSummary['total_protein'] ?? 0) + proteinG;
+      final totalCarbs = _num(existingSummary['total_carbs_g'] ?? existingSummary['total_carbs'] ?? 0) + carbsG;
+      final totalFat = _num(existingSummary['total_fat_g'] ?? existingSummary['total_fat'] ?? 0) + fatG;
+
       final mealsCount = (existingSummary['meals_count'] as int? ?? 0) + 1;
+
       final longevitySum = _num(existingSummary['_longevity_sum'] ?? 0) +
           (longevityScore > 0 ? longevityScore : 0);
       final longevityCount = (existingSummary['_longevity_count'] as int? ?? 0) +
@@ -95,9 +111,9 @@ class NutritionService {
 
       final nutritionSummary = <String, dynamic>{
         'total_kcal': totalKcal.round(),
-        'total_protein': totalProtein.round(),
-        'total_carbs': totalCarbs.round(),
-        'total_fat': totalFat.round(),
+        'total_protein_g': totalProtein.round(),   // ← nuova chiave standard
+        'total_carbs_g': totalCarbs.round(),       // ← nuova chiave standard
+        'total_fat_g': totalFat.round(),           // ← nuova chiave standard
         'meals_count': mealsCount,
         'avg_longevity_score': longevityCount > 0
             ? (longevitySum / longevityCount).toStringAsFixed(1)
@@ -106,17 +122,17 @@ class NutritionService {
         '_longevity_count': longevityCount,
       };
 
-      // 3. Aggiorna daily_log con nutrition_summary + nutrition_gemini (retrocompatibilità)
+      // 3. Aggiorna daily_log
       tx.set(dailyRef, {
         'date': dateStr,
         'nutrition_summary': nutritionSummary,
-        'nutrition_gemini': nutritionGemini,
+        'nutrition_gemini': nutritionGemini, // mantenuto per retro-compatibilità
         'timestamp': Timestamp.fromDate(now),
       }, SetOptions(merge: true));
     });
   }
 
-  /// Legge il profilo, costruisce il prompt nutrizione, chiama Gemini e salva il testo su `daily_logs/{oggi}.weekly_meal_plan`.
+  /// Genera piano settimanale (metodo invariato)
   Future<void> generateInitialMealPlan(String uid) async {
     final firestore = FirebaseFirestore.instance;
     final profileDoc = await firestore
@@ -173,10 +189,9 @@ class NutritionService {
     return prefix ?? 'Piatto';
   }
 
-  double _num(dynamic v) => (v is num) ? v.toDouble() : double.tryParse(v.toString()) ?? 0;
+  double _num(dynamic v) => (v is num) ? v.toDouble() : double.tryParse(v.toString()) ?? 0.0;
 
-  /// Livello 1: Legge i pasti del giorno per domande tipo "Com'è andato il pranzo?".
-  /// Ritorna lista di MealModel ordinati per timestamp.
+  /// Livello 1: Legge i pasti del giorno (ordinati per orario).
   Future<List<MealModel>> getMealsForDay(String uid, String dateStr) async {
     final snapshot = await FirebaseFirestore.instance
         .collection('users')
@@ -192,8 +207,7 @@ class NutritionService {
         .toList();
   }
 
-  /// Stream delle date (YYYY-MM-DD) che hanno almeno un pasto.
-  /// Su Windows usa polling per evitare errori "non-platform thread".
+  /// Stream delle date che hanno almeno un pasto.
   Stream<List<String>> mealDatesStream(String uid) {
     final query = FirebaseFirestore.instance
         .collection('users')
@@ -206,8 +220,7 @@ class NutritionService {
     });
   }
 
-  /// Stream dei pasti del giorno per aggiornamenti real-time.
-  /// Su Windows usa polling per evitare errori "non-platform thread".
+  /// Stream dei pasti del giorno (real-time).
   Stream<List<MealModel>> mealsForDayStream(String uid, String dateStr) {
     final query = FirebaseFirestore.instance
         .collection('users')
