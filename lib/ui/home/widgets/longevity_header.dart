@@ -1,5 +1,4 @@
-import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
-import 'package:fitai_analyzer/providers/providers.dart';
+import 'package:fitai_analyzer/providers/today_longevity_metrics_provider.dart';
 import 'package:fitai_analyzer/theme/app_card_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,43 +10,7 @@ class LongevityHeader extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final package = ref.watch(longevityHomePackageProvider).valueOrNull;
-    final activities = ref.watch(activitiesStreamProvider).valueOrNull ?? [];
-    final dailyHealth = ref.watch(dailyHealthStreamProvider).valueOrNull ?? [];
-    final todayStr = DateTime.now().toIso8601String().split('T')[0];
-
-    final todayActivities = activities.where((d) {
-      final key =
-          '${d.date.year}-${d.date.month.toString().padLeft(2, '0')}-${d.date.day.toString().padLeft(2, '0')}';
-      return key == todayStr;
-    }).toList();
-
-    double steps = 0;
-    final todayDailyHealth = dailyHealth
-        .where((d) => (d['date'] as String?) == todayStr)
-        .firstOrNull;
-    if (todayDailyHealth != null) {
-      final stats = todayDailyHealth['stats'] as Map<String, dynamic>?;
-      if (stats != null) {
-        final s = stats['totalSteps'] ?? stats['userSteps'];
-        if (s != null) steps = (s as num).toDouble();
-      }
-    }
-    final caloriesFromActivities = todayActivities.fold<double>(
-      0,
-      (s, d) => s + (d.calories ?? 0),
-    );
-
-    // Fallback: calorie aggregate da daily_logs se lo stream attività è ancora vuoto.
-    final caloriesBurned = caloriesFromActivities > 0
-        ? caloriesFromActivities
-        : (package?.today?.totalBurnedKcalForAggregation ?? 0);
-    double caloriesIntake = 0;
-    final todayNut = package?.today?.nutritionForAi;
-    if (todayNut != null && todayNut.isNotEmpty) {
-      final cal = todayNut['total_calories'] ?? todayNut['total_kcal'];
-      caloriesIntake = (cal as num?)?.toDouble() ?? 0;
-    }
+    final m = ref.watch(todayLongevityMetricsProvider);
 
     final theme = Theme.of(context);
     final cardTheme = theme.extension<AppCardTheme>();
@@ -99,7 +62,7 @@ class LongevityHeader extends ConsumerWidget {
                   child: _MetricChip(
                     icon: Icons.directions_walk,
                     label: 'Passi',
-                    value: steps > 0 ? steps.toStringAsFixed(0) : '—',
+                    value: m.steps > 0 ? m.steps.toStringAsFixed(0) : '—',
                     color: cardTheme?.contentColor ?? theme.colorScheme.primary,
                   ),
                 ),
@@ -107,8 +70,8 @@ class LongevityHeader extends ConsumerWidget {
                   child: _MetricChip(
                     icon: Icons.local_fire_department,
                     label: 'Bruciate',
-                    value: caloriesBurned > 0
-                        ? '${caloriesBurned.toStringAsFixed(0)} kcal'
+                    value: m.caloriesBurned > 0
+                        ? '${m.caloriesBurned.toStringAsFixed(0)} kcal'
                         : '—',
                     color: cardTheme?.contentColor ?? theme.colorScheme.primary,
                   ),
@@ -117,8 +80,8 @@ class LongevityHeader extends ConsumerWidget {
                   child: _MetricChip(
                     icon: Icons.restaurant,
                     label: 'Assunte',
-                    value: caloriesIntake > 0
-                        ? '${caloriesIntake.toStringAsFixed(0)} kcal'
+                    value: m.caloriesIntake > 0
+                        ? '${m.caloriesIntake.toStringAsFixed(0)} kcal'
                         : '—',
                     color: cardTheme?.contentColor ?? theme.colorScheme.primary,
                   ),

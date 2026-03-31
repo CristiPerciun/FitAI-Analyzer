@@ -1,17 +1,21 @@
-import 'package:flutter/material.dart';
-import 'package:fitai_analyzer/models/meal_model.dart';
+import 'dart:ui';
 
-class NutritionChartCard extends StatefulWidget {
+import 'package:fitai_analyzer/models/meal_model.dart';
+import 'package:fitai_analyzer/providers/today_longevity_metrics_provider.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class NutritionChartCard extends ConsumerStatefulWidget {
   // Passiamo la lista di tutti i goal per estrarre i dati di Carbi, Proteine e Grassi
   final List<NutrientGoal> allGoals;
 
   const NutritionChartCard({super.key, required this.allGoals});
 
   @override
-  State<NutritionChartCard> createState() => _NutritionChartCardState();
+  ConsumerState<NutritionChartCard> createState() => _NutritionChartCardState();
 }
 
-class _NutritionChartCardState extends State<NutritionChartCard> {
+class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
 
@@ -25,49 +29,75 @@ class _NutritionChartCardState extends State<NutritionChartCard> {
 
   @override
   Widget build(BuildContext context) {
+    final metrics = ref.watch(todayLongevityMetricsProvider);
     // ESTRAZIONE DATI REALI DAL PROGETTO
     final calGoal = _getGoalByTitle("Calorie");
     final carbGoal = _getGoalByTitle("Carb");
     final protGoal = _getGoalByTitle("Prot");
-    final fatGoal = _getGoalByTitle("Grass"); // O "Fat" a seconda della lingua nel DB
+    final fatGoal = _getGoalByTitle("Grass");
 
-    // Calcolo valori reali (Ultimo giorno dei dati settimanali)
+    // Calcolo valori reali
     double targetCal = calGoal.target;
-    double foodCal = calGoal.weeklyData.isNotEmpty ? calGoal.weeklyData.last.value : 0;
-    
-    // Per l'esercizio, nel progetto FitAI solitamente c'è un provider a parte, 
-    // se non lo hai passalo come parametro. Per ora usiamo 0 come default reale.
-    double exercise = 0; 
-    double remainingCal = targetCal - foodCal + exercise;
+    double foodCal = calGoal.weeklyData.isNotEmpty
+        ? calGoal.weeklyData.last.value
+        : 0;
 
+    final double exercise = metrics.caloriesBurned;
+    final double remainingCal = targetCal - foodCal + exercise;
     return Container(
       width: MediaQuery.of(context).size.width * 0.90,
       margin: const EdgeInsets.symmetric(vertical: 10),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A), // Tema scuro originale
+        color: const Color(0xFF1A1A1A),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: PageView(
-              controller: _pageController,
-              onPageChanged: (int page) => setState(() => _currentPage = page),
-              children: [
-                // PAGINA 1: TODAY (Calorie reali)
-                _buildTodayPage(remainingCal, targetCal, foodCal, exercise, calGoal.color),
-                // PAGINA 2: MACROS (Carbi, Grassi, Proteine reali)
-                _buildMacrosPage(carbGoal, fatGoal, protGoal),
-              ],
+          SizedBox(
+            height: 240,
+            child: ScrollConfiguration(
+              behavior: ScrollConfiguration.of(context).copyWith(
+                dragDevices: {
+                  PointerDeviceKind.touch,
+                  PointerDeviceKind.mouse,
+                  PointerDeviceKind.trackpad,
+                },
+              ),
+              child: PageView(
+                controller: _pageController,
+                physics: const BouncingScrollPhysics(),
+                onPageChanged: (int page) {
+                  setState(() {
+                    _currentPage = page;
+                  });
+                },
+                children: [
+                  _buildTodayPage(
+                    remainingCal,
+                    targetCal,
+                    foodCal,
+                    exercise,
+                    calGoal.color,
+                  ),
+                  _buildMacrosPage(carbGoal, fatGoal, protGoal),
+                  _buildInsightsPage(),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 10),
+
+          const SizedBox(height: 15),
+
           // INDICATORE PUNTINI
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(2, (index) => _buildDot(index == _currentPage)),
+            children: List.generate(
+              3,
+              (index) => _buildDot(index == _currentPage),
+            ),
           ),
         ],
       ),
@@ -185,7 +215,47 @@ class _NutritionChartCardState extends State<NutritionChartCard> {
       ],
     );
   }
-
+Widget _buildInsightsPage() {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Text("AI Insights", 
+        style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 20),
+      Container(
+        padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(
+          color: Colors.blueAccent.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: Colors.blueAccent.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.auto_awesome, color: Colors.blueAccent, size: 30),
+            const SizedBox(width: 15),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Analisi Odierna", 
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                  const SizedBox(height: 5),
+                  Text(
+                    "Stai andando forte! Hai assunto abbastanza proteine. Ricorda di bere più acqua per ottimizzare il metabolismo.",
+                    style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 15),
+      // Un piccolo indicatore extra (es: Acqua o Fibre)
+      _legendItem(Icons.water_drop, "Hydration", "1.5 / 2.5 L", Colors.cyan),
+    ],
+  );
+}
   Widget _buildDot(bool active) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 4),
