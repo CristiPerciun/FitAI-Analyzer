@@ -1,117 +1,196 @@
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:fitai_analyzer/models/meal_model.dart';
 
-class NutritionChartCard extends StatelessWidget {
-  
-  final NutrientGoal goal;
+class NutritionChartCard extends StatefulWidget {
+  // Passiamo la lista di tutti i goal per estrarre i dati di Carbi, Proteine e Grassi
+  final List<NutrientGoal> allGoals;
 
-  const NutritionChartCard({super.key, required this.goal});
+  const NutritionChartCard({super.key, required this.allGoals});
+
+  @override
+  State<NutritionChartCard> createState() => _NutritionChartCardState();
+}
+
+class _NutritionChartCardState extends State<NutritionChartCard> {
+  final PageController _pageController = PageController();
+  int _currentPage = 0;
+
+  // Helper per trovare il goal specifico nella lista del progetto
+  NutrientGoal _getGoalByTitle(String titlePart) {
+    return widget.allGoals.firstWhere(
+      (g) => g.title.toLowerCase().contains(titlePart.toLowerCase()),
+      orElse: () => widget.allGoals.first,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    // ESTRAZIONE DATI REALI DAL PROGETTO
+    final calGoal = _getGoalByTitle("Calorie");
+    final carbGoal = _getGoalByTitle("Carb");
+    final protGoal = _getGoalByTitle("Prot");
+    final fatGoal = _getGoalByTitle("Grass"); // O "Fat" a seconda della lingua nel DB
+
+    // Calcolo valori reali (Ultimo giorno dei dati settimanali)
+    double targetCal = calGoal.target;
+    double foodCal = calGoal.weeklyData.isNotEmpty ? calGoal.weeklyData.last.value : 0;
+    
+    // Per l'esercizio, nel progetto FitAI solitamente c'è un provider a parte, 
+    // se non lo hai passalo come parametro. Per ora usiamo 0 come default reale.
+    double exercise = 0; 
+    double remainingCal = targetCal - foodCal + exercise;
+
     return Container(
-      width: MediaQuery.of(context).size.width * 0.85, // Prende l'85% della larghezza
-      margin: const EdgeInsets.only(right: 16),
+      width: MediaQuery.of(context).size.width * 0.90,
+      margin: const EdgeInsets.symmetric(vertical: 10),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A), // Colore scuro tipico del progetto
+        color: const Color(0xFF1A1A1A), // Tema scuro originale
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    goal.title.toUpperCase(),
-                    style: TextStyle(color: Colors.grey[500], fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    "${goal.target.round()} ${goal.unit}",
-                    style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text("TARGET INVICTUS", style: TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.bold)),
-              )
-            ],
-          ),
-          const SizedBox(height: 30),
           Expanded(
-            child: BarChart(
-              BarChartData(
-                alignment: BarChartAlignment.spaceAround,
-                maxY: goal.target * 1.5, // Lascia spazio sopra la linea target
-                barTouchData: BarTouchData(enabled: true),
-                titlesData: FlTitlesData(
-                  show: true,
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      getTitlesWidget: (value, meta) {
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 8.0),
-                          child: Text(goal.weeklyData[value.toInt()].day, style: const TextStyle(color: Colors.grey, fontSize: 10)),
-                        );
-                      },
-                    ),
-                  ),
-                  leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                ),
-                gridData: const FlGridData(show: false),
-                borderData: FlBorderData(show: false),
-                // LA LINEA TRATTEGGIATA (Target)
-                extraLinesData: ExtraLinesData(
-                  horizontalLines: [
-                    HorizontalLine(
-                      y: goal.target,
-                      color: Colors.green.withOpacity(0.8),
-                      strokeWidth: 2,
-                      dashArray: [5, 5], // Crea l'effetto tratteggiato
-                      label: HorizontalLineLabel(
-                        show: true,
-                        alignment: Alignment.topRight,
-                        style: const TextStyle(color: Colors.green, fontSize: 9),
-                        labelResolver: (line) => 'GOAL',
-                      ),
-                    ),
-                  ],
-                ),
-                barGroups: goal.weeklyData.asMap().entries.map((entry) {
-                  return BarChartGroupData(
-                    x: entry.key,
-                    barRods: [
-                      BarChartRodData(
-                        toY: entry.value.value,
-                        color: entry.value.value > goal.target && goal.title == "Zuccheri" 
-                            ? Colors.redAccent 
-                            : goal.color,
-                        width: 12,
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
-                      ),
-                    ],
-                  );
-                }).toList(),
-              ),
+            child: PageView(
+              controller: _pageController,
+              onPageChanged: (int page) => setState(() => _currentPage = page),
+              children: [
+                // PAGINA 1: TODAY (Calorie reali)
+                _buildTodayPage(remainingCal, targetCal, foodCal, exercise, calGoal.color),
+                // PAGINA 2: MACROS (Carbi, Grassi, Proteine reali)
+                _buildMacrosPage(carbGoal, fatGoal, protGoal),
+              ],
             ),
+          ),
+          const SizedBox(height: 10),
+          // INDICATORE PUNTINI
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(2, (index) => _buildDot(index == _currentPage)),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildTodayPage(double rem, double target, double food, double ex, Color accentColor) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text("Today", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+        Text("Remaining = Goal - Food + Exercise", style: TextStyle(color: Colors.grey[600], fontSize: 11)),
+        const SizedBox(height: 25),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                SizedBox(
+                  width: 115, height: 115,
+                  child: CircularProgressIndicator(
+                    value: (food / target).clamp(0, 1),
+                    strokeWidth: 9,
+                    backgroundColor: Colors.white.withOpacity(0.05),
+                    valueColor: AlwaysStoppedAnimation<Color>(accentColor),
+                    strokeCap: StrokeCap.round,
+                  ),
+                ),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text("${rem.toInt()}", style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold)),
+                    Text("Remaining", style: TextStyle(color: Colors.grey[500], fontSize: 10)),
+                  ],
+                )
+              ],
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _legendItem(Icons.flag, "Base Goal", "${target.toInt()}", Colors.grey),
+                const SizedBox(height: 12),
+                _legendItem(Icons.restaurant, "Food", "${food.toInt()}", Colors.blueAccent),
+                const SizedBox(height: 12),
+                _legendItem(Icons.local_fire_department, "Exercise", "${ex.toInt()}", Colors.orangeAccent),
+              ],
+            )
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMacrosPage(NutrientGoal carbs, NutrientGoal fats, NutrientGoal proteins) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text("Macros", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 30),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _macroCircle(carbs, "Carbs"),
+            _macroCircle(fats, "Fats"),
+            _macroCircle(proteins, "Proteins"),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _macroCircle(NutrientGoal goal, String label) {
+    double consumed = goal.weeklyData.isNotEmpty ? goal.weeklyData.last.value : 0;
+    double target = goal.target;
+    double left = target - consumed;
+
+    return Column(
+      children: [
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            SizedBox(
+              width: 65, height: 65,
+              child: CircularProgressIndicator(
+                value: (consumed / target).clamp(0, 1),
+                strokeWidth: 6,
+                backgroundColor: Colors.white.withOpacity(0.05),
+                valueColor: AlwaysStoppedAnimation<Color>(goal.color),
+                strokeCap: StrokeCap.round,
+              ),
+            ),
+            Text("${consumed.toInt()}/${target.toInt()}", style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(label, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500)),
+        Text("${left.toInt()}g left", style: TextStyle(color: Colors.grey[600], fontSize: 10)),
+      ],
+    );
+  }
+
+  Widget _legendItem(IconData icon, String label, String val, Color col) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: col),
+        const SizedBox(width: 8),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: TextStyle(color: Colors.grey[500], fontSize: 10)),
+            Text(val, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+          ],
+        )
+      ],
+    );
+  }
+
+  Widget _buildDot(bool active) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      height: 8, width: 8,
+      decoration: BoxDecoration(color: active ? Colors.blue : Colors.white24, shape: BoxShape.circle),
     );
   }
 }

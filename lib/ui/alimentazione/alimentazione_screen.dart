@@ -24,7 +24,6 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, Tar
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:fitai_analyzer/ui/widgets/NutritionChartCard.dart';
-import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:fitai_analyzer/utils/activity_utils.dart';
 
 double? _macroNum(Map<String, dynamic>? m, List<String> keys) {
@@ -349,31 +348,53 @@ class AlimentazioneScreen extends ConsumerWidget {
                 },
               )
             else
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '$obiettivoKcal − $calorieAssunte = $rimanenti',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            fontFeatures: const [FontFeature.tabularFigures()],
-                          ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Obiettivo − Calorie assunte = Rimanenti',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                    ),
-                  ],
-                ),
+              Consumer(
+                builder: (context, ref, _) {
+                  // Recuperiamo i dati settimanali aggiornati per i grafici
+                  final chartAsync = ref.watch(nutritionChartDataProvider);
+                  final profile = ref.watch(userProfileNotifierProvider).profile;
+
+                  return chartAsync.when(
+                    data: (chartData) {
+                      // Costruiamo la lista di obiettivi reali per la card
+                      final goals = <NutrientGoal>[
+                        NutrientGoal(
+                          title: 'Calorie',
+                          unit: 'kcal',
+                          target: obiettivoKcal.toDouble(),
+                          color: Colors.blueAccent,
+                          weeklyData: chartData.caloriesData,
+                        ),
+                        NutrientGoal(
+                          title: 'Carboidrati',
+                          unit: 'g',
+                          target: _macroNum(aiMacroGiornalieri, ['carboidrati_g', 'carbs_g']) ?? 250.0,
+                          color: Colors.greenAccent,
+                          weeklyData: chartData.carbsData, 
+                        ),
+                        NutrientGoal(
+                          title: 'Proteine',
+                          unit: 'g',
+                          target: _macroNum(aiMacroGiornalieri, ['proteine_g', 'protein_g']) ?? 
+                                  (profile != null ? nutritionGoal.proteinGPerKg * profile.weightKg : 150.0),
+                          color: Colors.purpleAccent,
+                          weeklyData: chartData.proteinData,
+                        ),
+                        NutrientGoal(
+                          title: 'Grassi',
+                          unit: 'g',
+                          target: _macroNum(aiMacroGiornalieri, ['grassi_g', 'fat_g']) ?? 70.0,
+                          color: Colors.orangeAccent,
+                          weeklyData: chartData.fatData,
+                        ),
+                      ];
+
+                      return NutritionChartCard(allGoals: goals);
+                    },
+                    loading: () => const SizedBox(height: 200, child: Center(child: CircularProgressIndicator())),
+                    error: (e, __) => Text("Errore dati: $e"),
+                  );
+                },
               ),
 
             if (nutritionGoal != null) ...[
@@ -446,7 +467,7 @@ class AlimentazioneScreen extends ConsumerWidget {
                   ]),
 
             const SizedBox(height: 24),
-            _buildWeeklyChartsSection(context, ref, nutritionGoal, aiMacroGiornalieri),
+          //  _buildWeeklyChartsSection(context, ref, nutritionGoal, aiMacroGiornalieri),
             const SizedBox(height: 40),
           ],
         ),
@@ -488,7 +509,7 @@ class AlimentazioneScreen extends ConsumerWidget {
     ];
   }
 
-  // ====================== SEZIONE GRAFICO IN BASSO ======================
+/*  // ====================== SEZIONE GRAFICO IN BASSO ======================
   Widget _buildWeeklyChartsSection(
     BuildContext context,
     WidgetRef ref,
@@ -515,104 +536,7 @@ class AlimentazioneScreen extends ConsumerWidget {
             ? (nutritionGoal.calorieTarget * nutritionGoal.fatPercentage / 100) / 9.0
             : 70.0);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Trend Settimanale Nutrizione',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 12),
-        chartAsync.when(
-          data: (chartData) {
-            final goals = <NutrientGoal>[
-              NutrientGoal(
-                title: 'Calorie',
-                unit: 'kcal',
-                target: kcalTarget,
-                color: Colors.blueAccent,
-                weeklyData: chartData.caloriesData,
-              ),
-              NutrientGoal(
-                title: 'Proteine',
-                unit: 'g',
-                target: proteinTarget,
-                color: Colors.purpleAccent,
-                weeklyData: chartData.proteinData,
-              ),
-              NutrientGoal(
-                title: 'Grassi',
-                unit: 'g',
-                target: fatTarget,
-                color: Colors.orangeAccent,
-                weeklyData: chartData.fatData,
-              ),
-            ];
-
-            return SizedBox(
-              height: 340,
-              child: ScrollConfiguration(
-                behavior: MyCustomScrollBehavior(),
-                child: PageView.builder(
-                  controller: AlimentazioneScreen._chartPageController,
-                  physics: const BouncingScrollPhysics(),
-                  itemCount: goals.length,
-                  itemBuilder: (context, index) {
-                    return AnimatedBuilder(
-                      animation: AlimentazioneScreen._chartPageController,
-                      builder: (context, child) {
-                        double value = 0.0;
-                        if (AlimentazioneScreen._chartPageController.position.haveDimensions) {
-                          value = (AlimentazioneScreen._chartPageController.page ?? 0) - index;
-                        } else {
-                          value = 0.0 - index;
-                        }
-                        final scale = (1 - (value.abs() * 0.15)).clamp(0.85, 1.0);
-                        final opacity = (1 - (value.abs() * 0.4)).clamp(0.5, 1.0);
-
-                        return Transform.scale(
-                          scale: scale,
-                          child: Opacity(
-                            opacity: opacity,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-                              child: NutritionChartCard(goal: goals[index]),
-                            ),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-            );
-          },
-          loading: () => const SizedBox(
-            height: 340,
-            child: Center(child: CircularProgressIndicator()),
-          ),
-          error: (error, stack) => SizedBox(
-            height: 340,
-            child: Center(child: Text('Errore caricamento grafico: $error')),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Center(  
-          child: SmoothPageIndicator(
-            controller: AlimentazioneScreen._chartPageController,
-            count: 3,
-            effect: ExpandingDotsEffect(
-              dotHeight: 8,
-              dotWidth: 8,
-              activeDotColor: cs.primary,
-              dotColor: cs.outlineVariant,
-              expansionFactor: 3,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+  }*/
 
   Future<void> _onGenerateNutritionMealPlan(BuildContext context, WidgetRef ref) async {
     var uid = ref.read(authNotifierProvider).user?.uid;

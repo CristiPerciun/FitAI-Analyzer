@@ -45,6 +45,7 @@ final nutritionChartDataProvider = FutureProvider<NutritionChartData>((ref) asyn
   final caloriesData = <DailyNutrient>[];
   final proteinData = <DailyNutrient>[];
   final fatData = <DailyNutrient>[];
+  final carbsData = <DailyNutrient>[];
 
   for (var i = 0; i < 7; i++) {
     final d = oldest.add(Duration(days: i));
@@ -54,12 +55,14 @@ final nutritionChartDataProvider = FutureProvider<NutritionChartData>((ref) asyn
     caloriesData.add(DailyNutrient(label, log?.totalKcal ?? 0));
     proteinData.add(DailyNutrient(label, log?.totalProteinG ?? 0));
     fatData.add(DailyNutrient(label, log?.totalFatG ?? 0));
+    carbsData.add(DailyNutrient(label, log?.totalCarbsG ?? 0));
   }
 
   return NutritionChartData(
     caloriesData: caloriesData,
     proteinData: proteinData,
     fatData: fatData,
+    carbsData: carbsData,
   );
 });
 
@@ -67,11 +70,13 @@ class NutritionChartData {
   final List<DailyNutrient> caloriesData;
   final List<DailyNutrient> proteinData;
   final List<DailyNutrient> fatData;
+  final List<DailyNutrient> carbsData;
 
   const NutritionChartData({
     required this.caloriesData,
     required this.proteinData,
     required this.fatData,
+    required this.carbsData,
   });
 
   factory NutritionChartData.empty() {
@@ -87,6 +92,7 @@ class NutritionChartData {
       caloriesData: List.generate(7, z),
       proteinData: List.generate(7, z),
       fatData: List.generate(7, z),
+      carbsData: List.generate(7, z),
     );
   }
 }
