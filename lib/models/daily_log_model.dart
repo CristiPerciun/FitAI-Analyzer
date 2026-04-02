@@ -71,41 +71,34 @@ class DailyLogModel {
     required this.timestamp,
   });
 
-  // ==================== GETTER NUTRIZIONALI (Nuova struttura coerente) ====================
+  // ==================== GETTER NUTRIZIONALI (Riparati contro i crash di tipo) ====================
 
-  double get totalKcal =>
-      (nutritionSummary['total_kcal'] as num?)?.toDouble() ?? 0.0;
+  double get totalKcal => _parseSafeDouble(nutritionSummary['total_kcal']);
 
-  double get totalProteinG =>
-      (nutritionSummary['total_protein_g'] as num? ??
-              nutritionSummary['total_protein'] ??
-              0)
-          .toDouble();
+  double get totalProteinG => _parseSafeDouble(
+      nutritionSummary['total_protein_g'] ?? nutritionSummary['total_protein']);
 
-  double get totalCarbsG =>
-      (nutritionSummary['total_carbs_g'] as num? ??
-              nutritionSummary['total_carbs'] ??
-              0)
-          .toDouble();
+  double get totalCarbsG => _parseSafeDouble(
+      nutritionSummary['total_carbs_g'] ?? nutritionSummary['total_carbs']);
 
-  double get totalFatG =>
-      (nutritionSummary['total_fat_g'] as num? ??
-              nutritionSummary['total_fat'] ??
-              0)
-          .toDouble();
+  double get totalFatG => _parseSafeDouble(
+      nutritionSummary['total_fat_g'] ?? nutritionSummary['total_fat']);
 
-  int get mealsCount => (nutritionSummary['meals_count'] as int?) ?? 0;
+  int get mealsCount {
+    final val = nutritionSummary['meals_count'];
+    if (val is int) return val;
+    if (val is String) return int.tryParse(val) ?? 0;
+    return 0;
+  }
 
-  double? get avgLongevityScore =>
-      (nutritionSummary['avg_longevity_score'] as num?)?.toDouble();
+  double? get avgLongevityScore {
+    final val = nutritionSummary['avg_longevity_score'];
+    if (val == null) return null;
+    return _parseSafeDouble(val);
+  }
 
-  /// Getter principale per inviare dati all'IA (goal, consigli, analisi).
-  /// Chiavi sempre standardizzate e coerenti con MealModel.
   Map<String, dynamic> get nutritionForAi {
-    if (nutritionSummary.isEmpty) {
-      return {};
-    }
-
+    if (nutritionSummary.isEmpty) return {};
     return {
       'total_calories': totalKcal,
       'protein_g': totalProteinG,
@@ -114,6 +107,13 @@ class DailyLogModel {
       'avg_longevity_score': avgLongevityScore ?? 0.0,
     };
   }
+
+  double _parseSafeDouble(dynamic value) {
+  if (value == null) return 0.0;
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value) ?? 0.0;
+  return 0.0;
+}
 
   // ==================== GETTER ATTIVITÀ (ripristinato per evitare errori) ====================
 

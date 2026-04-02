@@ -2,9 +2,10 @@ import 'dart:typed_data';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitai_analyzer/models/meal_model.dart';
-import 'package:fitai_analyzer/models/user_profile.dart' show NutritionGoal;
+//import 'package:fitai_analyzer/models/user_profile.dart' show NutritionGoal;
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/nutrition_chart_provider.dart';
+import 'package:fitai_analyzer/providers/nutrition_meal_edit_provider.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/providers/user_profile_notifier.dart';
 import 'package:fitai_analyzer/ui/onboarding/nutrition_goal_screen.dart';
@@ -24,7 +25,8 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, Tar
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:fitai_analyzer/ui/widgets/NutritionChartCard.dart';
-import 'package:fitai_analyzer/utils/activity_utils.dart';
+//import 'package:fitai_analyzer/utils/activity_utils.dart';
+import 'package:fitai_analyzer/ui/home/widgets/manual_entry_dialog.dart';
 
 double? _macroNum(Map<String, dynamic>? m, List<String> keys) {
   if (m == null) return null;
@@ -60,18 +62,23 @@ bool get _isCameraSupported =>
     (defaultTargetPlatform == TargetPlatform.iOS ||
         defaultTargetPlatform == TargetPlatform.android);
 
+String _nutritionAdviceString(dynamic v) {
+  if (v == null) return '';
+  if (v is String) return v;
+  return v.toString();
+}
+
+List<dynamic> _nutritionFoodsList(dynamic v) {
+  if (v is List) return List<dynamic>.from(v);
+  return [];
+}
+
 class AlimentazioneScreen extends ConsumerWidget {
   const AlimentazioneScreen({super.key});
 
   static final PageController _chartPageController = PageController();
 
-  Future<void> _onAnalisiPiatto(
-    BuildContext context,
-    WidgetRef ref, {
-    String? mealLabel,
-    String? dateStr,
-    ImageSource imageSource = ImageSource.camera,
-  }) async {
+  Future<String?> _ensureNutritionUid(BuildContext context, WidgetRef ref) async {
     var uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
       try {
@@ -81,13 +88,25 @@ class AlimentazioneScreen extends ConsumerWidget {
         if (context.mounted) {
           showErrorDialog(context, 'Impossibile autenticarsi. Riprova. ($e)');
         }
-        return;
+        return null;
       }
       if (uid == null && context.mounted) {
         showErrorDialog(context, 'Utente non autenticato.');
-        return;
+        return null;
       }
     }
+    return uid;
+  }
+
+  Future<void> _onAnalisiPiatto(
+    BuildContext context,
+    WidgetRef ref, {
+    String? mealLabel,
+    String? dateStr,
+    ImageSource imageSource = ImageSource.camera,
+  }) async {
+    final uid = await _ensureNutritionUid(context, ref);
+    if (uid == null) return;
 
     final apiKeyService = ref.read(geminiApiKeyServiceProvider);
     if (!await apiKeyService.hasValidKey()) {
@@ -129,7 +148,7 @@ class AlimentazioneScreen extends ConsumerWidget {
       }
 
       if (context.mounted) {
-        _showNutritionDialog(context, ref, result, uid: uid!, mealLabel: mealLabel, dateStr: dateStr);
+        _showNutritionDialog(context, ref, result, uid: uid, mealLabel: mealLabel, dateStr: dateStr);
       }
     } catch (e) {
       if (context.mounted) {
@@ -147,13 +166,14 @@ class AlimentazioneScreen extends ConsumerWidget {
     String? mealLabel,
     String? dateStr,
   }) {
-    final advice = nut['advice'] ?? '';
-    final foods = nut['foods'] as List<dynamic>? ?? [];
+    final advice = _nutritionAdviceString(nut['advice']);
+    final foods = _nutritionFoodsList(nut['foods']);
 
-    showDialog(
+    ref.read(nutritionMealEditProvider.notifier).beginFrom(nut);
+
+    showDialog<void>(
       context: context,
       builder: (ctx) => _NutritionEditDialog(
-        initialNut: nut,
         advice: advice,
         foods: foods,
         onSave: (modifiedNut) async {
@@ -175,7 +195,9 @@ class AlimentazioneScreen extends ConsumerWidget {
           }
         },
       ),
-    );
+    ).whenComplete(() {
+      ref.read(nutritionMealEditProvider.notifier).clear();
+    });
   }
 
   void _showAggiungiPastoSheet(
@@ -223,10 +245,37 @@ class AlimentazioneScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
-                  onPressed: () {
+                  onPressed: () async {
                     Navigator.of(ctx).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Inserimento manuale $mealLabel (in arrivo)')),
+
+                    if (!context.mounted) return;
+                    final apiKeyService = ref.read(geminiApiKeyServiceProvider);
+                    if (!await apiKeyService.hasValidKey()) {
+                      final saved = await showGeminiApiKeyDialog(context, ref);
+                      if (!saved || !context.mounted) return;
+                    }
+
+                    final uid = await _ensureNutritionUid(context, ref);
+                    if (uid == null || !context.mounted) return;
+
+                    final result = await showDialog<Map<String, dynamic>>(
+                      context: context,
+                      builder: (_) => const ManualEntryDialog(),
+                    );
+
+                    if (result == null || !context.mounted) return;
+                    if (result.containsKey('error')) {
+                      showErrorDialog(context, result['error']?.toString() ?? 'Errore');
+                      return;
+                    }
+
+                    _showNutritionDialog(
+                      context,
+                      ref,
+                      result,
+                      uid: uid,
+                      mealLabel: mealLabel,
+                      dateStr: dateStr,
                     );
                   },
                   icon: Icon(Icons.edit, color: colorScheme.primary),
@@ -748,69 +797,67 @@ class _MealTile extends StatelessWidget {
   }
 }
 
-class _NutritionEditDialog extends StatefulWidget {
+class _NutritionEditDialog extends ConsumerStatefulWidget {
   const _NutritionEditDialog({
-    required this.initialNut,
     required this.advice,
     required this.foods,
     required this.onSave,
   });
 
-  final Map<String, dynamic> initialNut;
   final String advice;
   final List<dynamic> foods;
   final void Function(Map<String, dynamic> modifiedNut) onSave;
 
   @override
-  State<_NutritionEditDialog> createState() => _NutritionEditDialogState();
+  ConsumerState<_NutritionEditDialog> createState() => _NutritionEditDialogState();
 }
 
-class _NutritionEditDialogState extends State<_NutritionEditDialog> {
-  late int _calories;
-  late int _protein;
-  late int _carbs;
-  late int _fat;
-  late int _sugar;
-
-  @override
-  void initState() {
-    super.initState();
-    _calories = (widget.initialNut['total_calories'] ?? widget.initialNut['calories'] ?? 0) as int;
-    _protein = (widget.initialNut['protein_g'] ?? widget.initialNut['protein'] ?? 0) as int;
-    _carbs = (widget.initialNut['carbs_g'] ?? widget.initialNut['carbs'] ?? 0) as int;
-    _fat = (widget.initialNut['fat_g'] ?? widget.initialNut['fat'] ?? 0) as int;
-    _sugar = (widget.initialNut['sugar_g'] ?? widget.initialNut['sugar'] ?? 0) as int;
-  }
-
-  Map<String, dynamic> _buildModifiedNut() {
-    final m = Map<String, dynamic>.from(widget.initialNut);
-    m['total_calories'] = _calories;
-    m['protein_g'] = _protein;
-    m['carbs_g'] = _carbs;
-    m['fat_g'] = _fat;
-    m['sugar_g'] = _sugar;
-    return m;
-  }
-
+class _NutritionEditDialogState extends ConsumerState<_NutritionEditDialog> {
   @override
   Widget build(BuildContext context) {
+    final draft = ref.watch(nutritionMealEditProvider);
+    if (draft == null) {
+      return const AlertDialog(content: Text('Caricamento…'));
+    }
+
     return AlertDialog(
       title: const Text('Analisi nutrizione'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _buildStepper('Calorie', _calories, (v) => setState(() => _calories = v.clamp(0, 9999)), suffix: ' kcal'),
-            _buildStepper('Proteine', _protein, (v) => setState(() => _protein = v.clamp(0, 999))),
-            _buildStepper('Carbs', _carbs, (v) => setState(() => _carbs = v.clamp(0, 999))),
-            _buildStepper('Grassi', _fat, (v) => setState(() => _fat = v.clamp(0, 999))),
-            _buildStepper('Zuccheri', _sugar, (v) => setState(() => _sugar = v.clamp(0, 999))),
+            _buildStepper(
+              'Calorie',
+              draft.calories,
+              (v) => ref.read(nutritionMealEditProvider.notifier).setCalories(v),
+              suffix: ' kcal',
+            ),
+            _buildStepper(
+              'Proteine',
+              draft.protein,
+              (v) => ref.read(nutritionMealEditProvider.notifier).setProtein(v),
+            ),
+            _buildStepper(
+              'Carbs',
+              draft.carbs,
+              (v) => ref.read(nutritionMealEditProvider.notifier).setCarbs(v),
+            ),
+            _buildStepper(
+              'Grassi',
+              draft.fat,
+              (v) => ref.read(nutritionMealEditProvider.notifier).setFat(v),
+            ),
+            _buildStepper(
+              'Zuccheri',
+              draft.sugar,
+              (v) => ref.read(nutritionMealEditProvider.notifier).setSugar(v),
+            ),
             if (widget.foods.isNotEmpty) ...[
               const SizedBox(height: 16),
               const Text('Alimenti', style: TextStyle(fontWeight: FontWeight.bold)),
               ...widget.foods.take(8).map((e) {
-                final m = e is Map ? e as Map<String, dynamic> : <String, dynamic>{};
-                return Text('• ${m['name'] ?? '?'}');
+                if (e is! Map) return const Text('• ?');
+                return Text('• ${e['name'] ?? '?'}');
               }),
             ],
             if (widget.advice.isNotEmpty) ...[
@@ -823,7 +870,14 @@ class _NutritionEditDialogState extends State<_NutritionEditDialog> {
       ),
       actions: [
         TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Annulla')),
-        FilledButton(onPressed: () => widget.onSave(_buildModifiedNut()), child: const Text('Salva')),
+        FilledButton(
+          onPressed: () {
+            final d = ref.read(nutritionMealEditProvider);
+            if (d == null) return;
+            widget.onSave(d.toModifiedNut());
+          },
+          child: const Text('Salva'),
+        ),
       ],
     );
   }

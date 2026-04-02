@@ -47,6 +47,42 @@ class GeminiService {
     return _modelNutrition!;
   }
 
+Future<Map<String, dynamic>> getFoodInfoFromText(String description) async {
+  // 1. Otteniamo il modello corretto (configurato per JSON)
+  final model = await _getModelNutrition();
+
+  final prompt = """
+    Analizza questo pasto: "$description". Sei un nutrizionista esperto.
+    Restituisci un JSON con questo schema esatto (allineato all'analisi foto):
+    {
+      "dish_name": "nome del piatto",
+      "total_calories": numero,
+      "protein_g": numero,
+      "carbs_g": numero,
+      "fat_g": numero,
+      "fiber_g": numero,
+      "sugar_g": numero,
+      "longevity_score": numero da 1 a 10,
+      "foods": [{"name": "stringa", "calories": numero, "portion": "stringa"}],
+      "advice": "un breve consiglio nutrizionale in italiano"
+    }
+    Rispondi solo con il JSON, niente testo aggiuntivo.
+  """;
+
+  try {
+    final response = await model.generateContent([Content.text(prompt)]);
+    final text = response.text;
+    if (text == null || text.isEmpty) {
+      throw Exception('Gemini non ha restituito risposta');
+    }
+    // Usiamo la tua funzione di utilità interna per pulire e parsare il JSON
+    return _parseNutritionJson(text);
+  } catch (e) {
+    print("Errore analisi testuale: $e");
+    return {'error': e.toString()};
+  }
+}
+
   void _checkApiKey(String key) {
     if (key.isEmpty || key.startsWith('INSERISCI_QUI')) {
       throw StateError(

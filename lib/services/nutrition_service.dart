@@ -57,17 +57,13 @@ class NutritionService {
     final fatG = _num(nutritionGemini['fat_g'] ?? nutritionGemini['fat'] ?? 0);
     final calories = _num(nutritionGemini['total_calories'] ?? nutritionGemini['calories'] ?? 0);
 
-    final advice = nutritionGemini['advice'] as String? ?? '';
+    final advice = _stringField(nutritionGemini['advice']);
     final longevityScore = _num(nutritionGemini['longevity_score'] ?? 0);
 
-    // Parsing ingredienti (campo già restituito da Gemini)
-    final foods = nutritionGemini['foods'] as List<dynamic>? ?? [];
-    final ingredients = foods
-        .map((f) => (f as Map<String, dynamic>?)?['name'] as String? ?? '')
-        .where((name) => name.isNotEmpty)
-        .toList();
+    // Parsing ingredienti (senza cast che possano fallire su JSON eterogeneo)
+    final ingredients = _ingredientNamesFromFoods(nutritionGemini['foods']);
 
-    final mealType = mealLabel != null
+    final mealType = (mealLabel != null && mealLabel.isNotEmpty)
         ? mealLabel.substring(0, 1).toUpperCase() + mealLabel.substring(1)
         : 'Pasto';
 
@@ -86,50 +82,61 @@ class NutritionService {
       aiConfidence: 0.85, // default (migliorabile in futuro con score Gemini)
     );
 
-    await firestore.runTransaction((tx) async {
-      // 1. Salva pasto nella subcollection (usa il nuovo toFirestore())
-      final mealRef = mealsRef.doc();
-      tx.set(mealRef, meal.toFirestore());
+    // Lettura + batch (no runTransaction): su Windows il client Firestore C++ va spesso
+    // in abort() con le transazioni; iOS/Android reggono meglio ma il batch è equivalente
+    // per questo flusso (piccola race se due salvataggi simultanei sullo stesso giorno).
+    final dailySnap = await dailyRef.get();
+    final currentData = dailySnap.data() ?? {};
+    final rawSummary = currentData['nutrition_summary'];
+    final existingSummary = rawSummary is Map
+        ? Map<String, dynamic>.from(rawSummary)
+        : <String, dynamic>{};
 
-      // 2. Leggi daily_log corrente per aggregare
-      final dailySnap = await tx.get(dailyRef);
-      final currentData = dailySnap.data() ?? {};
-      final existingSummary = currentData['nutrition_summary'] as Map<String, dynamic>? ?? {};
+    final totalKcal = _num(existingSummary['total_kcal'] ?? 0) + calories;
+    final totalProtein =
+        _num(existingSummary['total_protein_g'] ?? existingSummary['total_protein'] ?? 0) + proteinG;
+    final totalCarbs =
+        _num(existingSummary['total_carbs_g'] ?? existingSummary['total_carbs'] ?? 0) + carbsG;
+    final totalFat =
+        _num(existingSummary['total_fat_g'] ?? existingSummary['total_fat'] ?? 0) + fatG;
 
-      // Aggregazione con chiavi nuove (_g) + retro-compatibilità
-      final totalKcal = _num(existingSummary['total_kcal'] ?? 0) + calories;
-      final totalProtein = _num(existingSummary['total_protein_g'] ?? existingSummary['total_protein'] ?? 0) + proteinG;
-      final totalCarbs = _num(existingSummary['total_carbs_g'] ?? existingSummary['total_carbs'] ?? 0) + carbsG;
-      final totalFat = _num(existingSummary['total_fat_g'] ?? existingSummary['total_fat'] ?? 0) + fatG;
+    final mealsCount = _intFromFirestore(existingSummary['meals_count']) + 1;
 
-      final mealsCount = (existingSummary['meals_count'] as int? ?? 0) + 1;
+    final longevitySum = _num(existingSummary['_longevity_sum'] ?? 0) +
+        (longevityScore > 0 ? longevityScore : 0);
+    final longevityCount = _intFromFirestore(existingSummary['_longevity_count']) +
+        (longevityScore > 0 ? 1 : 0);
 
-      final longevitySum = _num(existingSummary['_longevity_sum'] ?? 0) +
-          (longevityScore > 0 ? longevityScore : 0);
-      final longevityCount = (existingSummary['_longevity_count'] as int? ?? 0) +
-          (longevityScore > 0 ? 1 : 0);
+    final nutritionSummary = <String, dynamic>{
+      'total_kcal': totalKcal.round(),
+      'total_protein_g': totalProtein.round(),
+      'total_carbs_g': totalCarbs.round(),
+      'total_fat_g': totalFat.round(),
+      'meals_count': mealsCount,
+      'avg_longevity_score': longevityCount > 0
+          ? (longevitySum / longevityCount).toStringAsFixed(1)
+          : null,
+      '_longevity_sum': longevitySum,
+      '_longevity_count': longevityCount,
+    };
 
-      final nutritionSummary = <String, dynamic>{
-        'total_kcal': totalKcal.round(),
-        'total_protein_g': totalProtein.round(),   // ← nuova chiave standard
-        'total_carbs_g': totalCarbs.round(),       // ← nuova chiave standard
-        'total_fat_g': totalFat.round(),           // ← nuova chiave standard
-        'meals_count': mealsCount,
-        'avg_longevity_score': longevityCount > 0
-            ? (longevitySum / longevityCount).toStringAsFixed(1)
-            : null,
-        '_longevity_sum': longevitySum,
-        '_longevity_count': longevityCount,
-      };
+    final sanitizedGemini =
+        _sanitizeForFirestoreMap(Map<String, dynamic>.from(nutritionGemini));
 
-      // 3. Aggiorna daily_log
-      tx.set(dailyRef, {
+    final mealRef = mealsRef.doc();
+    final batch = firestore.batch();
+    batch.set(mealRef, meal.toFirestore());
+    batch.set(
+      dailyRef,
+      {
         'date': dateStr,
         'nutrition_summary': nutritionSummary,
-        'nutrition_gemini': nutritionGemini, // mantenuto per retro-compatibilità
+        'nutrition_gemini': sanitizedGemini,
         'timestamp': Timestamp.fromDate(now),
-      }, SetOptions(merge: true));
-    });
+      },
+      SetOptions(merge: true),
+    );
+    await batch.commit();
   }
 
   /// Genera piano settimanale (metodo invariato)
@@ -173,23 +180,85 @@ class NutritionService {
   }
 
   String _extractDishName(Map<String, dynamic> nut, String? mealLabel) {
-    final prefix = mealLabel != null
+    final prefix = (mealLabel != null && mealLabel.isNotEmpty)
         ? mealLabel.substring(0, 1).toUpperCase() + mealLabel.substring(1)
         : null;
-    final fromGemini = nut['dish_name'] as String?;
-    if (fromGemini != null && fromGemini.isNotEmpty) {
+    final fromGemini = _stringField(nut['dish_name']);
+    if (fromGemini.isNotEmpty) {
       return prefix != null ? '$prefix: $fromGemini' : fromGemini;
     }
-    final foods = nut['foods'] as List<dynamic>? ?? [];
-    if (foods.isNotEmpty) {
-      final first = foods.first;
-      final name = first is Map ? (first['name'] as String? ?? 'Piatto') : 'Piatto';
+    final foodsRaw = nut['foods'];
+    if (foodsRaw is List && foodsRaw.isNotEmpty) {
+      final first = foodsRaw.first;
+      final rawName = first is Map ? first['name']?.toString() : null;
+      final name = (rawName != null && rawName.trim().isNotEmpty) ? rawName.trim() : 'Piatto';
       return prefix != null ? '$prefix: $name' : name;
     }
     return prefix ?? 'Piatto';
   }
 
   double _num(dynamic v) => (v is num) ? v.toDouble() : double.tryParse(v.toString()) ?? 0.0;
+
+  static int _intFromFirestore(dynamic v) {
+    if (v == null) return 0;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    if (v is String) {
+      return int.tryParse(v) ?? double.tryParse(v)?.toInt() ?? 0;
+    }
+    return 0;
+  }
+
+  static String _stringField(dynamic v) {
+    if (v == null) return '';
+    if (v is String) return v;
+    return v.toString();
+  }
+
+  static List<String> _ingredientNamesFromFoods(dynamic foodsRaw) {
+    if (foodsRaw is! List) return [];
+    final out = <String>[];
+    for (final f in foodsRaw) {
+      if (f is Map) {
+        final s = f['name']?.toString().trim() ?? '';
+        if (s.isNotEmpty) out.add(s);
+      }
+    }
+    return out;
+  }
+
+  /// Evita NaN/Inf e normalizza mappe annidate per Firestore (desktop Windows è più rigido).
+  static Map<String, dynamic> _sanitizeForFirestoreMap(Map<String, dynamic> source) {
+    dynamic walk(dynamic v) {
+      if (v == null) return null;
+      if (v is bool) return v;
+      if (v is String) return v;
+      if (v is Timestamp) return v;
+      if (v is DateTime) return Timestamp.fromDate(v);
+      if (v is int) return v;
+      if (v is double) return v.isFinite ? v : 0.0;
+      if (v is num) {
+        final d = v.toDouble();
+        return d.isFinite ? v : 0;
+      }
+      if (v is List) {
+        return v.map(walk).toList();
+      }
+      if (v is Map) {
+        final out = <String, dynamic>{};
+        v.forEach((key, value) {
+          out[key.toString()] = walk(value) as Object?;
+        });
+        return out;
+      }
+      return v.toString();
+    }
+
+    final root = walk(source);
+    if (root is Map<String, dynamic>) return root;
+    if (root is Map) return Map<String, dynamic>.from(root);
+    return {};
+  }
 
   /// Livello 1: Legge i pasti del giorno (ordinati per orario).
   Future<List<MealModel>> getMealsForDay(String uid, String dateStr) async {

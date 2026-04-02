@@ -1,12 +1,9 @@
 import 'package:app_links/app_links.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:fitai_analyzer/app.dart';
 import 'package:fitai_analyzer/firebase_options.dart';
 import 'package:fitai_analyzer/services/garmin_oauth_callback.dart';
 import 'package:fitai_analyzer/services/strava_oauth_callback.dart';
-import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,12 +17,10 @@ void main() async {
   }
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // Workaround per thread Firestore su Windows: clear cache prima del primo uso
-  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
-    try {
-      await FirebaseFirestore.instance.clearPersistence();
-    } catch (_) {}
-  }
+  // Non chiamare clearPersistence() qui: su Windows/desktop può lasciare il client
+  // Firestore in stato incoerente o fallire dopo il primo avvio/hot restart, con abort()
+  // nativo (MSVC) al primo write pesante (es. transazioni). Gli stream usano già
+  // platform_firestore_fix (polling su Windows).
 
   // Deep link OAuth custom-scheme per Strava e Garmin.
   _setupOAuthDeepLinks();
