@@ -150,27 +150,27 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           ],
         ),
       ),
- body: SafeArea(
-  child: Column(
-    children: [
-      if (isGarminSyncing) const LinearProgressIndicator(minHeight: 2),
-      Expanded(
-        child: TabBarView(
-          controller: _tabController,
+      body: SafeArea(
+        child: Column(
           children: [
-            // 1. PRIMO TAB: Corrisponde a 'Suggerimenti e oggi'
-            DashboardSuggestionsTab(
-              onAnalisiAiTap: () => _onAnalisiAI(context),
-            ),
+            if (isGarminSyncing) const LinearProgressIndicator(minHeight: 2),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  // 1. PRIMO TAB: Corrisponde a 'Suggerimenti e oggi'
+                  DashboardSuggestionsTab(
+                    onAnalisiAiTap: () => _onAnalisiAI(context),
+                  ),
 
-            // 2. SECONDO TAB: Corrisponde a 'Attività e progressi'
-            _buildProgressiTab(context, stravaConnected, uid),
+                  // 2. SECONDO TAB: Corrisponde a 'Attività e progressi'
+                  _buildProgressiTab(context, stravaConnected, uid),
+                ],
+              ),
+            ),
           ],
         ),
       ),
-    ],
-  ),
-),
     );
   }
 
