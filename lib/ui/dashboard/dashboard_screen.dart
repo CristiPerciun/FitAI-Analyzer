@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitai_analyzer/models/fitness_data.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
+import 'package:fitai_analyzer/providers/dashboard_activity_providers.dart';
 import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
@@ -17,16 +18,36 @@ import 'package:fitai_analyzer/ui/widgets/loading_indicator.dart';
 import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/garmin_activity_detail_card.dart';
 import 'package:fitai_analyzer/ui/widgets/strava_activity_card.dart';
+import 'package:fitai_analyzer/ui/dashboard/dashboard_suggestions_tab.dart';
+import 'package:fitai_analyzer/ui/dashboard/widgets/activity_burn_bar_chart_card.dart';
+import 'package:fitai_analyzer/ui/dashboard/widgets/activity_calendar_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Filtro data: null = Oggi, dateFilterAll = Tutti, altrimenti data.
-final selectedDateFilterProvider = StateProvider<String?>((ref) => null);
-
-class DashboardScreen extends ConsumerWidget {
+class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
-  Future<void> _onSyncStrava(BuildContext context, WidgetRef ref) async {
+  @override
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends ConsumerState<DashboardScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _onSyncStrava(BuildContext context) async {
     await ref
         .read(authNotifierProvider.notifier)
         .startOAuth(
@@ -38,7 +59,7 @@ class DashboardScreen extends ConsumerWidget {
         );
   }
 
-  Future<void> _onAnalisiAI(BuildContext context, WidgetRef ref) async {
+  Future<void> _onAnalisiAI(BuildContext context) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
       if (context.mounted) {
@@ -96,7 +117,7 @@ class DashboardScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final uid = ref.watch(authNotifierProvider).user?.uid;
     final stravaConnected =
         ref.watch(stravaConnectedProvider).valueOrNull ?? false;
@@ -113,47 +134,85 @@ class DashboardScreen extends ConsumerWidget {
     });
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Allenamenti')),
-      body: SafeArea(
-        child: Column(
-          children: [
-            if (isGarminSyncing) const LinearProgressIndicator(minHeight: 2),
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: () => _onRefreshGarmin(ref, uid),
-                child: CustomScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  slivers: [
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _AnalisiAIButton(
-                              onTap: () => _onAnalisiAI(context, ref),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    SliverToBoxAdapter(
-                      child: _ActivitiesSection(
-                        stravaConnected: stravaConnected,
-                        onSyncTap: () => _onSyncStrava(context, ref),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          appBar: AppBar(
+        title: const Text('Allenamenti'),
+        bottom: TabBar(
+          controller: _tabController,
+          // 1. Disabilita lo scroll (questo permette ai tab di espandersi)
+          isScrollable: false, 
+          
+          // 2. Rimuovi o imposta TabAlignment.fill (default se isScrollable è false)
+          tabAlignment: TabAlignment.fill, 
+          
+          tabs: const [
+            Tab(text: 'Suggerimenti e oggi'),
+            Tab(text: 'Attività e progressi'),
           ],
         ),
+      ),
+ body: SafeArea(
+  child: Column(
+    children: [
+      if (isGarminSyncing) const LinearProgressIndicator(minHeight: 2),
+      Expanded(
+        child: TabBarView(
+          controller: _tabController,
+          children: [
+            // 1. PRIMO TAB: Corrisponde a 'Suggerimenti e oggi'
+            DashboardSuggestionsTab(
+              onAnalisiAiTap: () => _onAnalisiAI(context),
+            ),
+
+            // 2. SECONDO TAB: Corrisponde a 'Attività e progressi'
+            _buildProgressiTab(context, stravaConnected, uid),
+          ],
+        ),
+      ),
+    ],
+  ),
+),
+    );
+  }
+
+  Widget _buildProgressiTab(
+    BuildContext context,
+    bool stravaConnected,
+    String? uid,
+  ) {
+    return RefreshIndicator(
+      onRefresh: () => _onRefreshGarmin(uid),
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const ActivityCalendarCard(),
+                  const SizedBox(height: 12),
+                  const ActivityBurnBarChartCard(),
+                  const SizedBox(height: 16),
+                  _AnalisiAIButton(
+                    onTap: () => _onAnalisiAI(context),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: _ActivitiesSection(
+              stravaConnected: stravaConnected,
+              onSyncTap: () => _onSyncStrava(context),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Future<void> _onRefreshGarmin(WidgetRef ref, String? uid) async {
+  Future<void> _onRefreshGarmin(String? uid) async {
     await refreshGarminSync(ref, uid, trigger: 'dashboard_pull_to_refresh');
   }
 }
