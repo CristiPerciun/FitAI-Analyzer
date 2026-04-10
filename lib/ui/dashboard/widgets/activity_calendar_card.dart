@@ -1,5 +1,6 @@
 import 'package:fitai_analyzer/providers/dashboard_activity_providers.dart';
 import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
+import 'package:fitai_analyzer/ui/dashboard/activity_day_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -124,6 +125,11 @@ class ActivityCalendarCard extends ConsumerWidget {
                       onTap: () {
                         ref.read(selectedDateFilterProvider.notifier).state =
                             key;
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ActivityDayScreen(dateKey: key),
+                          ),
+                        );
                       },
                       borderRadius: BorderRadius.circular(8),
                       child: DecoratedBox(
@@ -178,7 +184,7 @@ class ActivityCalendarCard extends ConsumerWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              'Tocca un giorno per filtrare l’elenco sotto.',
+              'Tocca un giorno per aprire il dettaglio attivita.',
               style: theme.textTheme.labelSmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
