@@ -15,7 +15,7 @@ class LongevityHomePackage {
   /// Contiene macro_averages, activities_summary, zone2, VO2.
   final Rolling10DaysModel? rolling;
 
-  /// Livello 3: profilo baseline annuale (baseline_profile/main).
+  /// Livello 3: profilo baseline annuale (profile/baseline).
   /// Contiene annual_stats, monthly_trends, key_metrics_attia, ai_ready_summary.
   final BaselineProfileModel? baseline;
 

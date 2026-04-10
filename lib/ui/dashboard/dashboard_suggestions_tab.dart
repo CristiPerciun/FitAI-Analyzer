@@ -1,18 +1,14 @@
+import 'package:fitai_analyzer/models/ai_current_allenamenti_model.dart';
 import 'package:fitai_analyzer/models/fitness_data.dart';
 import 'package:fitai_analyzer/providers/dashboard_activity_providers.dart';
 import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
-import 'package:fitai_analyzer/theme/app_card_theme.dart';
+import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Secondo tab Allenamenti: riepilogo giornata e spazio per suggerimenti pratici.
 class DashboardSuggestionsTab extends ConsumerWidget {
-  const DashboardSuggestionsTab({
-    super.key,
-    required this.onAnalisiAiTap,
-  });
-
-  final VoidCallback onAnalisiAiTap;
+  const DashboardSuggestionsTab({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -25,6 +21,8 @@ class DashboardSuggestionsTab extends ConsumerWidget {
       0,
       (s, a) => s + (a.calories ?? 0),
     );
+    final allenamentiAsync = ref.watch(aiCurrentAllenamentiStreamProvider);
+    final allenamentiObiettivo = allenamentiAsync.valueOrNull;
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -104,6 +102,8 @@ class DashboardSuggestionsTab extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 16),
+          _WorkoutObjectiveCard(obiettivo: allenamentiObiettivo),
+          const SizedBox(height: 16),
           _SuggestionTile(
             icon: Icons.water_drop_outlined,
             title: 'Idratazione',
@@ -125,67 +125,22 @@ class DashboardSuggestionsTab extends ConsumerWidget {
                 'Due o tre brevi uscite a settimana battono un solo allenamento lungo: mantieni il ritmo che sai sostenere.',
           ),
           const SizedBox(height: 20),
-          Container(
-            decoration:
-                theme.extension<AppCardTheme>()?.gradientDecoration ??
-                BoxDecoration(
-                  color: theme.colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: onAnalisiAiTap,
-                borderRadius: BorderRadius.circular(16),
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.auto_awesome,
-                        color: theme
-                            .extension<AppCardTheme>()
-                            ?.contentColor,
-                        size: 28,
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Piano con Analisi AI',
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: theme
-                                    .extension<AppCardTheme>()
-                                    ?.contentColor,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Commento personalizzato su carico, recupero e obiettivi (Gemini)',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme
-                                    .extension<AppCardTheme>()
-                                    ?.contentColorMuted,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Icon(
-                        Icons.arrow_forward_ios,
-                        size: 16,
-                        color: theme
-                            .extension<AppCardTheme>()
-                            ?.contentColorMuted,
-                      ),
-                    ],
-                  ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.info_outline,
+                size: 14,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Obiettivi generati tramite Analisi nella Home',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
-            ),
+            ],
           ),
         ],
       ),
@@ -231,6 +186,121 @@ class _TodayActivityRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Card che mostra l'obiettivo di allenamento giornaliero generato dal prompt AI unificato.
+/// I dati arrivano da `ai_current/allenamenti` via [aiCurrentAllenamentiStreamProvider].
+class _WorkoutObjectiveCard extends StatelessWidget {
+  const _WorkoutObjectiveCard({this.obiettivo});
+
+  final AiCurrentAllenamentiModel? obiettivo;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hasData = obiettivo != null && obiettivo!.hasContent;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: theme.colorScheme.primary.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.fitness_center_outlined,
+                  color: theme.colorScheme.primary,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Obiettivo allenamento di oggi',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (!hasData)
+              Text(
+                'Nessun obiettivo AI per oggi. Premi "Analisi" in Home per generarlo.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              )
+            else ...[
+              if (obiettivo!.tipo.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    obiettivo!.tipo,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: theme.colorScheme.onPrimaryContainer,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              if (obiettivo!.tipo.isNotEmpty) const SizedBox(height: 8),
+              Text(
+                obiettivo!.descrizione,
+                style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
+              ),
+              if (obiettivo!.durataMins > 0 || obiettivo!.intensita.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    if (obiettivo!.durataMins > 0) ...[
+                      Icon(
+                        Icons.timer_outlined,
+                        size: 14,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${obiettivo!.durataMins} min',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                    ],
+                    if (obiettivo!.intensita.isNotEmpty) ...[
+                      Icon(
+                        Icons.speed_outlined,
+                        size: 14,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        obiettivo!.intensita,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ],
+          ],
+        ),
       ),
     );
   }

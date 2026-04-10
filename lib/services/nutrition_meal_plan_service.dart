@@ -5,7 +5,7 @@ import 'package:fitai_analyzer/services/ai_prompt_service.dart';
 import 'package:fitai_analyzer/services/gemini_service.dart';
 
 /// Piano alimentare AI (pagina Alimentazione): generazione JSON + salvataggio Firestore.
-/// Path: `users/{uid}/nutrition_meal_plan/current`.
+/// Path: `users/{uid}/ai_current/meal`.
 class NutritionMealPlanService {
   NutritionMealPlanService(
     this._firestore,
@@ -21,8 +21,8 @@ class NutritionMealPlanService {
     return _firestore
         .collection('users')
         .doc(uid)
-        .collection('nutrition_meal_plan')
-        .doc('current');
+        .collection('ai_current')
+        .doc('meal');
   }
 
   Future<NutritionMealPlanAi?> fetch(String uid) async {

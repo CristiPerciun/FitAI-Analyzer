@@ -59,63 +59,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         );
   }
 
-  Future<void> _onAnalisiAI(BuildContext context) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) {
-      if (context.mounted) {
-        showErrorDialog(context, 'Utente non autenticato.');
-      }
-      return;
-    }
-
-    final apiKeyService = ref.read(geminiApiKeyServiceProvider);
-    if (!await apiKeyService.hasValidKey()) {
-      if (!context.mounted) return;
-      final saved = await showGeminiApiKeyDialog(context, ref);
-      if (!saved || !context.mounted) return;
-    }
-    if (!context.mounted) return;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        content: const LoadingIndicator(message: 'Analisi AI in corso...'),
-      ),
-    );
-
-    try {
-      final contextStr = await ref
-          .read(aiPromptServiceProvider)
-          .buildFullAIContext(uid);
-      final response = await ref
-          .read(geminiServiceProvider)
-          .analyzeFitnessContext(contextStr);
-
-      if (context.mounted) {
-        Navigator.of(context).pop(); // chiudi loading
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Analisi AI'),
-            content: SingleChildScrollView(child: SelectableText(response)),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Chiudi'),
-              ),
-            ],
-          ),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        Navigator.of(context).pop(); // chiudi loading
-        showErrorDialog(context, e.toString());
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final uid = ref.watch(authNotifierProvider).user?.uid;
@@ -159,9 +102,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 controller: _tabController,
                 children: [
                   // 1. PRIMO TAB: Corrisponde a 'Suggerimenti e oggi'
-                  DashboardSuggestionsTab(
-                    onAnalisiAiTap: () => _onAnalisiAI(context),
-                  ),
+                  const DashboardSuggestionsTab(),
 
                   // 2. SECONDO TAB: Corrisponde a 'Attività e progressi'
                   _buildProgressiTab(context, stravaConnected, uid),
@@ -193,10 +134,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                   const ActivityCalendarCard(),
                   const SizedBox(height: 12),
                   const ActivityBurnBarChartCard(),
-                  const SizedBox(height: 16),
-                  _AnalisiAIButton(
-                    onTap: () => _onAnalisiAI(context),
-                  ),
                 ],
               ),
             ),
@@ -408,67 +345,6 @@ class _EmptyActivitiesCard extends StatelessWidget {
               ),
             ],
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AnalisiAIButton extends StatelessWidget {
-  const _AnalisiAIButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cardTheme = Theme.of(context).extension<AppCardTheme>()!;
-
-    return Container(
-      decoration: cardTheme.gradientDecoration,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.auto_awesome,
-                  color: cardTheme.contentColor,
-                  size: 32,
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Analisi AI',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: cardTheme.contentColor,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Piano settimanale personalizzato con Gemini',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: cardTheme.contentColorMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(
-                  Icons.arrow_forward_ios,
-                  color: cardTheme.contentColorMuted,
-                  size: 18,
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );

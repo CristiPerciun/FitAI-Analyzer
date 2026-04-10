@@ -1,5 +1,5 @@
 ---
-description: Struttura Firestore aggiornata - daily_health, activities, longevity_diary (compatibilità dati)
+description: Struttura Firestore aggiornata - profile, ai_current, daily_logs, activities, daily_health
 alwaysApply: true
 ---
 
@@ -9,92 +9,102 @@ alwaysApply: true
 
 ---
 
-## Collezioni principali (sotto `/users/{uid}/`)
+## Struttura completa (sotto `/users/{uid}/`)
 
-### 1. `daily_health/{date}`
+```
+users/{uid}/
+  profile/
+    profile              ← UserProfile (onboarding, obiettivi, nutrizione, allenamento)
+    baseline             ← BaselineProfileModel (statistiche annuali, metriche Attia)
+    diary                ← Diario evoluzione utente (append da LongevityEngine)
 
-**Contenuto**: Passi, sonno, HRV, Body Battery.
+  daily_logs/{date}      ← DailyLogModel (indice giornaliero)
+    meals/{mealId}       ← MealModel
 
-**Scrittore**: Server (garmin-sync-server o equivalente).
+  activities/{id}        ← FitnessData (Garmin + Strava unificati)
 
-**Campi tipici**:
-- `stats`, `sleep`, `hrv`, `body_battery`
-- `max_metrics` (VO2Max, se disponibile)
-- `fitness_age` (Fitness Age Garmin, se disponibile)
-- `date` (YYYY-MM-DD)
+  daily_health/{date}    ← Biometrici Garmin (SOLO garmin-sync-server)
 
----
+  rolling_10days/
+    current              ← Rolling10DaysModel
 
-### 2. `activities/{id}`
-
-**Contenuto**: Unione Garmin + Strava (attività unificate).
-
-**Scrittori**: Entrambi (Server Garmin e app FitAI per Strava).
-
-**Regola**: Un solo documento per attività; merge quando la stessa attività arriva da entrambe le fonti.
-
-**Campi attesi**:
-- `source`: `garmin`, `strava`, `dual`
-- `date`, `startTime`, `dateKey`
-- `activityType`, `activityName`
-- `distanceKm`, `activeMinutes`, `elapsedMinutes`, `calories`
-- `hasGarmin`, `hasStrava`
-- `garminActivityId`, `stravaActivityId`
-- `garmin_raw`, `strava_raw`
+  ai_current/
+    meal                 ← NutritionMealPlanAi (obiettivi pasto giornalieri)
+    allenamenti          ← AiCurrentAllenamentiModel (obiettivo allenamento del giorno)
+    home_longevity_plan  ← HomeLongevityPlanDay (4 pilastri + sprint + consiglio)
+```
 
 ---
 
-### 3. `longevity_diary/current`
+## Collezioni principali
 
-**Contenuto**: **Diario evoluzione utente** – documento unico per utente. Stringa lunga con storia evolutiva: statistiche reali, andamento attività/nutrizione/biometrici, come sta evolvendo. Si aggiorna ad ogni analisi AI.
+### 1. `profile/` (raccolta multi-documento)
 
-**Scrittore**: FitAI (LongevityEngine).
-
-**Campi**:
-- `diary_text`: stringa lunga (storia evolutiva)
-- `last_updated`, `last_updated_date`
-
-**Generazione**: Se manca, viene creato da baseline_profile + rolling_10days.
+| Documento | Contenuto | Scrittore |
+|-----------|-----------|-----------|
+| `profile` | UserProfile: mainGoal, demographics, training, nutrition | `UserProfileNotifier` |
+| `baseline` | BaselineProfileModel: statistiche annuali, metriche Attia, ai_ready_summary | `AggregationService`, `NutritionCalculatorService` |
+| `diary` | Diario evoluzione: `diary_text` (append), `last_updated` | `LongevityEngine` |
 
 ---
 
-### 4. `ai_insights/{date}` (opzionale, legacy)
+### 2. `daily_health/{date}`
 
-**Contenuto**: Responso Gemini per altri prompt. Non più usato per il diario longevità.
+**Contenuto**: Passi, sonno, HRV, Body Battery — scritto dal `garmin-sync-server`.
 
----
+**NON modificare il path**: è scritto dal server Python (repo separato).
 
-## Relazione con la struttura finale
-
-La strategia a Tre Livelli (`daily_logs`, `rolling_10days`, `baseline_profile`) resta valida per nutrizione, pasti e aggregazioni. Le collezioni operative si integrano cosi:
-
-| Dato           | Vecchia posizione        | Nuova posizione      |
-|----------------|--------------------------|----------------------|
-| Passi, sonno   | (assente o in daily_log) | `daily_health/{date}`|
-| Attività       | `daily_logs.strava_activities`, `garmin_activities` | `activities/{id}` |
-| Insight Gemini | (in daily_log o meals)   | `ai_insights/{date}` |
-
-**Indice giornaliero**: `daily_logs/{date}` deve contenere `activity_ids` e `health_ref`; non deve essere usato come archivio canonico delle attività.
+**Campi tipici**: `stats`, `sleep`, `hrv`, `body_battery`, `max_metrics`, `fitness_age`, `date`.
 
 ---
 
-## Collezione `garmin_tokens/{uid}` (top-level)
+### 3. `activities/{id}`
 
-**Contenuto**: Token OAuth Garmin serializzati in Base64 per ogni utente collegato.
+**Contenuto**: Attività unificate Garmin + Strava.
 
-**Scrittore/Lettore**: Solo garmin-sync-server (Admin SDK). Il client non ha accesso (regole Firestore: `allow read, write: if false`).
+**Campi**: `source` (garmin/strava/dual), `date`, `startTime`, `dateKey`, `activityType`, `distanceKm`, `activeMinutes`, `calories`, `hasGarmin`, `hasStrava`.
 
-**Campi**:
-- `token_b64`: stringa Base64 (garth.dumps())
-- `updated_at`: timestamp ultimo aggiornamento
+---
+
+### 4. `rolling_10days/current`
+
+**Contenuto**: Rolling10DaysModel — aggregato 10 giorni.
+
+**Scrittore**: `AggregationService`.
+
+---
+
+### 5. `ai_current/` (raccolta multi-documento — generata dal prompt unificato)
+
+| Documento | Contenuto | Modello |
+|-----------|-----------|---------|
+| `meal` | Obiettivi per colazione/pranzo/cena + macro target | `NutritionMealPlanAi` |
+| `allenamenti` | Tipo, descrizione, durata, intensità dell'allenamento | `AiCurrentAllenamentiModel` |
+| `home_longevity_plan` | 4 pilastri (cuore/forza/alimentazione/recupero) + weekly_sprint + strategic_advice | `HomeLongevityPlanDay` |
+
+**Scrittore**: `LongevityEngine.saveUnifiedAiCurrent()` — tutti e 3 i doc in una batch, dopo risposta Gemini.
+
+**Trigger**: bottone "Analisi" in Home.
 
 ---
 
 ## Chi scrive dove (riepilogo)
 
-| Collezione       | Scrittore   |
-|------------------|-------------|
-| `garmin_tokens`  | Server      |
-| `daily_health`   | Server      |
-| `activities`     | Server + FitAI |
-| `longevity_diary`| FitAI       |
+| Collezione | Scrittore |
+|-----------|-----------|
+| `garmin_tokens` | Server (Admin SDK) |
+| `daily_health` | Server (Admin SDK) |
+| `activities` | Server + FitAI (StravaService) |
+| `profile/profile` | FitAI (UserProfileNotifier) |
+| `profile/baseline` | FitAI (AggregationService, NutritionCalculatorService) |
+| `profile/diary` | FitAI (LongevityEngine) |
+| `rolling_10days/current` | FitAI (AggregationService) |
+| `ai_current/*` | FitAI (LongevityEngine) |
+| `daily_logs` | FitAI (NutritionService) + Server |
+| `daily_logs/.../meals` | FitAI (NutritionService) |
+
+---
+
+## Collezione `garmin_tokens/{uid}` (top-level)
+
+**Contenuto**: Token OAuth Garmin in Base64. Solo garmin-sync-server (Admin SDK). Client: `allow read, write: if false`.

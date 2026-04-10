@@ -205,8 +205,8 @@ Note personali: ${ng.extraNotes.trim().isEmpty ? '—' : ng.extraNotes.trim()}''
     final doc = await FirebaseFirestore.instance
         .collection('users')
         .doc(uid)
-        .collection('baseline_profile')
-        .doc('main')
+        .collection('profile')
+        .doc('baseline')
         .get();
 
     if (!doc.exists || doc.data() == null) return null;

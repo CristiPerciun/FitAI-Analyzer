@@ -173,7 +173,7 @@ class NutritionCalculatorService {
     );
   }
 
-  /// Patch Firestore (merge) per `baseline_profile/main` — campi nutrizione/TDEE.
+  /// Patch Firestore (merge) per `profile/baseline` — campi nutrizione/TDEE.
   static Map<String, dynamic> baselineNutritionPatch(UserProfile profile) {
     final r = computeFromUserProfile(profile);
     final ng = profile.nutritionGoal;
@@ -188,7 +188,7 @@ class NutritionCalculatorService {
     };
   }
 
-  /// Aggiorna solo i campi nutrizione su `users/{uid}/baseline_profile/main` (merge).
+  /// Aggiorna solo i campi nutrizione su `users/{uid}/profile/baseline` (merge).
   static Future<void> syncNutritionFieldsToBaseline({
     required FirebaseFirestore firestore,
     required String uid,
@@ -199,8 +199,8 @@ class NutritionCalculatorService {
     await firestore
         .collection('users')
         .doc(uid)
-        .collection('baseline_profile')
-        .doc('main')
+        .collection('profile')
+        .doc('baseline')
         .set(patch, SetOptions(merge: true));
   }
 }

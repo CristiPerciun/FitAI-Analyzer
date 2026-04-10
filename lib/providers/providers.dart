@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fitai_analyzer/models/ai_current_allenamenti_model.dart';
 import 'package:fitai_analyzer/models/home_longevity_plan_day.dart';
 import 'package:fitai_analyzer/models/longevity_home_package.dart';
 import 'package:fitai_analyzer/models/meal_model.dart';
@@ -33,7 +34,7 @@ final nutritionMealPlanServiceProvider = Provider<NutritionMealPlanService>((ref
   );
 });
 
-/// Piano AI pasti + obiettivi per colazione/pranzo/cena (`nutrition_meal_plan/current`).
+/// Piano AI pasti + obiettivi per colazione/pranzo/cena (`ai_current/meal`).
 final nutritionMealPlanAiStreamProvider =
     StreamProvider.autoDispose<NutritionMealPlanAi?>((ref) async* {
   final uid = ref.watch(authNotifierProvider).user?.uid;
@@ -44,8 +45,8 @@ final nutritionMealPlanAiStreamProvider =
   final docRef = FirebaseFirestore.instance
       .collection('users')
       .doc(uid)
-      .collection('nutrition_meal_plan')
-      .doc('current');
+      .collection('ai_current')
+      .doc('meal');
   await for (final snap in documentSnapshotStream(docRef)) {
     if (!snap.exists || snap.data() == null) {
       yield null;
@@ -75,7 +76,7 @@ final longevityHomePackageProvider =
   return ref.read(longevityEngineProvider).buildHomePackage(uid);
 });
 
-/// Cache Firestore del piano Home (prompt master): `home_longevity_plan/daily`.
+/// Piano Home (prompt unificato): `ai_current/home_longevity_plan`.
 final homeLongevityPlanDayStreamProvider =
     StreamProvider.autoDispose<HomeLongevityPlanDay?>((ref) async* {
   final uid = ref.watch(authNotifierProvider).user?.uid;
@@ -86,8 +87,8 @@ final homeLongevityPlanDayStreamProvider =
   final docRef = FirebaseFirestore.instance
       .collection('users')
       .doc(uid)
-      .collection('home_longevity_plan')
-      .doc('daily');
+      .collection('ai_current')
+      .doc('home_longevity_plan');
   await for (final snap in documentSnapshotStream(docRef)) {
     final today = localCalendarDateKey();
     if (!snap.exists || snap.data() == null) {
@@ -96,6 +97,30 @@ final homeLongevityPlanDayStreamProvider =
     }
     final plan = HomeLongevityPlanDay.fromFirestore(snap.data()!);
     yield plan.forDate == today ? plan : null;
+  }
+});
+
+/// Obiettivo allenamento giornaliero AI (`ai_current/allenamenti`).
+final aiCurrentAllenamentiStreamProvider =
+    StreamProvider.autoDispose<AiCurrentAllenamentiModel?>((ref) async* {
+  final uid = ref.watch(authNotifierProvider).user?.uid;
+  if (uid == null) {
+    yield null;
+    return;
+  }
+  final docRef = FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection('ai_current')
+      .doc('allenamenti');
+  await for (final snap in documentSnapshotStream(docRef)) {
+    final today = localCalendarDateKey();
+    if (!snap.exists || snap.data() == null) {
+      yield null;
+      continue;
+    }
+    final model = AiCurrentAllenamentiModel.fromFirestore(snap.data()!);
+    yield model.forDate == today ? model : null;
   }
 });
 
@@ -150,8 +175,9 @@ final homeDailyGoalsMapProvider = Provider<Map<LongevityPillar, String>>((ref) {
   return _pillarMapFromPlan(ref.watch(homeLongevityPlanForUiProvider));
 });
 
-/// Carica il piano di longevità completo via prompt master (chiamata Gemini).
-/// Salva su Firestore per il giorno corrente e `database_update` in ai_insights/{date}.
+/// Genera e salva il piano giornaliero unificato via prompt Gemini.
+/// Legge: profile + aggregazione ieri + rolling_10days + diario.
+/// Salva: ai_current/meal, ai_current/allenamenti, ai_current/home_longevity_plan, profile/diary.
 Future<void> loadLongevityPlan(WidgetRef ref) async {
   final uid = ref.read(authNotifierProvider).user?.uid;
   if (uid == null) return;
@@ -159,8 +185,11 @@ Future<void> loadLongevityPlan(WidgetRef ref) async {
   final apiKey = ref.read(geminiApiKeyServiceProvider);
   if (!await apiKey.hasValidKey()) return;
 
-  final prompt = await ref.read(longevityEngineProvider).buildLongevityPlanPrompt(uid);
+  final engine = ref.read(longevityEngineProvider);
+  final ctx = await engine.buildUnifiedDailyContext(uid);
+  final prompt = engine.buildUnifiedPromptFromContext(ctx);
   await savePromptToFile(prompt);
+
   final response = await ref.read(geminiServiceProvider).generateFromPrompt(prompt);
 
   final cleaned = response
@@ -169,40 +198,16 @@ Future<void> loadLongevityPlan(WidgetRef ref) async {
       .trim();
   try {
     final decoded = json.decode(cleaned) as Map<String, dynamic>?;
-    if (decoded != null) {
-      final todayLocal = localCalendarDateKey();
-      final plan = HomeLongevityPlanDay.fromGeminiJson(decoded, todayLocal);
+    if (decoded == null) return;
 
-      final docRef = FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .collection('home_longevity_plan')
-          .doc('daily');
-      await docRef.set(plan.toFirestoreMap(), SetOptions(merge: true));
-      final fresh = await docRef.get();
-      if (fresh.exists && fresh.data() != null) {
-        final parsed = HomeLongevityPlanDay.fromFirestore(fresh.data()!);
-        if (parsed.forDate == todayLocal) {
-          ref.read(homeLongevityPlanOptimisticProvider.notifier).setPlan(parsed);
-        }
-      }
+    final todayLocal = localCalendarDateKey();
 
-      // Salva database_update per il Diario della Longevità (ai_insights/{date}).
-      final dbUpdate = decoded['database_update'];
-      final todayStr = DateTime.now().toIso8601String().split('T')[0];
-      final toSave = dbUpdate is Map<String, dynamic> && dbUpdate.isNotEmpty
-          ? dbUpdate
-          : <String, dynamic>{
-              'historical_context_summary': 'Prima analisi di longevità.',
-              'detected_trends': '',
-              'status_score': 50,
-            };
-      await ref.read(longevityEngineProvider).saveLongevityDiaryUpdate(
-        uid,
-        todayStr,
-        toSave,
-      );
-    }
+    // Salva i 3 documenti ai_current + aggiorna diario
+    await engine.saveUnifiedAiCurrent(uid, decoded, todayLocal);
+
+    // Aggiorna subito lo stato ottimistico per la Home (evita attesa stream)
+    final homePlan = HomeLongevityPlanDay.fromUnifiedJson(decoded, todayLocal);
+    ref.read(homeLongevityPlanOptimisticProvider.notifier).setPlan(homePlan);
   } catch (_) {}
 }
 

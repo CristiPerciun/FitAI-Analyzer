@@ -9,8 +9,8 @@ String localCalendarDateKey([DateTime? d]) {
   return '$y-$m-$day';
 }
 
-/// Piano longevità Home (prompt master) salvato al massimo una volta al giorno
-/// in `users/{uid}/home_longevity_plan/daily`.
+/// Piano longevità Home generato dal prompt unificato giornaliero.
+/// Salvato in `users/{uid}/ai_current/home_longevity_plan`.
 class HomeLongevityPlanDay {
   const HomeLongevityPlanDay({
     required this.forDate,
@@ -45,6 +45,26 @@ class HomeLongevityPlanDay {
       pillars: pillars,
       weeklySprint: _trimOrNull(decoded['weekly_sprint']?.toString()),
       strategicAdvice: _trimOrNull(decoded['strategic_advice']?.toString()),
+    );
+  }
+
+  /// Parsing dalla chiave `"home"` del JSON unificato restituito da Gemini.
+  factory HomeLongevityPlanDay.fromUnifiedJson(
+    Map<String, dynamic> unifiedJson,
+    String forDate,
+  ) {
+    final raw = unifiedJson['home'];
+    final home = raw is Map<String, dynamic> ? raw : <String, dynamic>{};
+    final pillars = <String, String>{};
+    for (final k in pillarFirestoreKeys) {
+      final v = home[k]?.toString();
+      if (v != null && v.trim().isNotEmpty) pillars[k] = v.trim();
+    }
+    return HomeLongevityPlanDay(
+      forDate: forDate,
+      pillars: pillars,
+      weeklySprint: _trimOrNull(home['weekly_sprint']?.toString()),
+      strategicAdvice: _trimOrNull(home['strategic_advice']?.toString()),
     );
   }
 

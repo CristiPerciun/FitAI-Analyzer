@@ -1,7 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-/// Risposta strutturata Gemini per la pagina Alimentazione (obiettivi per pasto).
-/// Separata dal piano longevità Home.
+/// Risposta strutturata Gemini per gli obiettivi pasto giornalieri.
+/// Salvata in `users/{uid}/ai_current/meal`.
+/// Usata dalla pagina Alimentazione e generata dal prompt unificato giornaliero.
 class NutritionMealPlanAi {
   const NutritionMealPlanAi({
     required this.obiettiviColazione,
@@ -78,6 +79,26 @@ class NutritionMealPlanAi {
     );
   }
 
+  /// Parsing dalla chiave `"meal"` del JSON unificato restituito da Gemini.
+  factory NutritionMealPlanAi.fromUnifiedJson(
+    Map<String, dynamic> unifiedJson,
+  ) {
+    final raw = unifiedJson['meal'];
+    final m = raw is Map<String, dynamic> ? raw : <String, dynamic>{};
+    final macroRaw = m['macro_target'];
+    final macro = macroRaw is Map
+        ? Map<String, dynamic>.from(macroRaw)
+        : <String, dynamic>{};
+    return NutritionMealPlanAi(
+      obiettiviColazione: _stringList(m['colazione']),
+      obiettiviPranzo: _stringList(m['pranzo']),
+      obiettiviCena: _stringList(m['cena']),
+      macroGiornalieri: macro,
+      consigliIntegratori: m['consigli_integratori']?.toString() ?? '',
+      noteLongevita: m['note']?.toString() ?? '',
+    );
+  }
+
   factory NutritionMealPlanAi.fromFirestore(Map<String, dynamic> data) {
     return NutritionMealPlanAi(
       obiettiviColazione: _stringList(data['obiettivi_colazione']),
@@ -95,7 +116,7 @@ class NutritionMealPlanAi {
     );
   }
 
-  Map<String, dynamic> toFirestore() {
+  Map<String, dynamic> toFirestore({String? forDate}) {
     return {
       'obiettivi_colazione': obiettiviColazione,
       'obiettivi_pranzo': obiettiviPranzo,
@@ -105,6 +126,7 @@ class NutritionMealPlanAi {
       if (aderenzaScore != null) 'aderenza_score': aderenzaScore,
       'note_longevita': noteLongevita,
       'piano_settimanale': pianoSettimanale,
+      if (forDate case final d?) 'for_date': d,
       'updated_at': FieldValue.serverTimestamp(),
     };
   }

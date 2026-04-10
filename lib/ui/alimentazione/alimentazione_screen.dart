@@ -450,34 +450,37 @@ class AlimentazioneScreen extends ConsumerWidget {
               const SizedBox(height: 16),
               Consumer(
                 builder: (context, ref, _) {
-                  final gen = ref.watch(nutritionMealPlanGeneratingProvider);
                   final planAsync = ref.watch(nutritionMealPlanAiStreamProvider);
                   final plan = planAsync.valueOrNull;
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      FilledButton.tonalIcon(
-                        onPressed: gen ? null : () => _onGenerateNutritionMealPlan(context, ref),
-                        icon: gen
-                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Icon(Icons.restaurant_menu),
-                        label: Text(
-                          gen
-                              ? 'Generazione piano...'
-                              : (plan?.hasAnyObjective == true ? 'Aggiorna obiettivi pasti (AI)' : 'Genera obiettivi pasti (AI)'),
+                  if (plan == null || !plan.hasAnyObjective) {
+                    return Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          size: 14,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
-                      ),
-                      if (plan != null && plan.macroGiornalieri.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        Text(
-                          _macroSummaryLine(plan.macroGiornalieri),
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                              ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Lancia l\'Analisi dalla Home per generare gli obiettivi pasti',
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
                         ),
                       ],
-                    ],
-                  );
+                    );
+                  }
+                  if (plan.macroGiornalieri.isNotEmpty) {
+                    return Text(
+                      _macroSummaryLine(plan.macroGiornalieri),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    );
+                  }
+                  return const SizedBox.shrink();
                 },
               ),
             ],
@@ -587,35 +590,6 @@ class AlimentazioneScreen extends ConsumerWidget {
 
   }*/
 
-  Future<void> _onGenerateNutritionMealPlan(BuildContext context, WidgetRef ref) async {
-    var uid = ref.read(authNotifierProvider).user?.uid;
-    uid ??= FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) {
-      if (context.mounted) showErrorDialog(context, 'Utente non autenticato.');
-      return;
-    }
-
-    final apiKeyService = ref.read(geminiApiKeyServiceProvider);
-    if (!await apiKeyService.hasValidKey()) {
-      if (!context.mounted) return;
-      final saved = await showGeminiApiKeyDialog(context, ref);
-      if (!saved || !context.mounted) return;
-    }
-
-    ref.read(nutritionMealPlanGeneratingProvider.notifier).state = true;
-    try {
-      await ref.read(nutritionMealPlanServiceProvider).generateAndSave(uid);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Piano alimentare AI salvato')),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) showErrorDialog(context, e.toString());
-    } finally {
-      ref.read(nutritionMealPlanGeneratingProvider.notifier).state = false;
-    }
-  }
 }
 
 // ====================== WIDGETS AUSILIARI ======================

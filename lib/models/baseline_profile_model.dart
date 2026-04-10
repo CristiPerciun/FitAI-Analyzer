@@ -3,7 +3,7 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'baseline_profile_model.g.dart';
 
-/// Livello 3 - Profilo baseline annuale (baseline_profile/main).
+/// Livello 3 - Profilo baseline annuale (profile/baseline).
 /// Profilo evolutivo aggiornato ogni 10 giorni, pronto per prompt AI.
 @JsonSerializable(includeIfNull: false)
 class BaselineProfileModel {
@@ -37,7 +37,7 @@ class BaselineProfileModel {
   /// Riferimenti: "Outlive - Zone 2", "Università Stanford VO2max study", etc.
   final List<String> references;
 
-  // --- Nutrizione / TDEE (da onboarding + NutritionGoal, merge su baseline_profile/main) ---
+  // --- Nutrizione / TDEE (da onboarding + NutritionGoal, merge su profile/baseline) ---
 
   @JsonKey(name: 'bmr_kcal')
   final double? bmrKcal;

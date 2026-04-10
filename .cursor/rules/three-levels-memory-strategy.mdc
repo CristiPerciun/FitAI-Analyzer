@@ -95,7 +95,7 @@ Ogni pasto: `dish_name`, `calories`, `macros`, `timestamp`, `meal_type`, `raw_ai
 ### Percorso Firestore
 
 ```
-/users/{uid}/baseline_profile/main
+/users/{uid}/profile/baseline
 ```
 
 **Campi** (BaselineProfileModel):
@@ -123,7 +123,7 @@ Ogni pasto: `dish_name`, `calories`, `macros`, `timestamp`, `meal_type`, `raw_ai
 ### Quando usare Livello 3
 
 - Prompt AI: report annuale, piano longevità
-- Lettura: `baseline_profile/main`
+- Lettura: `profile/baseline`
 
 ---
 
@@ -138,13 +138,29 @@ Ogni pasto: `dish_name`, `calories`, `macros`, `timestamp`, `meal_type`, `raw_ai
 [AggregationService]
        ↓
 3. Legge daily_logs (solo nutrition_summary) → rolling_10days (Livello 2)
-4. Legge daily_logs + rolling → baseline_profile (Livello 3)
+4. Legge daily_logs + rolling → profile/baseline (Livello 3)
        ↓
 [Prompt AI]
 - "Com'è il pranzo?" → meals subcollection (Livello 1)
 - "Trend proteine ultimi 7 giorni?" → rolling_10days (Livello 2)
 - "Come va la nutrizione quest'anno?" → baseline ai_ready_summary (Livello 3)
 ```
+
+---
+
+## Prompt AI unificato giornaliero (`ai_current`)
+
+Il prompt unificato sostituisce i prompt separati per Home, nutrizione e allenamento.
+
+**Input**: `profile/profile` + `profile/baseline` + `profile/diary` + aggregazione di ieri (daily_logs + activities + daily_health) + `rolling_10days/current`
+
+**Output** (JSON unico, salvo in batch da `LongevityEngine.saveUnifiedAiCurrent`):
+- `ai_current/meal` ← obiettivi colazione/pranzo/cena + macro target
+- `ai_current/allenamenti` ← tipo, descrizione, durata, intensità
+- `ai_current/home_longevity_plan` ← 4 pilastri + weekly_sprint + strategic_advice
+- `profile/diary` ← append `diary_update`
+
+**Trigger**: bottone "Analisi" in Home.
 
 ---
 
@@ -194,8 +210,11 @@ Entrambi usano merge fuzzy lato scrittura: stessa finestra temporale `+/- 2 min`
 - `lib/models/daily_log_model.dart` – nutritionForAi, `activity_ids`, `health_ref`
 - `lib/models/meal_model.dart` – sottocollezione meals
 - `lib/models/longevity_home_package.dart` – pacchetto unificato per Home AI
+- `lib/models/ai_current_allenamenti_model.dart` – obiettivo allenamento (ai_current/allenamenti)
 - `lib/services/nutrition_service.dart` – salvataggio Livello 1 + aggregation summary
-- `lib/services/aggregation_service.dart` – Livello 2 (rolling), Livello 3 (baseline)
+- `lib/services/aggregation_service.dart` – Livello 2 (rolling), Livello 3 (profile/baseline)
 - `lib/services/ai_prompt_service.dart` – costruzione contesto da tutti e tre i livelli
-- `lib/services/longevity_engine.dart` – buildGeminiHomeContext (7 gg + 8 sett da daily_logs + activities + daily_health), buildLongevityPlanPrompt
+- `lib/services/longevity_engine.dart` – buildUnifiedDailyContext, buildUnifiedPromptFromContext, saveUnifiedAiCurrent
+- `lib/providers/providers.dart` – aiCurrentAllenamentiStreamProvider, nutritionMealPlanAiStreamProvider, homeLongevityPlanDayStreamProvider
 - `lib/providers/data_sync_notifier.dart` – `activitiesStreamProvider`, `dailyHealthStreamProvider`
+- `docs/DATA_ARCHITECTURE.md` – architettura completa con nuova struttura

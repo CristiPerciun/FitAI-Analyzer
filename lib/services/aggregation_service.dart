@@ -203,8 +203,8 @@ class AggregationService {
     final baselineRef = firestore
         .collection('users')
         .doc(uid)
-        .collection('baseline_profile')
-        .doc('main');
+        .collection('profile')
+        .doc('baseline');
 
     final baselineDoc = await baselineRef.get();
     final lastBaseline = baselineDoc.exists
