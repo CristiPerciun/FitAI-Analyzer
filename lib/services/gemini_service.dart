@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -70,12 +71,13 @@ Future<Map<String, dynamic>> getFoodInfoFromText(String description) async {
   """;
 
   try {
-    final response = await model.generateContent([Content.text(prompt)]);
+    final response = await _withRetry(
+      () => model.generateContent([Content.text(prompt)]),
+    );
     final text = response.text;
     if (text == null || text.isEmpty) {
       throw Exception('Gemini non ha restituito risposta');
     }
-    // Usiamo la tua funzione di utilità interna per pulire e parsare il JSON
     return _parseNutritionJson(text);
   } catch (e) {
     print("Errore analisi testuale: $e");
@@ -92,11 +94,35 @@ Future<Map<String, dynamic>> getFoodInfoFromText(String description) async {
     }
   }
 
+  /// Retries [fn] up to [maxAttempts] times on 503/UNAVAILABLE errors,
+  /// using exponential backoff (2s, 4s, 8s …).
+  Future<T> _withRetry<T>(
+    Future<T> Function() fn, {
+    int maxAttempts = 4,
+  }) async {
+    int attempt = 0;
+    while (true) {
+      try {
+        return await fn();
+      } catch (e) {
+        attempt++;
+        final isUnavailable = e.toString().contains('503') ||
+            e.toString().contains('UNAVAILABLE') ||
+            e.toString().contains('high demand');
+        if (!isUnavailable || attempt >= maxAttempts) rethrow;
+        final waitSeconds = 1 << attempt; // 2, 4, 8 seconds
+        await Future<void>.delayed(Duration(seconds: waitSeconds));
+      }
+    }
+  }
+
   /// Genera risposta da un prompt completo (senza appendere istruzioni).
   /// Usato per Home: il prompt include già l'istruzione (LongevityEngine.buildHomeAiPrompt).
   Future<String> generateFromPrompt(String prompt) async {
     final model = await _getModel();
-    final response = await model.generateContent([Content.text(prompt)]);
+    final response = await _withRetry(
+      () => model.generateContent([Content.text(prompt)]),
+    );
     final text = response.text;
     if (text == null || text.isEmpty) {
       throw Exception('Gemini non ha restituito risposta');
@@ -123,7 +149,9 @@ Sulla base del contesto sopra, fornisci:
 Rispondi in italiano, in modo strutturato e actionable.
 ''';
 
-    final response = await model.generateContent([Content.text(prompt)]);
+    final response = await _withRetry(
+      () => model.generateContent([Content.text(prompt)]),
+    );
 
     final text = response.text;
     if (text == null || text.isEmpty) {
@@ -166,9 +194,9 @@ Restituisci un JSON con questo schema esatto:
 Stima le calorie e i macronutrienti in base al cibo visibile. Sii realistico.
 ''';
 
-    final response = await model.generateContent([
-      Content.multi([TextPart(prompt), imagePart])
-    ]);
+    final response = await _withRetry(
+      () => model.generateContent([Content.multi([TextPart(prompt), imagePart])]),
+    );
 
     final text = response.text;
     if (text == null || text.isEmpty) {
@@ -181,7 +209,9 @@ Stima le calorie e i macronutrienti in base al cibo visibile. Sii realistico.
   /// Risposta JSON per [AiPromptService.buildNutritionMealPlanPrompt] (pagina Alimentazione).
   Future<Map<String, dynamic>> generateNutritionMealPlanJson(String prompt) async {
     final model = await _getModelNutrition();
-    final response = await model.generateContent([Content.text(prompt)]);
+    final response = await _withRetry(
+      () => model.generateContent([Content.text(prompt)]),
+    );
     final text = response.text;
     if (text == null || text.isEmpty) {
       return {'error': 'Gemini non ha restituito risposta'};

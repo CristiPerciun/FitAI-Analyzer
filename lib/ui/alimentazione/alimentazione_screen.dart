@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitai_analyzer/models/meal_model.dart';
 //import 'package:fitai_analyzer/models/user_profile.dart' show NutritionGoal;
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
+import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/nutrition_chart_provider.dart';
 import 'package:fitai_analyzer/providers/nutrition_meal_edit_provider.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
@@ -370,11 +371,27 @@ class AlimentazioneScreen extends ConsumerWidget {
         .round();
     final rimanenti = obiettivoKcal - calorieAssunte;
 
+    final uid = ref.watch(authNotifierProvider).user?.uid;
+    final isGarminSyncing = ref.watch(
+      garminSyncNotifierProvider.select((s) => s.isSyncing),
+    );
+
     return Scaffold(
       appBar: AppBar(title: const Text('Alimentazione')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+      body: Column(
+        children: [
+          if (isGarminSyncing) const LinearProgressIndicator(minHeight: 2),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () => refreshGarminSync(
+                ref,
+                uid,
+                trigger: 'alimentazione_pull_to_refresh',
+              ),
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (nutritionGoal == null)
@@ -523,7 +540,11 @@ class AlimentazioneScreen extends ConsumerWidget {
             const SizedBox(height: 40),
           ],
         ),
-      ),
+      ),         // SingleChildScrollView
+    ),           // RefreshIndicator
+  ),             // Expanded
+],               // Column children
+      ),         // Column (body)
     );
   }
 

@@ -1,6 +1,7 @@
 import 'package:fitai_analyzer/models/longevity_home_package.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
-import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart';
+import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart'
+    show GarminSyncState, garminSyncNotifierProvider;
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/utils/boot_log.dart';
@@ -49,6 +50,37 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ? 'null'
             : 'loading=${prev.isLoading} data=${prev.hasValue} err=${prev.hasError}';
         bootLog('HomeScreen: listener pacchetto $p → $n');
+      },
+    );
+
+    ref.listen<GarminSyncState>(
+      garminSyncNotifierProvider,
+      (prev, next) {
+        if (!context.mounted) return;
+        final prevErr = prev?.error;
+        final nextErr = next.error;
+        if (nextErr != null && nextErr != prevErr) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Sync Garmin non riuscita: $nextErr'),
+              backgroundColor: Theme.of(context).colorScheme.error,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        } else if (prev != null &&
+            prev.isSyncing &&
+            !next.isSyncing &&
+            next.error == null &&
+            (next.trigger == 'home_pull_to_refresh')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Dati Garmin aggiornati'),
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
       },
     );
 

@@ -1,5 +1,6 @@
 import 'package:fitai_analyzer/models/ai_current_allenamenti_model.dart';
 import 'package:fitai_analyzer/models/fitness_data.dart';
+import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/dashboard_activity_providers.dart';
 import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
@@ -24,10 +25,14 @@ class DashboardSuggestionsTab extends ConsumerWidget {
     final allenamentiAsync = ref.watch(aiCurrentAllenamentiStreamProvider);
     final allenamentiObiettivo = allenamentiAsync.valueOrNull;
 
+    final uid = ref.watch(authNotifierProvider).user?.uid;
+
     return RefreshIndicator(
-      onRefresh: () async {
-        ref.invalidate(activitiesStreamProvider);
-      },
+      onRefresh: () => refreshGarminSync(
+        ref,
+        uid,
+        trigger: 'allenamenti_pull_to_refresh',
+      ),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
