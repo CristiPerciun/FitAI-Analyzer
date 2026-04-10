@@ -5,7 +5,7 @@ import '../models/meal_model.dart';
 import '../models/user_profile.dart';
 import '../utils/platform_firestore_fix.dart';
 import 'ai_prompt_service.dart';
-import 'gemini_service.dart';
+import 'unified_ai_service.dart';
 
 /// Servizio per salvataggio dati nutrizione (Gemini foto piatto) su Firestore.
 /// Strategia a Tre Livelli:
@@ -15,19 +15,19 @@ import 'gemini_service.dart';
 final nutritionServiceProvider = Provider<NutritionService>((ref) {
   return NutritionService(
     aiPromptService: ref.read(aiPromptServiceProvider),
-    geminiService: ref.read(geminiServiceProvider),
+    unifiedAi: ref.read(unifiedAiServiceProvider),
   );
 });
 
 class NutritionService {
   NutritionService({
     required AiPromptService aiPromptService,
-    required GeminiService geminiService,
+    required UnifiedAiService unifiedAi,
   })  : _aiPromptService = aiPromptService,
-        _geminiService = geminiService;
+        _unifiedAi = unifiedAi;
 
   final AiPromptService _aiPromptService;
-  final GeminiService _geminiService;
+  final UnifiedAiService _unifiedAi;
 
   /// Salva il pasto nella sottocollezione meals e aggiorna nutrition_summary sul daily_log.
   /// Usa il **NUOVO MealModel** (campi flat proteinG / carbsG / fatG + ingredients + aiConfidence).
@@ -157,7 +157,7 @@ class NutritionService {
     }
 
     final prompt = _aiPromptService.buildNutritionPrompt(profile);
-    final plan = await _geminiService.generateFromPrompt(prompt);
+    final plan = await _unifiedAi.generateFromPrompt(prompt);
 
     final now = DateTime.now();
     final todayStr = now.toIso8601String().split('T')[0];

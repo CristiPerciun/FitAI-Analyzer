@@ -1,6 +1,6 @@
+import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:fitai_analyzer/services/gemini_service.dart';
 
 class ManualEntryDialog extends ConsumerStatefulWidget {
   const ManualEntryDialog({super.key});
@@ -21,10 +21,8 @@ class _ManualEntryDialogState extends ConsumerState<ManualEntryDialog> {
     setState(() => _isLoading = true);
 
     try {
-      final geminiService = ref.read(geminiServiceProvider);
-      
-      // Chiamata alla funzione che abbiamo aggiornato nel GeminiService
-      final result = await geminiService.getFoodInfoFromText(text);
+      final ai = ref.read(unifiedAiServiceProvider);
+      final result = await ai.getFoodInfoFromText(text);
 
       if (mounted) {
         if (result.containsKey('error')) {

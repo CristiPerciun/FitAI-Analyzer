@@ -1,4 +1,5 @@
 import 'package:fitai_analyzer/providers/dashboard_activity_providers.dart';
+import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -167,7 +168,7 @@ class ActivityBurnBarChartCard extends ConsumerWidget {
                       barRods: [
                         BarChartRodData(
                           toY: e.value.kcal,
-                          color: theme.colorScheme.primary.withValues(alpha: 0.85),
+                          color: AppColors.activityBurnBar,
                           width: mode == ActivityBurnChartMode.month ? 4 : 10,
                           borderRadius: const BorderRadius.vertical(
                             top: Radius.circular(4),

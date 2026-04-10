@@ -11,12 +11,58 @@ import 'package:fitai_analyzer/providers/theme_mode_provider.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
+import 'package:fitai_analyzer/services/ai_backend_preference_service.dart';
+import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
+import 'package:fitai_analyzer/services/user_ai_settings_sync_service.dart';
+import 'package:fitai_analyzer/ui/widgets/deepseek_api_key_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
+import 'package:fitai_analyzer/ui/widgets/openrouter_api_key_dialog.dart';
 import 'package:fitai_analyzer/ui/profile/profile_hub_screen.dart';
 import 'package:fitai_analyzer/ui/widgets/garmin_connect_dialog.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+Future<AiBackend?> _pickFallbackAiBackend({
+  required AiBackend exclude,
+  required AiBackendPreferenceService prefs,
+  required GeminiApiKeyService gemini,
+}) async {
+  for (final b in AiBackend.values) {
+    if (b == exclude) continue;
+    switch (b) {
+      case AiBackend.gemini:
+        if (await gemini.hasValidKey()) return b;
+      case AiBackend.deepseek:
+        if (await prefs.hasValidDeepSeekKey()) return b;
+      case AiBackend.openrouter:
+        if (await prefs.hasValidOpenRouterKey()) return b;
+    }
+  }
+  return null;
+}
+
+Future<void> _applyAiBackend(WidgetRef ref, AiBackend backend) async {
+  final prefs = ref.read(aiBackendPreferenceServiceProvider);
+  await prefs.setBackend(backend);
+  final uid = ref.read(authNotifierProvider).user?.uid;
+  if (uid != null) {
+    await ref
+        .read(userAiSettingsSyncServiceProvider)
+        .pushActiveBackend(uid, backend);
+  }
+  invalidateAiRouting(ref);
+}
+
+void _showAiBackendFallbackSnack() {
+  scaffoldMessengerKey.currentState?.showSnackBar(
+    const SnackBar(
+      content: Text(
+        'Configura la chiave di un altro backend prima di disattivare questo.',
+      ),
+    ),
+  );
+}
 
 /// Impostazioni in stile gruppi iOS: integrazioni con switch, senza pulsante Sync dedicato.
 class ImpostazioniScreen extends ConsumerWidget {
@@ -27,6 +73,7 @@ class ImpostazioniScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authNotifierProvider);
+    final aiBackendAsync = ref.watch(aiBackendSettingsProvider);
     final stravaAsync = ref.watch(stravaConnectedProvider);
     final garminAsync = ref.watch(garminConnectedProvider);
     final syncStatus = ref.watch(stravaSyncStatusProvider);
@@ -163,18 +210,77 @@ class ImpostazioniScreen extends ConsumerWidget {
             child: const _ThemeModeIosRow(),
           ),
           const SizedBox(height: 10),
-          _IosGroup(
-            color: groupBg,
-            isDark: isDark,
-            child: _IosNavigationRow(
-              leading: Icon(
-                Icons.key_rounded,
-                color: theme.colorScheme.primary,
-                size: 22,
+          _IosSectionHeader(label: 'INTELLIGENZA ARTIFICIALE', color: headerColor),
+          aiBackendAsync.when(
+            data: (snap) => _IosGroup(
+              color: groupBg,
+              isDark: isDark,
+              children: [
+                _IosAiBackendSwitchRow(
+                  leading: Icon(
+                    Icons.auto_awesome,
+                    color: theme.colorScheme.primary,
+                    size: 22,
+                  ),
+                  title: 'Gemini',
+                  subtitle: snap.hasGeminiKey
+                      ? 'Sincronizzata tra i dispositivi (stesso account)'
+                      : 'Chiave non impostata · attiva per inserirla',
+                  value: snap.backend == AiBackend.gemini,
+                  activeColor: _iosSwitchOn,
+                  onChanged: (v) => unawaited(
+                    _onGeminiBackendSwitch(context, ref, v),
+                  ),
+                ),
+                _IosRowDivider(indent: _IosGroup.rowLabelInset),
+                _IosAiBackendSwitchRow(
+                  leading: Icon(
+                    Icons.psychology_outlined,
+                    color: theme.colorScheme.primary,
+                    size: 22,
+                  ),
+                  title: 'DeepSeek',
+                  subtitle: snap.hasDeepSeekKey
+                      ? 'Sincronizzata tra i dispositivi (stesso account)'
+                      : 'Chiave non impostata · attiva per inserirla',
+                  value: snap.backend == AiBackend.deepseek,
+                  activeColor: _iosSwitchOn,
+                  onChanged: (v) => unawaited(
+                    _onDeepSeekBackendSwitch(context, ref, v),
+                  ),
+                ),
+                _IosRowDivider(indent: _IosGroup.rowLabelInset),
+                _IosAiBackendSwitchRow(
+                  leading: Icon(
+                    Icons.public_outlined,
+                    color: theme.colorScheme.primary,
+                    size: 22,
+                  ),
+                  title: 'OpenRouter (Gemma 4 IT free)',
+                  subtitle: snap.hasOpenRouterKey
+                      ? 'Sincronizzata tra i dispositivi (stesso account)'
+                      : 'Chiave non impostata · attiva per inserirla',
+                  value: snap.backend == AiBackend.openrouter,
+                  activeColor: _iosSwitchOn,
+                  onChanged: (v) => unawaited(
+                    _onOpenRouterBackendSwitch(context, ref, v),
+                  ),
+                ),
+              ],
+            ),
+            loading: () => const SizedBox.shrink(),
+            error: (_, __) => const SizedBox.shrink(),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 4, top: 8, right: 4),
+            child: Text(
+              'Un solo backend attivo (Home, foto pasti, piani). '
+              'Chiavi e scelta (Gemini, DeepSeek, OpenRouter) sono salvate su Firebase per lo stesso account: '
+              'attiva lo switch per inserire la chiave; sull’altro dispositivo effettua l’accesso o riapri l’app.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: footerColor,
+                fontSize: 13,
               ),
-              title: 'Chiave Gemini',
-              subtitle: 'API per analisi nutrizione',
-              onTap: () => _onAddGeminiKey(context, ref),
             ),
           ),
           const SizedBox(height: 20),
@@ -389,13 +495,103 @@ class ImpostazioniScreen extends ConsumerWidget {
     }
   }
 
-  Future<void> _onAddGeminiKey(BuildContext context, WidgetRef ref) async {
-    final saved = await showGeminiApiKeyDialog(context, ref);
-    if (saved) {
-      scaffoldMessengerKey.currentState?.showSnackBar(
-        const SnackBar(content: Text('Chiave Gemini salvata.')),
-      );
+  Future<void> _onGeminiBackendSwitch(
+    BuildContext context,
+    WidgetRef ref,
+    bool turnOn,
+  ) async {
+    final prefs = ref.read(aiBackendPreferenceServiceProvider);
+    final geminiKeys = ref.read(geminiApiKeyServiceProvider);
+
+    if (turnOn) {
+      if (!await geminiKeys.hasValidKey()) {
+        if (!context.mounted) return;
+        final saved = await showGeminiApiKeyDialog(context, ref);
+        if (!saved || !await geminiKeys.hasValidKey()) {
+          ref.invalidate(aiBackendSettingsProvider);
+          return;
+        }
+      }
+      await _applyAiBackend(ref, AiBackend.gemini);
+      return;
     }
+
+    final next = await _pickFallbackAiBackend(
+      exclude: AiBackend.gemini,
+      prefs: prefs,
+      gemini: geminiKeys,
+    );
+    if (next == null) {
+      _showAiBackendFallbackSnack();
+      return;
+    }
+    await _applyAiBackend(ref, next);
+  }
+
+  Future<void> _onDeepSeekBackendSwitch(
+    BuildContext context,
+    WidgetRef ref,
+    bool turnOn,
+  ) async {
+    final prefs = ref.read(aiBackendPreferenceServiceProvider);
+    final geminiKeys = ref.read(geminiApiKeyServiceProvider);
+
+    if (turnOn) {
+      if (!await prefs.hasValidDeepSeekKey()) {
+        if (!context.mounted) return;
+        final saved = await showDeepSeekApiKeyDialog(context, ref);
+        if (!saved || !await prefs.hasValidDeepSeekKey()) {
+          ref.invalidate(aiBackendSettingsProvider);
+          return;
+        }
+      }
+      await _applyAiBackend(ref, AiBackend.deepseek);
+      return;
+    }
+
+    final next = await _pickFallbackAiBackend(
+      exclude: AiBackend.deepseek,
+      prefs: prefs,
+      gemini: geminiKeys,
+    );
+    if (next == null) {
+      _showAiBackendFallbackSnack();
+      return;
+    }
+    await _applyAiBackend(ref, next);
+  }
+
+  Future<void> _onOpenRouterBackendSwitch(
+    BuildContext context,
+    WidgetRef ref,
+    bool turnOn,
+  ) async {
+    final prefs = ref.read(aiBackendPreferenceServiceProvider);
+    final geminiKeys = ref.read(geminiApiKeyServiceProvider);
+
+    if (turnOn) {
+      if (!await prefs.hasValidOpenRouterKey()) {
+        if (!context.mounted) return;
+        final saved = await showOpenRouterApiKeyDialog(context, ref);
+        if (!saved || !await prefs.hasValidOpenRouterKey()) {
+          ref.invalidate(aiBackendSettingsProvider);
+          return;
+        }
+      }
+      await _applyAiBackend(ref, AiBackend.openrouter);
+      return;
+    }
+
+    final next = await _pickFallbackAiBackend(
+      exclude: AiBackend.openrouter,
+      prefs: prefs,
+      gemini: geminiKeys,
+    );
+    if (next == null) {
+      _showAiBackendFallbackSnack();
+      return;
+    }
+    await _applyAiBackend(ref, next);
   }
 
   Future<bool?> _showCupertinoConfirm(
@@ -503,6 +699,77 @@ class _IosRowDivider extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.only(left: indent),
       child: Container(height: 0.5, color: line),
+    );
+  }
+}
+
+class _IosAiBackendSwitchRow extends StatelessWidget {
+  const _IosAiBackendSwitchRow({
+    required this.leading,
+    required this.title,
+    this.subtitle,
+    required this.value,
+    required this.onChanged,
+    this.activeColor = ImpostazioniScreen._iosSwitchOn,
+  });
+
+  final Widget leading;
+  final String title;
+  final String? subtitle;
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+  final Color activeColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onChanged == null ? null : () => onChanged!(!value),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(width: 29, child: Center(child: leading)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.w400,
+                        fontSize: 17,
+                      ),
+                    ),
+                    if (subtitle != null && subtitle!.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontSize: 13,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              CupertinoSwitch(
+                value: value,
+                onChanged: onChanged,
+                activeTrackColor: activeColor,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

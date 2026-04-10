@@ -9,10 +9,9 @@ import 'package:fitai_analyzer/providers/nutrition_chart_provider.dart';
 import 'package:fitai_analyzer/providers/nutrition_meal_edit_provider.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/providers/user_profile_notifier.dart';
+import 'package:fitai_analyzer/ui/alimentazione/alimentazione_objectives_tab.dart';
 import 'package:fitai_analyzer/ui/onboarding/nutrition_goal_screen.dart';
 import 'package:fitai_analyzer/utils/date_utils.dart' show dateFilterAll, formatDateForDisplay;
-import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
-import 'package:fitai_analyzer/services/gemini_service.dart';
 import 'package:fitai_analyzer/services/nutrition_service.dart';
 import 'package:fitai_analyzer/theme/app_card_theme.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
@@ -20,7 +19,7 @@ import 'package:fitai_analyzer/ui/widgets/date_filter_chips.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/loading_indicator.dart';
 import 'package:fitai_analyzer/utils/meal_constants.dart';
-import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
+import 'package:fitai_analyzer/ui/widgets/ai_backend_key_gate.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -74,10 +73,28 @@ List<dynamic> _nutritionFoodsList(dynamic v) {
   return [];
 }
 
-class AlimentazioneScreen extends ConsumerWidget {
+class AlimentazioneScreen extends ConsumerStatefulWidget {
   const AlimentazioneScreen({super.key});
 
-  static final PageController _chartPageController = PageController();
+  @override
+  ConsumerState<AlimentazioneScreen> createState() => _AlimentazioneScreenState();
+}
+
+class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   Future<String?> _ensureNutritionUid(BuildContext context, WidgetRef ref) async {
     var uid = FirebaseAuth.instance.currentUser?.uid;
@@ -109,12 +126,10 @@ class AlimentazioneScreen extends ConsumerWidget {
     final uid = await _ensureNutritionUid(context, ref);
     if (uid == null) return;
 
-    final apiKeyService = ref.read(geminiApiKeyServiceProvider);
-    if (!await apiKeyService.hasValidKey()) {
-      if (!context.mounted) return;
-      final saved = await showGeminiApiKeyDialog(context, ref);
-      if (!saved || !context.mounted) return;
+    if (!await ensureActiveAiBackendHasKey(context, ref)) {
+      return;
     }
+    if (!context.mounted) return;
 
     final source = _isCameraSupported ? imageSource : ImageSource.gallery;
 
@@ -135,8 +150,8 @@ class AlimentazioneScreen extends ConsumerWidget {
     );
 
     try {
-      final gemini = ref.read(geminiServiceProvider);
-      final result = await gemini.analyzeNutritionFromImage(
+      final ai = ref.read(unifiedAiServiceProvider);
+      final result = await ai.analyzeNutritionFromImage(
         Uint8List.fromList(bytes),
         mimeType: mimeType,
       );
@@ -250,11 +265,10 @@ class AlimentazioneScreen extends ConsumerWidget {
                     Navigator.of(ctx).pop();
 
                     if (!context.mounted) return;
-                    final apiKeyService = ref.read(geminiApiKeyServiceProvider);
-                    if (!await apiKeyService.hasValidKey()) {
-                      final saved = await showGeminiApiKeyDialog(context, ref);
-                      if (!saved || !context.mounted) return;
+                    if (!await ensureActiveAiBackendHasKey(context, ref)) {
+                      return;
                     }
+                    if (!context.mounted) return;
 
                     final uid = await _ensureNutritionUid(context, ref);
                     if (uid == null || !context.mounted) return;
@@ -338,7 +352,8 @@ class AlimentazioneScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
+    final ref = this.ref;
     final datesAsync = ref.watch(mealDatesProvider);
     final dates = datesAsync.valueOrNull ?? [];
     final selectedDate = ref.watch(selectedMealDateFilterProvider);
@@ -353,23 +368,12 @@ class AlimentazioneScreen extends ConsumerWidget {
     final planAi = ref.watch(nutritionMealPlanAiStreamProvider).valueOrNull;
     final aiMacroGiornalieri = planAi?.macroGiornalieri;
 
-    int calorieAssunte = 0;
-    for (final d in displayDates) {
-      final byType = ref.watch(mealsForDateByTypeProvider(d)).valueOrNull ?? {};
-      for (final list in byType.values) {
-        for (final m in list) {
-          calorieAssunte += m.calories;
-        }
-      }
-    }
-
     // Obiettivo "vero" usato sia nei grafici sia nella card: quello calcolato dall'IA.
     // Fallback: se il piano AI non esiste ancora, usiamo l'obiettivo configurato dall'utente.
     final obiettivoKcal = (_macroNum(aiMacroGiornalieri, ['kcal', 'calories']) ??
             nutritionGoal?.calorieTarget ??
             0)
         .round();
-    final rimanenti = obiettivoKcal - calorieAssunte;
 
     final uid = ref.watch(authNotifierProvider).user?.uid;
     final isGarminSyncing = ref.watch(
@@ -377,23 +381,39 @@ class AlimentazioneScreen extends ConsumerWidget {
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Alimentazione')),
-      body: Column(
-        children: [
-          if (isGarminSyncing) const LinearProgressIndicator(minHeight: 2),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: () => refreshGarminSync(
-                ref,
-                uid,
-                trigger: 'alimentazione_pull_to_refresh',
-              ),
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+      appBar: AppBar(
+        title: const Text('Alimentazione'),
+        bottom: TabBar(
+          controller: _tabController,
+          isScrollable: false,
+          tabAlignment: TabAlignment.fill,
+          tabs: const [
+            Tab(text: 'Obiettivi'),
+            Tab(text: 'Diario'),
+          ],
+        ),
+      ),
+      body: SafeArea(
+        child: Column(
           children: [
+            if (isGarminSyncing) const LinearProgressIndicator(minHeight: 2),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  const AlimentazioneObjectivesTab(),
+                  RefreshIndicator(
+                    onRefresh: () => refreshGarminSync(
+                      ref,
+                      uid,
+                      trigger: 'alimentazione_pull_to_refresh',
+                    ),
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
             if (nutritionGoal == null)
               _NutritionOnboardingCard(
                 onConfigure: () {
@@ -538,13 +558,16 @@ class AlimentazioneScreen extends ConsumerWidget {
             const SizedBox(height: 24),
           //  _buildWeeklyChartsSection(context, ref, nutritionGoal, aiMacroGiornalieri),
             const SizedBox(height: 40),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
-      ),         // SingleChildScrollView
-    ),           // RefreshIndicator
-  ),             // Expanded
-],               // Column children
-      ),         // Column (body)
+      ),
     );
   }
 

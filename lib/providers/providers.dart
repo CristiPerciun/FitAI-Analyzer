@@ -6,13 +6,17 @@ import 'package:fitai_analyzer/models/home_longevity_plan_day.dart';
 import 'package:fitai_analyzer/models/longevity_home_package.dart';
 import 'package:fitai_analyzer/models/meal_model.dart';
 import 'package:fitai_analyzer/models/nutrition_meal_plan_ai.dart';
+import 'package:fitai_analyzer/services/unified_ai_service.dart';
 import 'package:fitai_analyzer/utils/meal_constants.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart';
+import 'package:fitai_analyzer/services/ai_backend_preference_service.dart';
 import 'package:fitai_analyzer/services/ai_prompt_service.dart';
 import 'package:fitai_analyzer/services/auth_service.dart';
+import 'package:fitai_analyzer/services/deepseek_service.dart';
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/services/gemini_service.dart';
+import 'package:fitai_analyzer/services/openrouter_service.dart';
 import 'package:fitai_analyzer/services/longevity_engine.dart';
 import 'package:fitai_analyzer/services/nutrition_meal_plan_service.dart';
 import 'package:fitai_analyzer/services/nutrition_service.dart';
@@ -22,14 +26,40 @@ import 'package:fitai_analyzer/utils/platform_firestore_fix.dart';
 import 'package:fitai_analyzer/utils/prompt_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+export 'package:fitai_analyzer/services/unified_ai_service.dart'
+    show UnifiedAiService, unifiedAiServiceProvider;
+
 /// Service providers - dependency injection via Riverpod
 final authServiceProvider = Provider<AuthService>((ref) => AuthService());
+
+/// Stato backend IA (Gemini / DeepSeek / OpenRouter) per Impostazioni e gating.
+final aiBackendSettingsProvider =
+    FutureProvider.autoDispose<AiBackendSettingsSnapshot>((ref) async {
+  final prefs = ref.watch(aiBackendPreferenceServiceProvider);
+  final gemini = ref.watch(geminiApiKeyServiceProvider);
+  return AiBackendSettingsSnapshot(
+    backend: await prefs.getBackend(),
+    hasGeminiKey: await gemini.hasValidKey(),
+    hasDeepSeekKey: await prefs.hasValidDeepSeekKey(),
+    hasOpenRouterKey: await prefs.hasValidOpenRouterKey(),
+  );
+});
+
+/// Invalida routing IA dopo cambio chiave o backend.
+/// Accetta `WidgetRef` (UI) o il `ref` di un `Notifier`: in Riverpod 2.x non c’è un supertipo comune.
+void invalidateAiRouting(dynamic ref) {
+  ref.invalidate(aiBackendSettingsProvider);
+  ref.invalidate(unifiedAiServiceProvider);
+  ref.invalidate(geminiServiceProvider);
+  ref.invalidate(deepSeekServiceProvider);
+  ref.invalidate(openRouterServiceProvider);
+}
 
 /// Generazione piano alimentare JSON (pagina Alimentazione).
 final nutritionMealPlanServiceProvider = Provider<NutritionMealPlanService>((ref) {
   return NutritionMealPlanService(
     FirebaseFirestore.instance,
-    ref.read(geminiServiceProvider),
+    ref.read(unifiedAiServiceProvider),
     ref.read(aiPromptServiceProvider),
   );
 });
@@ -182,15 +212,17 @@ Future<void> loadLongevityPlan(WidgetRef ref) async {
   final uid = ref.read(authNotifierProvider).user?.uid;
   if (uid == null) return;
 
-  final apiKey = ref.read(geminiApiKeyServiceProvider);
-  if (!await apiKey.hasValidKey()) return;
+  final prefs = ref.read(aiBackendPreferenceServiceProvider);
+  final geminiKeys = ref.read(geminiApiKeyServiceProvider);
+  if (!await prefs.isActiveBackendConfigured(geminiKeys)) return;
 
   final engine = ref.read(longevityEngineProvider);
   final ctx = await engine.buildUnifiedDailyContext(uid);
   final prompt = engine.buildUnifiedPromptFromContext(ctx);
   await savePromptToFile(prompt);
 
-  final response = await ref.read(geminiServiceProvider).generateFromPrompt(prompt);
+  final response =
+      await ref.read(unifiedAiServiceProvider).generateFromPrompt(prompt);
 
   final cleaned = response
       .replaceAll(RegExp(r'```json\s*'), '')

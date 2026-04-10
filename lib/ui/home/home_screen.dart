@@ -3,7 +3,6 @@ import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart'
     show GarminSyncState, garminSyncNotifierProvider;
 import 'package:fitai_analyzer/providers/providers.dart';
-import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/utils/boot_log.dart';
 import 'package:fitai_analyzer/ui/home/widgets/garmin_daily_stats.dart';
 import 'package:fitai_analyzer/ui/home/widgets/longevity_header.dart';
@@ -11,7 +10,7 @@ import 'package:fitai_analyzer/ui/home/widgets/longevity_path_section.dart';
 import 'package:fitai_analyzer/ui/home/widgets/pillar_grid.dart';
 import 'package:fitai_analyzer/ui/home/widgets/weekly_sprint_card.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
-import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
+import 'package:fitai_analyzer/ui/widgets/ai_backend_key_gate.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -226,12 +225,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return;
     }
 
-    final apiKeyService = ref.read(geminiApiKeyServiceProvider);
-    if (!await apiKeyService.hasValidKey()) {
-      if (!context.mounted) return;
-      final saved = await showGeminiApiKeyDialog(context, ref);
-      if (!saved || !context.mounted) return;
+    if (!await ensureActiveAiBackendHasKey(context, ref)) {
+      return;
     }
+    if (!context.mounted) return;
 
     ref.read(_longevityPlanLoadingProvider.notifier).state = true;
 

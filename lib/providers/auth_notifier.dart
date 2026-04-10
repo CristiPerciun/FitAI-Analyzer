@@ -8,6 +8,7 @@ import 'package:fitai_analyzer/providers/strava_sync_status_notifier.dart';
 import 'package:fitai_analyzer/services/aggregation_service.dart';
 import 'package:fitai_analyzer/services/garmin_service.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
+import 'package:fitai_analyzer/services/user_ai_settings_sync_service.dart';
 import 'package:fitai_analyzer/utils/strava_error_messages.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -51,6 +52,8 @@ class AuthState {
 }
 
 class AuthNotifier extends Notifier<AuthState> {
+  String? _aiSettingsHydratedUid;
+
   @override
   AuthState build() {
     // Ascolta authStateChanges: al riavvio app Firebase ripristina la sessione
@@ -60,11 +63,27 @@ class AuthNotifier extends Notifier<AuthState> {
         if (state.user != user) {
           state = state.copyWith(user: user);
         }
+        final uid = user?.uid;
+        if (uid == null) {
+          _aiSettingsHydratedUid = null;
+          return;
+        }
+        if (_aiSettingsHydratedUid == uid) return;
+        _aiSettingsHydratedUid = uid;
+        unawaited(_pullAiSettingsFromCloud(uid));
       });
     });
     // Valore iniziale sincrono (può essere null se Firebase non ha ancora ripristinato)
     final user = ref.read(authServiceProvider).currentUser;
     return AuthState(user: user);
+  }
+
+  Future<void> _pullAiSettingsFromCloud(String uid) async {
+    try {
+      await ref.read(userAiSettingsSyncServiceProvider).pullFromCloud(uid);
+      ref.invalidate(aiBackendSettingsProvider);
+      invalidateAiRouting(ref);
+    } catch (_) {}
   }
 
   /// Avvia OAuth per il servizio specificato.

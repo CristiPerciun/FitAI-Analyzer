@@ -1,28 +1,27 @@
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
-import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
+import 'package:fitai_analyzer/services/ai_backend_preference_service.dart';
 import 'package:fitai_analyzer/services/user_ai_settings_sync_service.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Dialog per inserire la chiave API Gemini.
-/// Usato su iOS quando .env non è disponibile (chiave solo in locale).
-Future<bool> showGeminiApiKeyDialog(BuildContext context, WidgetRef ref) async {
+/// Dialog per inserire la chiave API DeepSeek (salvata in Secure Storage).
+Future<bool> showDeepSeekApiKeyDialog(BuildContext context, WidgetRef ref) async {
   final controller = TextEditingController();
-  final apiKeyService = ref.read(geminiApiKeyServiceProvider);
+  final prefs = ref.read(aiBackendPreferenceServiceProvider);
 
   final result = await showDialog<bool>(
     context: context,
     barrierDismissible: false,
     builder: (ctx) => AlertDialog(
-      title: const Text('Chiave API Gemini'),
+      title: const Text('Chiave API DeepSeek'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Inserisci la chiave API Gemini. Con account collegato viene sincronizzata '
+            'Inserisci la chiave API DeepSeek. Con account collegato viene sincronizzata '
             'anche su altri dispositivi (Firebase).',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
@@ -31,7 +30,6 @@ Future<bool> showGeminiApiKeyDialog(BuildContext context, WidgetRef ref) async {
             controller: controller,
             decoration: const InputDecoration(
               labelText: 'API Key',
-              hintText: 'AIza...',
               border: OutlineInputBorder(),
             ),
             obscureText: true,
@@ -39,7 +37,7 @@ Future<bool> showGeminiApiKeyDialog(BuildContext context, WidgetRef ref) async {
           ),
           const SizedBox(height: 8),
           Text(
-            'Ottienila da aistudio.google.com/apikey',
+            'Ottienila da platform.deepseek.com/api_keys',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: AppColors.textMuted,
                 ),
@@ -59,9 +57,9 @@ Future<bool> showGeminiApiKeyDialog(BuildContext context, WidgetRef ref) async {
             if (uid != null) {
               await ref
                   .read(userAiSettingsSyncServiceProvider)
-                  .saveGeminiKeyLocalAndCloud(uid, key);
+                  .saveDeepSeekKeyLocalAndCloud(uid, key);
             } else {
-              await apiKeyService.saveKey(key);
+              await prefs.saveDeepSeekKey(key);
             }
             invalidateAiRouting(ref);
             if (ctx.mounted) Navigator.of(ctx).pop(true);

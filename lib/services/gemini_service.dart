@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 
 import 'gemini_api_key_service.dart';
+import 'nutrition_ai_json_parser.dart';
 
 final geminiServiceProvider = Provider<GeminiService>((ref) {
   final apiKeyService = ref.watch(geminiApiKeyServiceProvider);
@@ -78,7 +78,7 @@ Future<Map<String, dynamic>> getFoodInfoFromText(String description) async {
     if (text == null || text.isEmpty) {
       throw Exception('Gemini non ha restituito risposta');
     }
-    return _parseNutritionJson(text);
+    return parseNutritionAiJson(text);
   } catch (e) {
     print("Errore analisi testuale: $e");
     return {'error': e.toString()};
@@ -203,7 +203,7 @@ Stima le calorie e i macronutrienti in base al cibo visibile. Sii realistico.
       throw Exception('Gemini non ha restituito risposta per la foto');
     }
 
-    return _parseNutritionJson(text);
+    return parseNutritionAiJson(text);
   }
 
   /// Risposta JSON per [AiPromptService.buildNutritionMealPlanPrompt] (pagina Alimentazione).
@@ -216,19 +216,6 @@ Stima le calorie e i macronutrienti in base al cibo visibile. Sii realistico.
     if (text == null || text.isEmpty) {
       return {'error': 'Gemini non ha restituito risposta'};
     }
-    return _parseNutritionJson(text);
-  }
-
-  Map<String, dynamic> _parseNutritionJson(String raw) {
-    try {
-      final cleaned = raw
-          .replaceAll(RegExp(r'```json\s*'), '')
-          .replaceAll(RegExp(r'\s*```'), '')
-          .trim();
-      final decoded = json.decode(cleaned) as Map<String, dynamic>?;
-      return decoded ?? {'raw': raw, 'error': 'JSON vuoto'};
-    } catch (_) {
-      return {'raw': raw, 'error': 'JSON non valido'};
-    }
+    return parseNutritionAiJson(text);
   }
 }
