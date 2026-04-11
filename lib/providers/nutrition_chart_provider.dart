@@ -15,7 +15,15 @@ String _dateKey(DateTime d) {
   return '${d.year}-$m-$day';
 }
 
-/// Indice settimana nel diario alimentazione: 0 = finestra che termina oggi, 1 = settimana precedente, ecc.
+DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+/// Lunedì della settimana ISO che contiene [day] (weekday Dart: 1 = lun … 7 = dom).
+DateTime _mondayOfWeekContaining(DateTime day) {
+  final d = _dateOnly(day);
+  return d.subtract(Duration(days: d.weekday - 1));
+}
+
+/// Indice settimana nel diario alimentazione: 0 = settimana calendario corrente (lun–dom), 1 = precedente, ecc.
 final nutritionDiaryWeekOffsetProvider =
     NotifierProvider<NutritionDiaryWeekOffsetNotifier, int>(
   NutritionDiaryWeekOffsetNotifier.new,
@@ -37,11 +45,12 @@ Future<NutritionChartData> _fetchNutritionChartWindow(
 ) async {
   final firestore = FirebaseFirestore.instance;
   final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
-  final endDay = today.subtract(Duration(days: 7 * weekOffset));
-  final oldest = endDay.subtract(const Duration(days: 6));
-  final startKey = _dateKey(oldest);
-  final endKey = _dateKey(endDay);
+  final today = _dateOnly(now);
+  final thisWeekMonday = _mondayOfWeekContaining(today);
+  final weekMonday = thisWeekMonday.subtract(Duration(days: 7 * weekOffset));
+  final weekSunday = weekMonday.add(const Duration(days: 6));
+  final startKey = _dateKey(weekMonday);
+  final endKey = _dateKey(weekSunday);
 
   final snapshot = await firestore
       .collection('users')
@@ -62,7 +71,7 @@ Future<NutritionChartData> _fetchNutritionChartWindow(
   final carbsData = <DailyNutrient>[];
 
   for (var i = 0; i < 7; i++) {
-    final d = oldest.add(Duration(days: i));
+    final d = weekMonday.add(Duration(days: i));
     final key = _dateKey(d);
     final log = byDate[key];
     final label = _italianWeekdayShort(d.weekday);
@@ -80,7 +89,7 @@ Future<NutritionChartData> _fetchNutritionChartWindow(
   );
 }
 
-/// Ultimi 7 giorni (fino a oggi) per [NutritionChartCard] — indipendente dal selettore settimane del diario.
+/// Settimana calendario corrente (lun–dom) per [NutritionChartCard] — indipendente dal selettore settimane del diario.
 final nutritionChartDataProvider = FutureProvider<NutritionChartData>((ref) async {
   final uid = ref.watch(authNotifierProvider.select((s) => s.user?.uid));
   if (uid == null) {
@@ -114,11 +123,11 @@ class NutritionChartData {
 
   factory NutritionChartData.empty({int weekOffset = 0}) {
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final endDay = today.subtract(Duration(days: 7 * weekOffset));
-    final oldest = endDay.subtract(const Duration(days: 6));
+    final today = _dateOnly(now);
+    final thisWeekMonday = _mondayOfWeekContaining(today);
+    final weekMonday = thisWeekMonday.subtract(Duration(days: 7 * weekOffset));
     DailyNutrient z(int i) {
-      final d = oldest.add(Duration(days: i));
+      final d = weekMonday.add(Duration(days: i));
       return DailyNutrient(_italianWeekdayShort(d.weekday), 0);
     }
 

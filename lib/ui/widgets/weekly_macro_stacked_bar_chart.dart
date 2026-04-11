@@ -6,13 +6,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 class WeeklyMacroStackedBarChartCard extends ConsumerWidget {
   const WeeklyMacroStackedBarChartCard({super.key});
 
-  static const _weekChipLabels = [
-    'Questa sett.',
-    'Sett. scorsa',
-    '2 sett. fa',
-    '3 sett. fa',
-    '4 sett. fa',
-  ];
+  /// Allineato a [NutritionDiaryWeekOffsetNotifier.setWeeksAgo] (max 12).
+  static const int _maxWeeksBack = 12;
+
+  static String _weekTitle(int weekOffset) {
+    if (weekOffset == 0) return 'Questa settimana';
+    if (weekOffset == 1) return 'Settimana scorsa';
+    return '$weekOffset settimane fa';
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -36,23 +37,51 @@ class WeeklyMacroStackedBarChartCard extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
+                SizedBox(
+                  height: 44,
                   child: Row(
-                    children: List.generate(_weekChipLabels.length, (i) {
-                      final selected = weekOffset == i;
-                      return Padding(
-                        padding: EdgeInsets.only(right: i < _weekChipLabels.length - 1 ? 8 : 0),
-                        child: ChoiceChip(
-                          label: Text(_weekChipLabels[i]),
-                          selected: selected,
-                          onSelected: (_) =>
-                              ref.read(nutritionDiaryWeekOffsetProvider.notifier).setWeeksAgo(i),
-                          visualDensity: VisualDensity.compact,
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    children: [
+                      SizedBox(
+                        width: 44,
+                        height: 44,
+                        child: weekOffset < _maxWeeksBack
+                            ? IconButton(
+                                padding: EdgeInsets.zero,
+                                tooltip: 'Settimana precedente',
+                                icon: Icon(Icons.chevron_left, color: cs.primary),
+                                onPressed: () => ref
+                                    .read(nutritionDiaryWeekOffsetProvider.notifier)
+                                    .setWeeksAgo(weekOffset + 1),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                      Expanded(
+                        child: Text(
+                          _weekTitle(weekOffset),
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurface,
+                          ),
                         ),
-                      );
-                    }),
+                      ),
+                      SizedBox(
+                        width: 44,
+                        height: 44,
+                        child: weekOffset > 0
+                            ? IconButton(
+                                padding: EdgeInsets.zero,
+                                tooltip: 'Settimana successiva',
+                                icon: Icon(Icons.chevron_right, color: cs.primary),
+                                onPressed: () => ref
+                                    .read(nutritionDiaryWeekOffsetProvider.notifier)
+                                    .setWeeksAgo(weekOffset - 1),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 16),
