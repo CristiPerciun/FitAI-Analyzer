@@ -21,6 +21,18 @@ class AuthService {
   Stream<User?> _pollAuthState() async* {
     User? last = _auth.currentUser;
     yield last;
+    // Il primo yield può essere null mentre la persistenza Firebase non ha ancora
+    // ripristinato la sessione su disco: rileggiamo currentUser a breve intervallo
+    // prima del poll lungo, così AuthGateway non mostra il login per errore.
+    const quickDelaysMs = [50, 120, 250, 500, 1000];
+    for (final ms in quickDelaysMs) {
+      await Future<void>.delayed(Duration(milliseconds: ms));
+      final current = _auth.currentUser;
+      if (current?.uid != last?.uid) {
+        last = current;
+        yield current;
+      }
+    }
     await for (final _ in Stream.periodic(const Duration(seconds: 5))) {
       final current = _auth.currentUser;
       if (current?.uid != last?.uid) {

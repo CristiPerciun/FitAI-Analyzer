@@ -1,5 +1,5 @@
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
-import 'package:fitai_analyzer/services/credential_storage_service.dart';
+import 'package:fitai_analyzer/ui/launch/launch_screen.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,37 +16,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _rememberMe = true;
-  bool _isAutoLoggingIn = true;
   bool _isRegisterMode = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _tryAutoLogin();
-  }
-
-  Future<void> _tryAutoLogin() async {
-    try {
-      final creds = await ref.read(credentialStorageServiceProvider).getCredentials();
-      if (creds == null) {
-        if (mounted) setState(() => _isAutoLoggingIn = false);
-        return;
-      }
-
-      _emailController.text = creds.email;
-      _passwordController.text = creds.password;
-
-      final success = await ref.read(authNotifierProvider.notifier).tryAutoLoginWithSavedCredentials();
-      if (mounted) {
-        setState(() => _isAutoLoggingIn = false);
-        if (!success) {
-          _passwordController.clear();
-        }
-      }
-    } catch (_) {
-      if (mounted) setState(() => _isAutoLoggingIn = false);
-    }
-  }
 
   @override
   void dispose() {
@@ -93,24 +63,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       }
     });
 
-    if (_isAutoLoggingIn || authState.isLoading) {
-      return Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const CircularProgressIndicator(),
-              if (_isAutoLoggingIn) ...[
-                const SizedBox(height: 16),
-                Text(
-                  'Accesso automatico...',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
-            ],
-          ),
-        ),
-      );
+    if (authState.isLoading) {
+      return const Scaffold(body: LaunchScreen());
     }
 
     return Scaffold(

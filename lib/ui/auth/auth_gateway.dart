@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
@@ -13,9 +15,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Gateway reattivo che decide cosa mostrare in base allo stato di Firebase Auth.
 /// Usa authNotifier (non lo stream) per reagire subito al login (su Windows lo stream
-/// fa polling ogni 5s e non aggiornerebbe subito).
+/// è un poll con catch-up rapido; vedi [AuthService.authStateChanges]).
 ///
 /// Flusso:
+/// 0. Sempre prima [LaunchScreen] (titolo app + loader) finché auth non è risolto,
+///    incluso un solo tentativo con credenziali salvate ("Ricordami") prima del login.
 /// 1. Errore o utente non trovato → LoginScreen
 /// 2. Già loggato con email → verifica token → verifica profilo:
 ///    - Profilo assente (nuovo utente) → Onboarding
@@ -30,6 +34,9 @@ class AuthGateway extends ConsumerStatefulWidget {
 
 class _AuthGatewayState extends ConsumerState<AuthGateway> {
   bool _authReady = false;
+  /// Dopo che Firebase ha indicato "nessun utente", un solo tentativo con credenziali salvate.
+  bool _savedCredentialsBootstrapStarted = false;
+  bool _savedCredentialsBootstrapDone = false;
   String? _lastGatewayUi;
 
   void _traceGatewayUi(String label) {
@@ -70,6 +77,20 @@ class _AuthGatewayState extends ConsumerState<AuthGateway> {
       return const Scaffold(body: LaunchScreen());
     }
 
+    // Nessuna sessione Firebase: prima tentativo "Ricordami" (secure storage), sempre su LaunchScreen.
+    if (user == null &&
+        !authStream.isLoading &&
+        !_savedCredentialsBootstrapDone) {
+      if (!_savedCredentialsBootstrapStarted) {
+        _savedCredentialsBootstrapStarted = true;
+        _traceGatewayUi('Launch — tentativo accesso con credenziali salvate');
+        unawaited(_runSavedCredentialsBootstrap());
+      } else {
+        _traceGatewayUi('Launch — accesso salvato in corso');
+      }
+      return const Scaffold(body: LaunchScreen());
+    }
+
     if (user != null && user.isAnonymous) {
       _traceGatewayUi('Login — utente anonimo, sign-out in post-frame');
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -83,6 +104,21 @@ class _AuthGatewayState extends ConsumerState<AuthGateway> {
     }
     _traceGatewayUi('Login — nessuna sessione');
     return const LoginScreen();
+  }
+
+  Future<void> _runSavedCredentialsBootstrap() async {
+    try {
+      if (ref.read(authNotifierProvider).user != null) {
+        if (!mounted) return;
+        setState(() => _savedCredentialsBootstrapDone = true);
+        return;
+      }
+      await ref
+          .read(authNotifierProvider.notifier)
+          .tryAutoLoginWithSavedCredentials();
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() => _savedCredentialsBootstrapDone = true);
   }
 }
 

@@ -295,7 +295,7 @@ class _AnimNutritionProgressRingState extends State<_AnimNutritionProgressRing>
     _displayed = widget.progress.clamp(0.0, 1.0);
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1100),
+      duration: const Duration(seconds: 2),
     );
     _controller.addListener(_onTick);
   }
