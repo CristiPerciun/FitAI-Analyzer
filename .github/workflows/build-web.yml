@@ -47,6 +47,10 @@ jobs:
           name: FitAI-Analyzer-web
           path: build/web
 
+      # Richiesto dal flusso Pages ufficiale (senza questo il deploy può non pubblicare nulla)
+      - name: Configura GitHub Pages
+        uses: actions/configure-pages@v4
+
       - name: Prepara deploy GitHub Pages
         uses: actions/upload-pages-artifact@v3
         with:
@@ -55,6 +59,9 @@ jobs:
   deploy:
     needs: build-web
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
