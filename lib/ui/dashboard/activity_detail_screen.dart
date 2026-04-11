@@ -1,7 +1,10 @@
 import 'package:fitai_analyzer/models/fitness_data.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
+import 'package:fitai_analyzer/ui/widgets/activity_heart_rate_chart_card.dart';
 import 'package:fitai_analyzer/ui/widgets/garmin_activity_detail_card.dart';
 import 'package:fitai_analyzer/ui/widgets/strava_activity_card.dart';
+import 'package:fitai_analyzer/utils/activity_hr_series.dart';
+import 'package:fitai_analyzer/utils/garmin_activity_chart_parsers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -22,10 +25,15 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
   String? _stravaError;
   bool _isLoadingStrava = false;
 
+  List<ActivityHrPoint>? _hrPoints;
+  String? _hrSourceLabel;
+  bool _isLoadingHr = false;
+
   @override
   void initState() {
     super.initState();
     _loadStravaDetailIfNeeded();
+    _loadHeartRateSeries();
   }
 
   Future<void> _loadStravaDetailIfNeeded() async {
@@ -49,6 +57,36 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
         setState(() => _isLoadingStrava = false);
       }
     }
+  }
+
+  /// Strava Streams solo se in garmin_raw non c’è già una serie FC (evita doppio grafico: quella Garmin è in [GarminActivityChartsSection]).
+  Future<void> _loadHeartRateSeries() async {
+    if (extractGarminHeartRateSeries(widget.activity.garminRaw).length >= 2) {
+      return;
+    }
+    final detailId = widget.activity.detailActivityId;
+    final tryStrava = widget.activity.containsStravaData &&
+        detailId != null &&
+        detailId > 0;
+    if (!tryStrava) return;
+
+    if (mounted) setState(() => _isLoadingHr = true);
+    try {
+      final svc = ref.read(stravaServiceProvider);
+      if (await svc.isConnected()) {
+        final pts = await svc.fetchHeartRateSeries(detailId);
+        if (!mounted) return;
+        if (pts != null && pts.length >= 2) {
+          setState(() {
+            _hrPoints = pts;
+            _hrSourceLabel = 'Serie da Strava (API Streams)';
+            _isLoadingHr = false;
+          });
+          return;
+        }
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _isLoadingHr = false);
   }
 
   @override
@@ -90,6 +128,17 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
                       ),
                 ),
               ),
+          ],
+          if (_isLoadingHr) ...[
+            const SizedBox(height: 12),
+            const LinearProgressIndicator(minHeight: 2),
+          ],
+          if (_hrPoints != null && _hrPoints!.length >= 2) ...[
+            const SizedBox(height: 16),
+            ActivityHeartRateChartCard(
+              points: _hrPoints!,
+              sourceLabel: _hrSourceLabel,
+            ),
           ],
           if (hasGarminData) ...[
             const SizedBox(height: 16),

@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -29,13 +32,30 @@ class NutritionService {
   final AiPromptService _aiPromptService;
   final UnifiedAiService _unifiedAi;
 
+  /// Soglia grezza: oltre questa dimensione non salviamo la miniatura su Firestore (limite doc).
+  static const int _maxMealThumbBytes = 220 * 1024;
+
+  /// Scrive sempre `meal_doc_id` nel body (retrocompat. se lo snapshot perde l'id lato client).
+  static Map<String, dynamic> _mealWritePayload(MealModel meal, String documentId) {
+    return {...meal.toFirestore(), 'meal_doc_id': documentId};
+  }
+
+  static String? _mealThumbBase64FromBytes(Uint8List? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    if (raw.length > _maxMealThumbBytes) return null;
+    return base64Encode(raw);
+  }
+
   /// Salva il pasto nella sottocollezione meals e aggiorna nutrition_summary sul daily_log.
   /// Usa il **NUOVO MealModel** (campi flat proteinG / carbsG / fatG + ingredients + aiConfidence).
-  Future<void> saveToFirestore(
+  /// Con [existingMealId] aggiorna il documento e ricalcola il summary (no duplicati).
+  Future<String> saveToFirestore(
     String uid,
     Map<String, dynamic> nutritionGemini, {
     String? mealLabel,
     DateTime? date,
+    Uint8List? mealPhotoBytes,
+    String? existingMealId,
   }) async {
     final now = DateTime.now();
     final dateStr = (date ?? now).toIso8601String().split('T')[0];
@@ -67,6 +87,89 @@ class NutritionService {
         ? mealLabel.substring(0, 1).toUpperCase() + mealLabel.substring(1)
         : 'Pasto';
 
+    final dailySnap = await dailyRef.get();
+    final currentData = dailySnap.data() ?? {};
+    final rawSummary = currentData['nutrition_summary'];
+    var existingSummary = rawSummary is Map
+        ? Map<String, dynamic>.from(rawSummary)
+        : <String, dynamic>{};
+
+    MealModel? oldMeal;
+    DocumentReference<Map<String, dynamic>>? mealRef;
+
+    if (existingMealId != null && existingMealId.isNotEmpty) {
+      mealRef = mealsRef.doc(existingMealId);
+      final oldSnap = await mealRef.get();
+      if (!oldSnap.exists || oldSnap.data() == null) {
+        throw StateError('Pasto da aggiornare non trovato');
+      }
+      oldMeal = MealModel.fromFirestore(oldSnap.data()!, documentId: existingMealId);
+      final totalKcal = _num(existingSummary['total_kcal'] ?? 0) - oldMeal.calories + calories;
+      final totalProtein = _num(existingSummary['total_protein_g'] ?? existingSummary['total_protein'] ?? 0) -
+          oldMeal.proteinG +
+          proteinG;
+      final totalCarbs = _num(existingSummary['total_carbs_g'] ?? existingSummary['total_carbs'] ?? 0) -
+          oldMeal.carbsG +
+          carbsG;
+      final totalFat = _num(existingSummary['total_fat_g'] ?? existingSummary['total_fat'] ?? 0) -
+          oldMeal.fatG +
+          fatG;
+
+      final thumb = _mealThumbBase64FromBytes(mealPhotoBytes) ?? oldMeal.mealThumbBase64;
+
+      final meal = MealModel(
+        dishName: dishName,
+        calories: calories.round(),
+        proteinG: proteinG,
+        carbsG: carbsG,
+        fatG: fatG,
+        portionGrams: null,
+        ingredients: ingredients,
+        timestamp: oldMeal.timestamp,
+        mealType: oldMeal.mealType.isNotEmpty ? oldMeal.mealType : mealType,
+        rawAiAnalysis: advice.isNotEmpty ? advice : oldMeal.rawAiAnalysis,
+        aiConfidence: 0.85,
+        firestoreDocumentId: existingMealId,
+        mealThumbBase64: thumb,
+      );
+
+      final longevitySum = _num(existingSummary['_longevity_sum'] ?? 0);
+      final longevityCount = _intFromFirestore(existingSummary['_longevity_count']);
+
+      final nutritionSummary = <String, dynamic>{
+        'total_kcal': totalKcal.round().clamp(0, 1 << 30),
+        'total_protein_g': totalProtein.round().clamp(0, 1 << 30),
+        'total_carbs_g': totalCarbs.round().clamp(0, 1 << 30),
+        'total_fat_g': totalFat.round().clamp(0, 1 << 30),
+        'meals_count': _intFromFirestore(existingSummary['meals_count']).clamp(0, 1 << 20),
+        'avg_longevity_score': longevityCount > 0
+            ? (longevitySum / longevityCount).toStringAsFixed(1)
+            : null,
+        '_longevity_sum': longevitySum,
+        '_longevity_count': longevityCount,
+      };
+
+      final sanitizedGemini =
+          _sanitizeForFirestoreMap(Map<String, dynamic>.from(nutritionGemini));
+
+      final batch = firestore.batch();
+      batch.update(mealRef, _mealWritePayload(meal, existingMealId));
+      batch.set(
+        dailyRef,
+        {
+          'date': dateStr,
+          'nutrition_summary': nutritionSummary,
+          'nutrition_gemini': sanitizedGemini,
+          'timestamp': Timestamp.fromDate(now),
+        },
+        SetOptions(merge: true),
+      );
+      await batch.commit();
+      return existingMealId;
+    }
+
+    final thumbNew = _mealThumbBase64FromBytes(mealPhotoBytes);
+
     // ====================== NUOVO MEALMODEL ======================
     final meal = MealModel(
       dishName: dishName,
@@ -80,18 +183,12 @@ class NutritionService {
       mealType: mealType,
       rawAiAnalysis: advice,
       aiConfidence: 0.85, // default (migliorabile in futuro con score Gemini)
+      mealThumbBase64: thumbNew,
     );
 
     // Lettura + batch (no runTransaction): su Windows il client Firestore C++ va spesso
     // in abort() con le transazioni; iOS/Android reggono meglio ma il batch è equivalente
     // per questo flusso (piccola race se due salvataggi simultanei sullo stesso giorno).
-    final dailySnap = await dailyRef.get();
-    final currentData = dailySnap.data() ?? {};
-    final rawSummary = currentData['nutrition_summary'];
-    final existingSummary = rawSummary is Map
-        ? Map<String, dynamic>.from(rawSummary)
-        : <String, dynamic>{};
-
     final totalKcal = _num(existingSummary['total_kcal'] ?? 0) + calories;
     final totalProtein =
         _num(existingSummary['total_protein_g'] ?? existingSummary['total_protein'] ?? 0) + proteinG;
@@ -123,15 +220,92 @@ class NutritionService {
     final sanitizedGemini =
         _sanitizeForFirestoreMap(Map<String, dynamic>.from(nutritionGemini));
 
-    final mealRef = mealsRef.doc();
+    mealRef = mealsRef.doc();
     final batch = firestore.batch();
-    batch.set(mealRef, meal.toFirestore());
+    batch.set(mealRef, _mealWritePayload(meal, mealRef.id));
     batch.set(
       dailyRef,
       {
         'date': dateStr,
         'nutrition_summary': nutritionSummary,
         'nutrition_gemini': sanitizedGemini,
+        'timestamp': Timestamp.fromDate(now),
+      },
+      SetOptions(merge: true),
+    );
+    await batch.commit();
+    return mealRef.id;
+  }
+
+  /// Elimina un pasto da `meals/{mealId}` e sottrae i macro dal `nutrition_summary` del giorno.
+  Future<void> deleteMeal(String uid, String dateStr, String mealId) async {
+    if (mealId.isEmpty) throw ArgumentError('mealId vuoto');
+
+    final firestore = FirebaseFirestore.instance;
+    final dailyRef = firestore
+        .collection('users')
+        .doc(uid)
+        .collection('daily_logs')
+        .doc(dateStr);
+    final mealRef = dailyRef.collection('meals').doc(mealId);
+
+    final mealSnap = await mealRef.get();
+    if (!mealSnap.exists || mealSnap.data() == null) {
+      throw StateError('Pasto non trovato');
+    }
+    final deleted = MealModel.fromFirestore(mealSnap.data()!, documentId: mealId);
+
+    final dailySnap = await dailyRef.get();
+    final currentData = dailySnap.data() ?? {};
+    final rawSummary = currentData['nutrition_summary'];
+    final existingSummary = rawSummary is Map
+        ? Map<String, dynamic>.from(rawSummary)
+        : <String, dynamic>{};
+
+    final totalKcal =
+        (_num(existingSummary['total_kcal'] ?? 0) - deleted.calories).clamp(0.0, 1 << 30);
+    final totalProtein = (_num(
+              existingSummary['total_protein_g'] ?? existingSummary['total_protein'] ?? 0,
+            ) -
+            deleted.proteinG)
+        .clamp(0.0, 1 << 30);
+    final totalCarbs = (_num(
+              existingSummary['total_carbs_g'] ?? existingSummary['total_carbs'] ?? 0,
+            ) -
+            deleted.carbsG)
+        .clamp(0.0, 1 << 30);
+    final totalFat = (_num(
+              existingSummary['total_fat_g'] ?? existingSummary['total_fat'] ?? 0,
+            ) -
+            deleted.fatG)
+        .clamp(0.0, 1 << 30);
+
+    final mealsCount = (_intFromFirestore(existingSummary['meals_count']) - 1).clamp(0, 1 << 20);
+
+    final longevitySum = _num(existingSummary['_longevity_sum'] ?? 0);
+    final longevityCount = _intFromFirestore(existingSummary['_longevity_count']);
+
+    final nutritionSummary = <String, dynamic>{
+      'total_kcal': totalKcal.round(),
+      'total_protein_g': totalProtein.round(),
+      'total_carbs_g': totalCarbs.round(),
+      'total_fat_g': totalFat.round(),
+      'meals_count': mealsCount,
+      'avg_longevity_score': longevityCount > 0
+          ? (longevitySum / longevityCount).toStringAsFixed(1)
+          : null,
+      '_longevity_sum': longevitySum,
+      '_longevity_count': longevityCount,
+    };
+
+    final now = DateTime.now();
+    final batch = firestore.batch();
+    batch.delete(mealRef);
+    batch.set(
+      dailyRef,
+      {
+        'date': dateStr,
+        'nutrition_summary': nutritionSummary,
         'timestamp': Timestamp.fromDate(now),
       },
       SetOptions(merge: true),
@@ -260,6 +434,40 @@ class NutritionService {
     return {};
   }
 
+  /// Trova l'id documento `meals/{id}` confrontando i campi (pasti senza id in memoria).
+  Future<String?> resolveMealDocumentId(
+    String uid,
+    String dateStr,
+    MealModel meal,
+  ) async {
+    if (meal.firestoreDocumentId != null && meal.firestoreDocumentId!.isNotEmpty) {
+      return meal.firestoreDocumentId;
+    }
+    final col = FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('daily_logs')
+        .doc(dateStr)
+        .collection('meals');
+    final snapshot = await col.get();
+    for (final d in snapshot.docs) {
+      final other = MealModel.fromFirestore(d.data(), documentId: d.id);
+      if (other.dishName == meal.dishName &&
+          other.timestamp == meal.timestamp &&
+          other.calories == meal.calories &&
+          (other.proteinG - meal.proteinG).abs() < 0.01) {
+        return d.id;
+      }
+    }
+    for (final d in snapshot.docs) {
+      final other = MealModel.fromFirestore(d.data(), documentId: d.id);
+      if (other.dishName == meal.dishName && other.timestamp == meal.timestamp) {
+        return d.id;
+      }
+    }
+    return null;
+  }
+
   /// Livello 1: Legge i pasti del giorno (ordinati per orario).
   Future<List<MealModel>> getMealsForDay(String uid, String dateStr) async {
     final snapshot = await FirebaseFirestore.instance
@@ -272,7 +480,10 @@ class NutritionService {
         .get();
 
     return snapshot.docs
-        .map((d) => MealModel.fromFirestore(d.data()))
+        .map((d) => MealModel.fromFirestore(
+              d.data(),
+              documentId: d.id.isNotEmpty ? d.id : null,
+            ))
         .toList();
   }
 
@@ -299,7 +510,10 @@ class NutritionService {
         .collection('meals')
         .orderBy('timestamp');
     return querySnapshotStream(query).map((snapshot) => snapshot.docs
-        .map((d) => MealModel.fromFirestore(d.data()))
+        .map((d) => MealModel.fromFirestore(
+              d.data(),
+              documentId: d.id.isNotEmpty ? d.id : null,
+            ))
         .toList());
   }
 }

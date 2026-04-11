@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fitai_analyzer/models/daily_log_model.dart';
 import 'package:fitai_analyzer/models/meal_model.dart';
+import 'package:fitai_analyzer/providers/auth_notifier.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 String _italianWeekdayShort(int weekday) {
   const labels = ['Lu', 'Ma', 'Me', 'Gio', 'Ve', 'Sa', 'Do'];
@@ -15,19 +15,33 @@ String _dateKey(DateTime d) {
   return '${d.year}-$m-$day';
 }
 
-/// Ultimi 7 giorni (rolling) da `daily_logs`, allineati al calendario con etichette giorno.
-final nutritionChartDataProvider = FutureProvider<NutritionChartData>((ref) async {
-  final firestore = FirebaseFirestore.instance;
-  final uid = FirebaseAuth.instance.currentUser?.uid;
-  if (uid == null) {
-    return NutritionChartData.empty();
-  }
+/// Indice settimana nel diario alimentazione: 0 = finestra che termina oggi, 1 = settimana precedente, ecc.
+final nutritionDiaryWeekOffsetProvider =
+    NotifierProvider<NutritionDiaryWeekOffsetNotifier, int>(
+  NutritionDiaryWeekOffsetNotifier.new,
+);
 
+class NutritionDiaryWeekOffsetNotifier extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void setWeeksAgo(int weeksAgo) {
+    if (weeksAgo < 0 || weeksAgo > 12) return;
+    state = weeksAgo;
+  }
+}
+
+Future<NutritionChartData> _fetchNutritionChartWindow(
+  String uid,
+  int weekOffset,
+) async {
+  final firestore = FirebaseFirestore.instance;
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
-  final oldest = today.subtract(const Duration(days: 6));
+  final endDay = today.subtract(Duration(days: 7 * weekOffset));
+  final oldest = endDay.subtract(const Duration(days: 6));
   final startKey = _dateKey(oldest);
-  final endKey = _dateKey(today);
+  final endKey = _dateKey(endDay);
 
   final snapshot = await firestore
       .collection('users')
@@ -64,6 +78,25 @@ final nutritionChartDataProvider = FutureProvider<NutritionChartData>((ref) asyn
     fatData: fatData,
     carbsData: carbsData,
   );
+}
+
+/// Ultimi 7 giorni (fino a oggi) per [NutritionChartCard] — indipendente dal selettore settimane del diario.
+final nutritionChartDataProvider = FutureProvider<NutritionChartData>((ref) async {
+  final uid = ref.watch(authNotifierProvider.select((s) => s.user?.uid));
+  if (uid == null) {
+    return NutritionChartData.empty(weekOffset: 0);
+  }
+  return _fetchNutritionChartWindow(uid, 0);
+});
+
+/// Finestra 7 giorni per il grafico a barre impilate (rispetta [nutritionDiaryWeekOffsetProvider]).
+final nutritionDiaryWeekChartDataProvider = FutureProvider<NutritionChartData>((ref) async {
+  final uid = ref.watch(authNotifierProvider.select((s) => s.user?.uid));
+  final weekOffset = ref.watch(nutritionDiaryWeekOffsetProvider);
+  if (uid == null) {
+    return NutritionChartData.empty(weekOffset: weekOffset);
+  }
+  return _fetchNutritionChartWindow(uid, weekOffset);
 });
 
 class NutritionChartData {
@@ -79,10 +112,11 @@ class NutritionChartData {
     required this.carbsData,
   });
 
-  factory NutritionChartData.empty() {
+  factory NutritionChartData.empty({int weekOffset = 0}) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final oldest = today.subtract(const Duration(days: 6));
+    final endDay = today.subtract(Duration(days: 7 * weekOffset));
+    final oldest = endDay.subtract(const Duration(days: 6));
     DailyNutrient z(int i) {
       final d = oldest.add(Duration(days: i));
       return DailyNutrient(_italianWeekdayShort(d.weekday), 0);

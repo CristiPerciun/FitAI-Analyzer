@@ -105,6 +105,8 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
   }
 
   Widget _buildTodayPage(double rem, double target, double food, double ex, Color accentColor) {
+    final targetSafe = target <= 0 ? 1.0 : target;
+    final foodProgress = (food / targetSafe).clamp(0.0, 1.0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -117,15 +119,12 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
             Stack(
               alignment: Alignment.center,
               children: [
-                SizedBox(
-                  width: 115, height: 115,
-                  child: CircularProgressIndicator(
-                    value: (food / target).clamp(0, 1),
-                    strokeWidth: 9,
-                    backgroundColor: Colors.white.withOpacity(0.05),
-                    valueColor: AlwaysStoppedAnimation<Color>(accentColor),
-                    strokeCap: StrokeCap.round,
-                  ),
+                _AnimNutritionProgressRing(
+                  progress: foodProgress,
+                  size: 115,
+                  strokeWidth: 9,
+                  accentColor: accentColor,
+                  trackColor: Colors.white.withValues(alpha: 0.05),
                 ),
                 Column(
                   mainAxisSize: MainAxisSize.min,
@@ -174,21 +173,20 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
     double consumed = goal.weeklyData.isNotEmpty ? goal.weeklyData.last.value : 0;
     double target = goal.target;
     double left = target - consumed;
+    final targetSafe = target <= 0 ? 1.0 : target;
+    final macroProgress = (consumed / targetSafe).clamp(0.0, 1.0);
 
     return Column(
       children: [
         Stack(
           alignment: Alignment.center,
           children: [
-            SizedBox(
-              width: 65, height: 65,
-              child: CircularProgressIndicator(
-                value: (consumed / target).clamp(0, 1),
-                strokeWidth: 6,
-                backgroundColor: Colors.white.withOpacity(0.05),
-                valueColor: AlwaysStoppedAnimation<Color>(goal.color),
-                strokeCap: StrokeCap.round,
-              ),
+            _AnimNutritionProgressRing(
+              progress: macroProgress,
+              size: 65,
+              strokeWidth: 6,
+              accentColor: goal.color,
+              trackColor: Colors.white.withValues(alpha: 0.05),
             ),
             Text("${consumed.toInt()}/${target.toInt()}", style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
           ],
@@ -261,6 +259,84 @@ Widget _buildInsightsPage() {
       margin: const EdgeInsets.symmetric(horizontal: 4),
       height: 8, width: 8,
       decoration: BoxDecoration(color: active ? Colors.blue : Colors.white24, shape: BoxShape.circle),
+    );
+  }
+}
+
+/// Cerchio calorie/macro con transizione graduale quando cambiano i dati (pasto aggiunto o eliminato).
+class _AnimNutritionProgressRing extends StatefulWidget {
+  const _AnimNutritionProgressRing({
+    required this.progress,
+    required this.size,
+    required this.strokeWidth,
+    required this.accentColor,
+    required this.trackColor,
+  });
+
+  final double progress;
+  final double size;
+  final double strokeWidth;
+  final Color accentColor;
+  final Color trackColor;
+
+  @override
+  State<_AnimNutritionProgressRing> createState() => _AnimNutritionProgressRingState();
+}
+
+class _AnimNutritionProgressRingState extends State<_AnimNutritionProgressRing>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  Animation<double>? _animation;
+  double _displayed = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _displayed = widget.progress.clamp(0.0, 1.0);
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    );
+    _controller.addListener(_onTick);
+  }
+
+  void _onTick() {
+    final a = _animation;
+    if (a != null) {
+      setState(() => _displayed = a.value);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _AnimNutritionProgressRing oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final next = widget.progress.clamp(0.0, 1.0);
+    if ((oldWidget.progress - next).abs() < 0.0001) return;
+    _animation = Tween<double>(begin: _displayed, end: next).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+    );
+    _controller.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_onTick);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: widget.size,
+      height: widget.size,
+      child: CircularProgressIndicator(
+        value: _displayed.clamp(0.0, 1.0),
+        strokeWidth: widget.strokeWidth,
+        backgroundColor: widget.trackColor,
+        valueColor: AlwaysStoppedAnimation<Color>(widget.accentColor),
+        strokeCap: StrokeCap.round,
+      ),
     );
   }
 }

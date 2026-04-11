@@ -14,6 +14,7 @@ import 'strava_desktop_stub.dart'
 import 'strava_oauth_callback.dart';
 
 import '../models/fitness_data.dart';
+import '../utils/activity_hr_series.dart';
 
 final stravaServiceProvider = Provider<StravaService>((ref) => StravaService());
 
@@ -351,5 +352,34 @@ class StravaService {
       );
     }
     throw Exception('Errore dettagli attività: ${response.body}');
+  }
+
+  /// Serie FC durante l’attività (API Streams). Richiede token utente; stessi limiti di rate del dettaglio.
+  Future<List<ActivityHrPoint>?> fetchHeartRateSeries(int activityId) async {
+    await _loadInitialTokens();
+    if (_accessToken == null) return null;
+    if (_isTokenExpired()) await _performTokenRefresh();
+
+    final uri = Uri.parse(
+      'https://www.strava.com/api/v3/activities/$activityId/streams'
+      '?keys=time,heartrate&key_by_type=true',
+    );
+    final response = await http
+        .get(
+          uri,
+          headers: {'Authorization': 'Bearer $_accessToken'},
+        )
+        .timeout(const Duration(seconds: 45));
+
+    if (response.statusCode == 404) return null;
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Stream FC Strava: HTTP ${response.statusCode} ${response.body}',
+      );
+    }
+    final raw = response.body.trim();
+    if (raw.isEmpty) return null;
+    final decoded = json.decode(raw);
+    return parseStravaHeartRateStreams(decoded);
   }
 }

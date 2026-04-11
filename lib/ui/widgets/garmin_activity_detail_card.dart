@@ -1,6 +1,7 @@
 import 'package:fitai_analyzer/models/fitness_data.dart';
 import 'package:fitai_analyzer/theme/app_card_theme.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
+import 'package:fitai_analyzer/ui/widgets/garmin_activity_charts_section.dart';
 import 'package:fitai_analyzer/utils/activity_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -201,6 +202,7 @@ class GarminActivityDetailCard extends StatelessWidget {
                     ],
                   ),
                 ],
+                GarminActivityChartsSection(activity: activity),
                 if (raw.isNotEmpty)
                   _ExtraSection(raw: raw, cardTheme: cardTheme, theme: theme),
               ],

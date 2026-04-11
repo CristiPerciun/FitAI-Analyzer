@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -7,6 +8,7 @@ import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/nutrition_chart_provider.dart';
 import 'package:fitai_analyzer/providers/nutrition_meal_edit_provider.dart';
+import 'package:fitai_analyzer/providers/pending_meal_analysis_provider.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/providers/user_profile_notifier.dart';
 import 'package:fitai_analyzer/ui/alimentazione/alimentazione_objectives_tab.dart';
@@ -14,10 +16,8 @@ import 'package:fitai_analyzer/ui/onboarding/nutrition_goal_screen.dart';
 import 'package:fitai_analyzer/utils/date_utils.dart' show dateFilterAll, formatDateForDisplay;
 import 'package:fitai_analyzer/services/nutrition_service.dart';
 import 'package:fitai_analyzer/theme/app_card_theme.dart';
-import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:fitai_analyzer/ui/widgets/date_filter_chips.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
-import 'package:fitai_analyzer/ui/widgets/loading_indicator.dart';
 import 'package:fitai_analyzer/utils/meal_constants.dart';
 import 'package:fitai_analyzer/ui/widgets/ai_backend_key_gate.dart';
 import 'package:flutter/material.dart';
@@ -25,8 +25,16 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, Tar
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:fitai_analyzer/ui/widgets/NutritionChartCard.dart';
+import 'package:fitai_analyzer/ui/widgets/weekly_macro_stacked_bar_chart.dart';
 //import 'package:fitai_analyzer/utils/activity_utils.dart';
 import 'package:fitai_analyzer/ui/home/widgets/manual_entry_dialog.dart';
+
+/// Dopo salvataggio/eliminazione pasto: aggiorna subito grafici e pacchetto Home (calorie oggi).
+void _refreshNutritionAfterMealChange(WidgetRef ref) {
+  ref.invalidate(nutritionChartDataProvider);
+  ref.invalidate(nutritionDiaryWeekChartDataProvider);
+  ref.invalidate(longevityHomePackageProvider);
+}
 
 double? _macroNum(Map<String, dynamic>? m, List<String> keys) {
   if (m == null) return null;
@@ -141,13 +149,20 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
     final mimeType = xFile.path.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
 
     if (!context.mounted) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const AlertDialog(
-        content: LoadingIndicator(message: 'Analisi nutrizione in corso...'),
-      ),
-    );
+
+    final dateKey = dateStr ?? DateTime.now().toIso8601String().split('T')[0];
+    final typeLabel = (mealLabel != null && mealLabel.isNotEmpty)
+        ? MealConstants.toMealType(mealLabel)
+        : 'Pranzo';
+    final labelKey = (mealLabel != null && mealLabel.isNotEmpty) ? mealLabel : 'pranzo';
+
+    final pendingId = ref.read(pendingMealAnalysisProvider.notifier).startAnalysis(
+          dateStr: dateKey,
+          mealTypeLabel: typeLabel,
+          mealLabelKey: labelKey,
+          imageBytes: Uint8List.fromList(bytes),
+          mimeType: mimeType,
+        );
 
     try {
       final ai = ref.read(unifiedAiServiceProvider);
@@ -156,22 +171,171 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
         mimeType: mimeType,
       );
 
-      if (context.mounted) Navigator.of(context).pop();
-
       if (result.containsKey('error')) {
-        if (context.mounted) showErrorDialog(context, result['error'] ?? 'Errore');
+        ref.read(pendingMealAnalysisProvider.notifier).finishWithError(
+              pendingId,
+              result['error']?.toString() ?? 'Errore',
+            );
         return;
       }
 
+      await ref.read(nutritionServiceProvider).saveToFirestore(
+            uid,
+            result,
+            mealLabel: mealLabel,
+            date: dateStr != null ? DateTime.parse(dateStr) : null,
+            mealPhotoBytes: Uint8List.fromList(bytes),
+          );
+
+      ref.read(pendingMealAnalysisProvider.notifier).remove(pendingId);
+      _refreshNutritionAfterMealChange(ref);
       if (context.mounted) {
-        _showNutritionDialog(context, ref, result, uid: uid, mealLabel: mealLabel, dateStr: dateStr);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Analisi salvata')),
+        );
       }
     } catch (e) {
-      if (context.mounted) {
-        Navigator.of(context).pop();
-        showErrorDialog(context, e.toString());
-      }
+      ref.read(pendingMealAnalysisProvider.notifier).finishWithError(pendingId, e.toString());
     }
+  }
+
+  Future<void> _retryPendingAnalysis(
+    BuildContext context,
+    WidgetRef ref,
+    PendingMealAnalysis pending,
+  ) async {
+    final uid = await _ensureNutritionUid(context, ref);
+    if (uid == null || !context.mounted) return;
+    if (!await ensureActiveAiBackendHasKey(context, ref)) return;
+    if (!context.mounted) return;
+
+    ref.read(pendingMealAnalysisProvider.notifier).setRetrying(pending.id);
+
+    try {
+      final ai = ref.read(unifiedAiServiceProvider);
+      final result = await ai.analyzeNutritionFromImage(
+        pending.imageBytes,
+        mimeType: pending.mimeType,
+      );
+
+      if (result.containsKey('error')) {
+        ref.read(pendingMealAnalysisProvider.notifier).finishWithError(
+              pending.id,
+              result['error']?.toString() ?? 'Errore',
+            );
+        return;
+      }
+
+      await ref.read(nutritionServiceProvider).saveToFirestore(
+            uid,
+            result,
+            mealLabel: pending.mealLabelKey,
+            date: DateTime.parse(pending.dateStr),
+            mealPhotoBytes: pending.imageBytes,
+          );
+
+      ref.read(pendingMealAnalysisProvider.notifier).remove(pending.id);
+      _refreshNutritionAfterMealChange(ref);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Analisi salvata')),
+        );
+      }
+    } catch (e) {
+      ref.read(pendingMealAnalysisProvider.notifier).finishWithError(pending.id, e.toString());
+    }
+  }
+
+  Map<String, dynamic> _mealModelToGeminiEditMap(MealModel meal) {
+    return {
+      'dish_name': meal.displayTitle,
+      'total_calories': meal.calories,
+      'calories': meal.calories,
+      'protein_g': meal.proteinG.round(),
+      'carbs_g': meal.carbsG.round(),
+      'fat_g': meal.fatG.round(),
+      'sugar_g': 0,
+      'advice': meal.rawAiAnalysis,
+      'foods': meal.ingredients.map((name) => <String, dynamic>{'name': name}).toList(),
+    };
+  }
+
+  void _showMealEditFromModel(
+    BuildContext context,
+    WidgetRef ref,
+    MealModel meal,
+    String dateStr,
+  ) async {
+    final uid = await _ensureNutritionUid(context, ref);
+    if (uid == null || !context.mounted) return;
+
+    var effectiveMealId = meal.firestoreDocumentId?.trim();
+    if (effectiveMealId == null || effectiveMealId.isEmpty) {
+      effectiveMealId = await ref.read(nutritionServiceProvider).resolveMealDocumentId(
+            uid,
+            dateStr,
+            meal,
+          );
+    }
+
+    if (effectiveMealId == null || effectiveMealId.isEmpty) {
+      if (!context.mounted) return;
+      showErrorDialog(
+        context,
+        'Impossibile individuare questo pasto nel diario. Riprova tra un attimo o aggiungi un nuovo pasto.',
+      );
+      return;
+    }
+
+    final mealDocId = effectiveMealId;
+
+    final advice = _nutritionAdviceString(meal.rawAiAnalysis);
+    final foods = meal.ingredients.map((name) => <String, dynamic>{'name': name}).toList();
+
+    ref.read(nutritionMealEditProvider.notifier).beginFrom(_mealModelToGeminiEditMap(meal));
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => _NutritionEditDialog(
+        advice: advice,
+        foods: foods,
+        onSave: (modifiedNut) async {
+          Navigator.of(ctx).pop();
+          try {
+            await ref.read(nutritionServiceProvider).saveToFirestore(
+                  uid,
+                  modifiedNut,
+                  mealLabel: meal.mealType.isNotEmpty ? meal.mealType.toLowerCase() : null,
+                  date: DateTime.parse(dateStr),
+                  existingMealId: mealDocId,
+                );
+            _refreshNutritionAfterMealChange(ref);
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Pasto aggiornato')),
+              );
+            }
+          } catch (e) {
+            if (context.mounted) showErrorDialog(context, e.toString());
+          }
+        },
+        onDelete: () async {
+          try {
+            await ref.read(nutritionServiceProvider).deleteMeal(uid, dateStr, mealDocId);
+            _refreshNutritionAfterMealChange(ref);
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Pasto eliminato')),
+              );
+            }
+          } catch (e) {
+            if (context.mounted) showErrorDialog(context, e.toString());
+          }
+        },
+      ),
+    ).whenComplete(() {
+      ref.read(nutritionMealEditProvider.notifier).clear();
+    });
   }
 
   void _showNutritionDialog(
@@ -201,6 +365,7 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
                   mealLabel: mealLabel,
                   date: dateStr != null ? DateTime.parse(dateStr) : null,
                 );
+            _refreshNutritionAfterMealChange(ref);
             if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Analisi salvata')),
@@ -304,53 +469,6 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
     );
   }
 
-  void _showMealDetailDialog(BuildContext context, MealModel meal) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(meal.displayTitle),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${meal.calories} kcal',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primary,
-                    ),
-              ),
-              if (meal.timestamp.isNotEmpty)
-                Text('Orario: ${meal.timestamp}'),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children: [
-                  _Chip(label: 'Proteine', value: '${meal.macros['pro']?.round() ?? 0}g'),
-                  _Chip(label: 'Carbs', value: '${meal.macros['carb']?.round() ?? 0}g'),
-                  _Chip(label: 'Grassi', value: '${meal.macros['fat']?.round() ?? 0}g'),
-                ],
-              ),
-              if (meal.rawAiAnalysis.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                const Text('Consiglio', style: TextStyle(fontWeight: FontWeight.bold)),
-                Text(meal.rawAiAnalysis),
-              ],
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Chiudi'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final ref = this.ref;
@@ -403,11 +521,15 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
                 children: [
                   const AlimentazioneObjectivesTab(),
                   RefreshIndicator(
-                    onRefresh: () => refreshGarminSync(
+                    onRefresh: () async {
+                    await refreshGarminSync(
                       ref,
                       uid,
                       trigger: 'alimentazione_pull_to_refresh',
-                    ),
+                    );
+                    ref.invalidate(nutritionChartDataProvider);
+                    ref.invalidate(nutritionDiaryWeekChartDataProvider);
+                  },
                     child: SingleChildScrollView(
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.all(16),
@@ -556,7 +678,7 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
                   ]),
 
             const SizedBox(height: 24),
-          //  _buildWeeklyChartsSection(context, ref, nutritionGoal, aiMacroGiornalieri),
+            const WeeklyMacroStackedBarChartCard(),
             const SizedBox(height: 40),
                         ],
                       ),
@@ -598,7 +720,9 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
           dateStr: dateStr,
           label: MealConstants.mealTypes[i],
           onTap: () => _showAggiungiPastoSheet(context, ref, MealConstants.mealLabels[i], dateStr),
-          onMealTap: (meal) => _showMealDetailDialog(context, meal),
+          onMealEdit: (meal) => _showMealEditFromModel(context, ref, meal, dateStr),
+          onRetryPending: (p) => _retryPendingAnalysis(context, ref, p),
+          onDismissPending: (id) => ref.read(pendingMealAnalysisProvider.notifier).remove(id),
         ),
         _MealAiObjectivesCard(pastoKey: MealConstants.mealLabels[i]),
       ],
@@ -690,23 +814,34 @@ class _MealCardForDate extends ConsumerWidget {
     required this.dateStr,
     required this.label,
     required this.onTap,
-    required this.onMealTap,
+    required this.onMealEdit,
+    required this.onRetryPending,
+    required this.onDismissPending,
   });
 
   final String dateStr;
   final String label;
   final VoidCallback onTap;
-  final void Function(MealModel meal) onMealTap;
+  final void Function(MealModel meal) onMealEdit;
+  final void Function(PendingMealAnalysis pending) onRetryPending;
+  final void Function(String pendingId) onDismissPending;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final mealsAsync = ref.watch(mealsForDateByTypeProvider(dateStr));
     final meals = mealsAsync.valueOrNull?[label] ?? [];
+    final pendingMeals = ref
+        .watch(pendingMealAnalysisProvider)
+        .where((p) => p.dateStr == dateStr && p.mealTypeLabel == label)
+        .toList();
     return _MealCard(
       label: label,
       meals: meals,
+      pendingMeals: pendingMeals,
       onTap: onTap,
-      onMealTap: onMealTap,
+      onMealEdit: onMealEdit,
+      onRetryPending: onRetryPending,
+      onDismissPending: onDismissPending,
     );
   }
 }
@@ -715,14 +850,20 @@ class _MealCard extends StatelessWidget {
   const _MealCard({
     required this.label,
     required this.meals,
+    required this.pendingMeals,
     required this.onTap,
-    required this.onMealTap,
+    required this.onMealEdit,
+    required this.onRetryPending,
+    required this.onDismissPending,
   });
 
   final String label;
   final List<MealModel> meals;
+  final List<PendingMealAnalysis> pendingMeals;
   final VoidCallback onTap;
-  final void Function(MealModel meal) onMealTap;
+  final void Function(MealModel meal) onMealEdit;
+  final void Function(PendingMealAnalysis pending) onRetryPending;
+  final void Function(String pendingId) onDismissPending;
 
   @override
   Widget build(BuildContext context) {
@@ -764,9 +905,18 @@ class _MealCard extends StatelessWidget {
               ),
             ),
           ),
-          if (meals.isNotEmpty) ...[
+          if (pendingMeals.isNotEmpty || meals.isNotEmpty) ...[
             Divider(height: 1, color: cardTheme.contentColor.withValues(alpha: 0.4)),
-            ...meals.map((meal) => _MealTile(meal: meal, onTap: () => onMealTap(meal))),
+            ...pendingMeals.map(
+              (p) => _PendingMealTile(
+                pending: p,
+                cardTheme: cardTheme,
+                onRetry: () => onRetryPending(p),
+                onDismissError:
+                    p.errorMessage != null ? () => onDismissPending(p.id) : null,
+              ),
+            ),
+            ...meals.map((meal) => _MealTile(meal: meal, onTap: () => onMealEdit(meal))),
           ],
         ],
       ),
@@ -792,6 +942,8 @@ class _MealTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           child: Row(
             children: [
+              _MealThumbOrPlaceholder(meal: meal, cardTheme: cardTheme),
+              const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   meal.displayTitle,
@@ -815,16 +967,163 @@ class _MealTile extends StatelessWidget {
   }
 }
 
+class _MealThumbOrPlaceholder extends StatelessWidget {
+  const _MealThumbOrPlaceholder({required this.meal, required this.cardTheme});
+
+  final MealModel meal;
+  final AppCardTheme cardTheme;
+
+  static const double _size = 48;
+
+  @override
+  Widget build(BuildContext context) {
+    final thumb = meal.mealThumbBase64;
+    if (thumb != null && thumb.isNotEmpty) {
+      try {
+        final raw = base64Decode(thumb);
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Image.memory(
+            raw,
+            width: _size,
+            height: _size,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+          ),
+        );
+      } catch (_) {}
+    }
+    return Container(
+      width: _size,
+      height: _size,
+      decoration: BoxDecoration(
+        color: cardTheme.contentColor.withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Icon(Icons.restaurant, color: cardTheme.contentColor, size: 24),
+    );
+  }
+}
+
+class _PendingMealTile extends StatelessWidget {
+  const _PendingMealTile({
+    required this.pending,
+    required this.cardTheme,
+    required this.onRetry,
+    this.onDismissError,
+  });
+
+  final PendingMealAnalysis pending;
+  final AppCardTheme cardTheme;
+  final VoidCallback onRetry;
+  final VoidCallback? onDismissError;
+
+  static const double _thumbSize = 48;
+
+  @override
+  Widget build(BuildContext context) {
+    final subtitle = pending.analyzing
+        ? 'Analisi IA in corso…'
+        : (pending.errorMessage ?? 'Errore');
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: _thumbSize,
+            height: _thumbSize,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.memory(
+                    pending.imageBytes,
+                    fit: BoxFit.cover,
+                    gaplessPlayback: true,
+                  ),
+                  if (pending.analyzing)
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: cardTheme.contentColor.withValues(alpha: 0.92),
+                          shape: BoxShape.circle,
+                        ),
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Theme.of(context).colorScheme.surface,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Foto inviata all’IA',
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: cardTheme.contentColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: pending.errorMessage != null
+                            ? Theme.of(context).colorScheme.error
+                            : cardTheme.contentColorMuted,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          if (!pending.analyzing && pending.errorMessage != null) ...[
+            IconButton(
+              onPressed: onRetry,
+              icon: Icon(Icons.refresh, color: cardTheme.contentColor),
+              tooltip: 'Riprova',
+            ),
+            if (onDismissError != null)
+              IconButton(
+                onPressed: onDismissError,
+                icon: Icon(Icons.close, color: cardTheme.contentColorMuted),
+                tooltip: 'Chiudi',
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _NutritionEditDialog extends ConsumerStatefulWidget {
   const _NutritionEditDialog({
     required this.advice,
     required this.foods,
     required this.onSave,
+    this.onDelete,
   });
 
   final String advice;
   final List<dynamic> foods;
   final void Function(Map<String, dynamic> modifiedNut) onSave;
+  /// Solo per pasti già salvati su Firestore (modifica da lista diario).
+  final Future<void> Function()? onDelete;
 
   @override
   ConsumerState<_NutritionEditDialog> createState() => _NutritionEditDialogState();
@@ -887,17 +1186,55 @@ class _NutritionEditDialogState extends ConsumerState<_NutritionEditDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Annulla')),
-        FilledButton(
-          onPressed: () {
-            final d = ref.read(nutritionMealEditProvider);
-            if (d == null) return;
-            widget.onSave(d.toModifiedNut());
-          },
-          child: const Text('Salva'),
+        Row(
+          children: [
+            if (widget.onDelete != null)
+              TextButton(
+                onPressed: () => _confirmDelete(context),
+                child: Text(
+                  'Elimina',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+            const Spacer(),
+            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Annulla')),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: () {
+                final d = ref.read(nutritionMealEditProvider);
+                if (d == null) return;
+                widget.onSave(d.toModifiedNut());
+              },
+              child: const Text('Salva'),
+            ),
+          ],
         ),
       ],
     );
+  }
+
+  Future<void> _confirmDelete(BuildContext dialogContext) async {
+    final ok = await showDialog<bool>(
+      context: dialogContext,
+      builder: (c) => AlertDialog(
+        title: const Text('Eliminare il pasto?'),
+        content: const Text('Verrà rimosso dal diario e i totali del giorno verranno aggiornati.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(c).pop(false), child: const Text('Annulla')),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(c).colorScheme.error,
+              foregroundColor: Theme.of(c).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.of(c).pop(true),
+            child: const Text('Elimina'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !dialogContext.mounted) return;
+    Navigator.of(dialogContext).pop();
+    await widget.onDelete?.call();
   }
 
   Widget _buildStepper(String label, int value, ValueChanged<int> onChanged, {String suffix = 'g'}) {
@@ -915,18 +1252,6 @@ class _NutritionEditDialogState extends ConsumerState<_NutritionEditDialog> {
         ],
       ),
     );
-  }
-}
-
-class _Chip extends StatelessWidget {
-  const _Chip({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Chip(label: Text('$label: $value'));
   }
 }
 

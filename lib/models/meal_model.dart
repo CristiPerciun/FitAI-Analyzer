@@ -37,6 +37,12 @@ class MealModel {
   /// Livello di confidenza dell'IA (0.0 - 1.0).
   final double aiConfidence;
 
+  /// ID documento `meals/{id}` (solo lato client dopo lettura Firestore).
+  final String? firestoreDocumentId;
+
+  /// Miniatura foto piatto (JPEG/PNG) in Base64, opzionale.
+  final String? mealThumbBase64;
+
   const MealModel({
     required this.dishName,
     required this.calories,
@@ -49,6 +55,8 @@ class MealModel {
     required this.mealType,
     required this.rawAiAnalysis,
     this.aiConfidence = 0.85,
+    this.firestoreDocumentId,
+    this.mealThumbBase64,
   });
 
   /// Titolo pulito senza prefisso (es. "Pranzo: Pollo" → "Pollo").
@@ -83,11 +91,13 @@ class MealModel {
         'meal_type': mealType,
         'raw_ai_analysis': rawAiAnalysis,
         'ai_confidence': aiConfidence,
+        if (mealThumbBase64 != null && mealThumbBase64!.isNotEmpty)
+          'meal_thumb_base64': mealThumbBase64,
       };
 
   /// Factory da Firestore con **retro-compatibilità completa**.
   /// Legge sia la nuova struttura (campi flat) che la vecchia (Map macros).
-  factory MealModel.fromFirestore(Map<String, dynamic> data) {
+  factory MealModel.fromFirestore(Map<String, dynamic> data, {String? documentId}) {
     // Supporto vecchia struttura (macros map)
     final macrosRaw = data['macros'] as Map<String, dynamic>? ?? {};
 
@@ -109,6 +119,13 @@ class MealModel {
             0)
         .toDouble();
 
+    final thumb = data['meal_thumb_base64'];
+    final fromSnap = documentId?.trim();
+    final fromField = data['meal_doc_id']?.toString().trim();
+    final resolvedId = (fromSnap != null && fromSnap.isNotEmpty)
+        ? fromSnap
+        : (fromField != null && fromField.isNotEmpty ? fromField : null);
+
     return MealModel(
       dishName: data['dish_name'] as String? ?? 'Piatto sconosciuto',
       calories: (data['calories'] as num?)?.toInt() ?? 0,
@@ -121,6 +138,8 @@ class MealModel {
       mealType: data['meal_type'] as String? ?? '',
       rawAiAnalysis: data['raw_ai_analysis'] as String? ?? '',
       aiConfidence: (data['ai_confidence'] as num?)?.toDouble() ?? 0.85,
+      firestoreDocumentId: resolvedId,
+      mealThumbBase64: thumb is String && thumb.isNotEmpty ? thumb : null,
     );
   }
 }
