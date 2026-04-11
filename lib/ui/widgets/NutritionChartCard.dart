@@ -66,25 +66,28 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
                   PointerDeviceKind.trackpad,
                 },
               ),
-              child: PageView(
-                controller: _pageController,
-                physics: const BouncingScrollPhysics(),
-                onPageChanged: (int page) {
-                  setState(() {
-                    _currentPage = page;
-                  });
-                },
-                children: [
-                  _buildTodayPage(
-                    remainingCal,
-                    targetCal,
-                    foodCal,
-                    exercise,
-                    calGoal.color,
-                  ),
-                  _buildMacrosPage(carbGoal, fatGoal, protGoal),
-                  _buildInsightsPage(),
-                ],
+              child: TickerMode(
+                enabled: true,
+                child: PageView(
+                  controller: _pageController,
+                  physics: const BouncingScrollPhysics(),
+                  onPageChanged: (int page) {
+                    setState(() {
+                      _currentPage = page;
+                    });
+                  },
+                  children: [
+                    _buildTodayPage(
+                      remainingCal,
+                      targetCal,
+                      foodCal,
+                      exercise,
+                      calGoal.color,
+                    ),
+                    _buildMacrosPage(carbGoal, fatGoal, protGoal),
+                    _buildInsightsPage(),
+                  ],
+                ),
               ),
             ),
           ),
@@ -263,7 +266,8 @@ Widget _buildInsightsPage() {
   }
 }
 
-/// Cerchio calorie/macro con transizione graduale quando cambiano i dati (pasto aggiunto o eliminato).
+/// Cerchio calorie/macro con transizione graduale (~2s). Usa [TweenAnimationBuilder] per evitare
+/// più [AnimationController] nel [PageView] (pagine non visibili / ticker: i macro non si aggiornavano).
 class _AnimNutritionProgressRing extends StatefulWidget {
   const _AnimNutritionProgressRing({
     required this.progress,
@@ -283,60 +287,48 @@ class _AnimNutritionProgressRing extends StatefulWidget {
   State<_AnimNutritionProgressRing> createState() => _AnimNutritionProgressRingState();
 }
 
-class _AnimNutritionProgressRingState extends State<_AnimNutritionProgressRing>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  Animation<double>? _animation;
-  double _displayed = 0;
+class _AnimNutritionProgressRingState extends State<_AnimNutritionProgressRing> {
+  static const Duration _duration = Duration(seconds: 2);
+
+  late double _tweenBegin;
+  late double _tweenEnd;
 
   @override
   void initState() {
     super.initState();
-    _displayed = widget.progress.clamp(0.0, 1.0);
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    );
-    _controller.addListener(_onTick);
-  }
-
-  void _onTick() {
-    final a = _animation;
-    if (a != null) {
-      setState(() => _displayed = a.value);
-    }
+    final p = widget.progress.clamp(0.0, 1.0);
+    _tweenBegin = p;
+    _tweenEnd = p;
   }
 
   @override
   void didUpdateWidget(covariant _AnimNutritionProgressRing oldWidget) {
     super.didUpdateWidget(oldWidget);
     final next = widget.progress.clamp(0.0, 1.0);
-    if ((oldWidget.progress - next).abs() < 0.0001) return;
-    _animation = Tween<double>(begin: _displayed, end: next).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
-    );
-    _controller.forward(from: 0);
-  }
-
-  @override
-  void dispose() {
-    _controller.removeListener(_onTick);
-    _controller.dispose();
-    super.dispose();
+    if ((next - _tweenEnd).abs() < 0.0001) return;
+    _tweenBegin = _tweenEnd;
+    _tweenEnd = next;
   }
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: widget.size,
-      height: widget.size,
-      child: CircularProgressIndicator(
-        value: _displayed.clamp(0.0, 1.0),
-        strokeWidth: widget.strokeWidth,
-        backgroundColor: widget.trackColor,
-        valueColor: AlwaysStoppedAnimation<Color>(widget.accentColor),
-        strokeCap: StrokeCap.round,
-      ),
+    return TweenAnimationBuilder<double>(
+      duration: _duration,
+      curve: Curves.easeOutCubic,
+      tween: Tween<double>(begin: _tweenBegin, end: _tweenEnd),
+      builder: (context, value, _) {
+        return SizedBox(
+          width: widget.size,
+          height: widget.size,
+          child: CircularProgressIndicator(
+            value: value.clamp(0.0, 1.0),
+            strokeWidth: widget.strokeWidth,
+            backgroundColor: widget.trackColor,
+            valueColor: AlwaysStoppedAnimation<Color>(widget.accentColor),
+            strokeCap: StrokeCap.round,
+          ),
+        );
+      },
     );
   }
 }
