@@ -49,6 +49,14 @@ double? _macroNum(Map<String, dynamic>? m, List<String> keys) {
   return null;
 }
 
+String _mimeTypeForPickedImage(XFile file) {
+  final m = file.mimeType;
+  if (m != null && m.isNotEmpty) return m;
+  final p = file.path.toLowerCase();
+  if (p.endsWith('.png')) return 'image/png';
+  return 'image/jpeg';
+}
+
 String get _galleryButtonLabel {
   if (kIsWeb) return 'Scegli dall\'archivio';
   switch (defaultTargetPlatform) {
@@ -65,10 +73,13 @@ String get _galleryButtonLabel {
   }
 }
 
+/// Fotocamera: app nativa iOS/Android. Su web/PWA `image_picker` usa
+/// `<input capture>`: il browser chiede l’accesso alla fotocamera dove supportato
+/// (tipicamente Chrome/Safari su telefono; su desktop spesso resta il selettore file).
 bool get _isCameraSupported =>
-    !kIsWeb &&
-    (defaultTargetPlatform == TargetPlatform.iOS ||
-        defaultTargetPlatform == TargetPlatform.android);
+    kIsWeb ||
+    defaultTargetPlatform == TargetPlatform.iOS ||
+    defaultTargetPlatform == TargetPlatform.android;
 
 String _nutritionAdviceString(dynamic v) {
   if (v == null) return '';
@@ -146,7 +157,7 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
     if (xFile == null || !context.mounted) return;
 
     final bytes = await xFile.readAsBytes();
-    final mimeType = xFile.path.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+    final mimeType = _mimeTypeForPickedImage(xFile);
 
     if (!context.mounted) return;
 
