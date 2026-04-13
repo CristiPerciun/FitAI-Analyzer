@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb, debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
@@ -11,12 +13,44 @@ final openRouterServiceProvider = Provider<OpenRouterService>((ref) {
   return OpenRouterService(ref.watch(aiBackendPreferenceServiceProvider));
 });
 
+/// Dati da [GET /api/v1/key](https://openrouter.ai/docs/api/api-reference/api-keys/get-current-key)
+class OpenRouterKeyCredits {
+  const OpenRouterKeyCredits({
+    this.label,
+    this.limitUsd,
+    this.limitRemainingUsd,
+    this.usageUsd,
+    this.isFreeTier,
+  });
+
+  final String? label;
+  final double? limitUsd;
+  final double? limitRemainingUsd;
+  final double? usageUsd;
+  final bool? isFreeTier;
+}
+
+class OpenRouterKeyCreditsResult {
+  const OpenRouterKeyCreditsResult._(this.data, this.errorMessage);
+
+  const OpenRouterKeyCreditsResult.success(OpenRouterKeyCredits data)
+      : this._(data, null);
+
+  const OpenRouterKeyCreditsResult.failure(String message)
+      : this._(null, message);
+
+  final OpenRouterKeyCredits? data;
+  final String? errorMessage;
+
+  bool get isSuccess => data != null;
+}
 
 /// Servizio OpenRouter con supporto multi-modello e fallback automatico
 class OpenRouterService {
   OpenRouterService(this._prefs);
 
   static const _baseUrl = 'https://openrouter.ai/api/v1/chat/completions';
+  static const _keyInfoUrl = 'https://openrouter.ai/api/v1/key';
 
   /// Header richiesti da OpenRouter per l'attribuzione
   static const _httpReferer = 'https://fitai-analyzer.app';
@@ -51,8 +85,95 @@ class OpenRouterService {
 
   void _checkApiKey(String key) {
     if (key.isEmpty || key.startsWith('INSERISCI_QUI')) {
+      _orLog('API key mancante o placeholder');
       throw StateError(
         'Configura la chiave OpenRouter nelle impostazioni o in .env',
+      );
+    }
+  }
+
+  static void _orLog(String message) {
+    if (kDebugMode) {
+      debugPrint('[OpenRouter] $message');
+    }
+  }
+
+  static String _bodySnippet(String body, {int maxLen = 800}) {
+    final t = body.trim();
+    if (t.length <= maxLen) return t;
+    return '${t.substring(0, maxLen)}…';
+  }
+
+  double? _numToDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString());
+  }
+
+  /// Saldo crediti (USD) associato alla chiave corrente.
+  Future<OpenRouterKeyCreditsResult> fetchKeyCredits() async {
+    final key = await _prefs.getOpenRouterKey();
+    if (key.isEmpty || key.startsWith('INSERISCI_QUI')) {
+      return const OpenRouterKeyCreditsResult.failure(
+        'Chiave OpenRouter non configurata.',
+      );
+    }
+
+    try {
+      _orLog('GET /api/v1/key …');
+      final resp = await http
+          .get(
+            Uri.parse(_keyInfoUrl),
+            headers: _headers(key),
+          )
+          .timeout(const Duration(seconds: 25));
+
+      if (resp.statusCode != 200) {
+        _orLog('/key → ${resp.statusCode} ${_bodySnippet(resp.body)}');
+        return OpenRouterKeyCreditsResult.failure(
+          'Errore ${resp.statusCode}: ${resp.body}',
+        );
+      }
+      _orLog('/key → 200 OK');
+
+      final decoded = jsonDecode(resp.body);
+      if (decoded is! Map<String, dynamic>) {
+        return const OpenRouterKeyCreditsResult.failure(
+          'Risposta API non valida.',
+        );
+      }
+
+      final data = decoded['data'];
+      if (data is! Map<String, dynamic>) {
+        return const OpenRouterKeyCreditsResult.failure(
+          'Risposta API senza campo data.',
+        );
+      }
+
+      return OpenRouterKeyCreditsResult.success(
+        OpenRouterKeyCredits(
+          label: data['label']?.toString(),
+          limitUsd: _numToDouble(data['limit']),
+          limitRemainingUsd: _numToDouble(data['limit_remaining']),
+          usageUsd: _numToDouble(data['usage']),
+          isFreeTier: data['is_free_tier'] as bool?,
+        ),
+      );
+    } on TimeoutException {
+      return const OpenRouterKeyCreditsResult.failure(
+        'Timeout (25s) verso OpenRouter.',
+      );
+    } catch (e, st) {
+      _orLog('fetchKeyCredits error: $e');
+      if (kDebugMode) {
+        debugPrint(st.toString());
+      }
+      final webHint = kIsWeb
+          ? ' Su Chrome/Web le chiamate dirette possono essere bloccate da CORS: '
+              'prova la stessa funzione su Android/iOS, oppure serve un proxy lato server.'
+          : '';
+      return OpenRouterKeyCreditsResult.failure(
+        'Connessione fallita: $e$webHint',
       );
     }
   }
@@ -86,6 +207,9 @@ class OpenRouterService {
         }
 
         final delaySeconds = (1 << (attempt - 1)).clamp(1, 8); // 1, 2, 4, 8...
+        _orLog(
+          '_withRetry attempt $attempt/$maxAttempts after: $e → wait ${delaySeconds}s',
+        );
         await Future.delayed(Duration(seconds: delaySeconds));
       }
     }
@@ -98,9 +222,16 @@ class OpenRouterService {
     Map<String, dynamic>? extraOptions,
   }) async {
     final key = await _apiKey();
+    _orLog(
+      'chat/completions: ${messages.length} msg, jsonObject=$jsonObjectMode, '
+      'web=$kIsWeb',
+    );
+
+    Object? lastFailure;
 
     for (final model in _modelFallbackChain) {
       try {
+        _orLog('→ modello: $model');
         final body = <String, dynamic>{
           'model': model,
           'messages': messages,
@@ -127,37 +258,59 @@ class OpenRouterService {
         );
 
         if (resp.statusCode == 429) {
-          // Rate limit specifico del modello → prova il prossimo
+          lastFailure =
+              '429 rate limit su "$model" (tutti i modelli in coda hanno risposto 429?)';
+          _orLog('← HTTP 429, provo modello successivo');
           continue;
         }
 
         if (resp.statusCode < 200 || resp.statusCode >= 300) {
+          final snippet = _bodySnippet(resp.body);
+          _orLog('← HTTP ${resp.statusCode}: $snippet');
+          lastFailure = 'HTTP ${resp.statusCode}: $snippet';
           throw StateError('OpenRouter (${resp.statusCode}): ${resp.body}');
         }
 
-        final decoded = jsonDecode(resp.body) as Map<String, dynamic>?;
-        final choices = decoded?['choices'] as List<dynamic>?;
+        final decoded = jsonDecode(resp.body);
+        if (decoded is! Map<String, dynamic>) {
+          final snippet = _bodySnippet(resp.body);
+          _orLog('← JSON root non è un oggetto: $snippet');
+          lastFailure = 'Risposta JSON inattesa (non oggetto)';
+          throw StateError('OpenRouter: risposta non è un JSON oggetto');
+        }
+
+        final choices = decoded['choices'] as List<dynamic>?;
         if (choices == null || choices.isEmpty) {
+          _orLog('← nessuna choice in risposta: ${_bodySnippet(resp.body)}');
+          lastFailure = 'choices vuote o assenti';
           throw StateError('Risposta senza choices');
         }
 
         final content = choices.first['message']?['content']?.toString();
         if (content == null || content.isEmpty) {
+          _orLog('← message.content vuoto');
+          lastFailure = 'content vuoto';
           throw StateError('Nessun contenuto nella risposta');
         }
 
+        _orLog('← OK con $model (${content.length} caratteri)');
         return content;
-      } catch (e) {
-        // Se è l'ultimo modello, rilancia l'errore
+      } catch (e, st) {
+        lastFailure = e;
+        _orLog('modello "$model" fallito: $e');
+        if (kDebugMode) {
+          debugPrint(st.toString());
+        }
         if (model == _modelFallbackChain.last) {
           rethrow;
         }
-        // Altrimenti prova il prossimo modello
         continue;
       }
     }
 
-    throw StateError('Tutti i modelli OpenRouter hanno fallito');
+    final suffix = lastFailure != null ? ' — ultimo: $lastFailure' : '';
+    _orLog('nessun modello ha risposto con successo$suffix');
+    throw StateError('Tutti i modelli OpenRouter hanno fallito$suffix');
   }
 
   // ====================== METODI PUBBLICI ======================

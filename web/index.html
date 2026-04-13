@@ -23,8 +23,9 @@
   <!-- Safari / iOS PWA: area sopra safe zone (Dynamic Island, notch) -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="color-scheme" content="dark light">
-  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F5F3F0">
-  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1C1C1E">
+  <!-- theme-color senza media: su PWA iOS (Chrome) i meta con media possono essere ignorati;
+       lo script sotto + Flutter impostano il colore in base al tema salvato nell’app. -->
+  <meta name="theme-color" content="#F5F3F0">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -59,6 +60,37 @@
   </style>
 </head>
 <body>
+  <script>
+    (function () {
+      var dark = '#1C1C1E';
+      var light = '#F5F3F0';
+      function paint(c, scheme) {
+        document.documentElement.style.backgroundColor = c;
+        if (document.body) document.body.style.backgroundColor = c;
+        document.documentElement.style.setProperty('color-scheme', scheme);
+        document.querySelectorAll('meta[name="theme-color"]').forEach(function (n) { n.remove(); });
+        var m = document.createElement('meta');
+        m.setAttribute('name', 'theme-color');
+        m.setAttribute('content', c);
+        document.head.appendChild(m);
+      }
+      function systemDark() {
+        return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      }
+      try {
+        var raw = localStorage.getItem('flutter.theme_mode');
+        if (raw != null) {
+          var v = JSON.parse(raw);
+          if (v === 1) return paint(dark, 'dark');
+          if (v === 0) return paint(light, 'light');
+          if (v === 2) return paint(systemDark() ? dark : light, systemDark() ? 'dark' : 'light');
+        }
+        return paint(systemDark() ? dark : light, systemDark() ? 'dark' : 'light');
+      } catch (e) {
+        paint(systemDark() ? dark : light, systemDark() ? 'dark' : 'light');
+      }
+    })();
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

@@ -13,6 +13,7 @@ import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/services/ai_backend_preference_service.dart';
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
+import 'package:fitai_analyzer/services/openrouter_service.dart';
 import 'package:fitai_analyzer/services/user_ai_settings_sync_service.dart';
 import 'package:fitai_analyzer/ui/widgets/deepseek_api_key_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
@@ -212,64 +213,79 @@ class ImpostazioniScreen extends ConsumerWidget {
           const SizedBox(height: 10),
           _IosSectionHeader(label: 'INTELLIGENZA ARTIFICIALE', color: headerColor),
           aiBackendAsync.when(
-            data: (snap) => _IosGroup(
-              color: groupBg,
-              isDark: isDark,
+            data: (snap) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _IosAiBackendSwitchRow(
-                  leading: Icon(
-                    Icons.auto_awesome,
-                    color: theme.colorScheme.primary,
-                    size: 22,
-                  ),
-                  title: 'Gemini',
-                  subtitle: snap.hasGeminiKey
-                      ? 'Sincronizzata tra i dispositivi (stesso account)'
-                      : 'Chiave non impostata · attiva per inserirla',
-                  value: snap.backend == AiBackend.gemini,
-                  activeColor: _iosSwitchOn,
-                  onChanged: (v) => unawaited(
-                    _onGeminiBackendSwitch(context, ref, v),
-                  ),
+                _IosGroup(
+                  color: groupBg,
+                  isDark: isDark,
+                  children: [
+                    _IosAiBackendSwitchRow(
+                      leading: Icon(
+                        Icons.auto_awesome,
+                        color: theme.colorScheme.primary,
+                        size: 22,
+                      ),
+                      title: 'Gemini',
+                      subtitle: snap.hasGeminiKey
+                          ? 'Sincronizzata tra i dispositivi (stesso account)'
+                          : 'Chiave non impostata · attiva per inserirla',
+                      value: snap.backend == AiBackend.gemini,
+                      activeColor: _iosSwitchOn,
+                      onChanged: (v) => unawaited(
+                        _onGeminiBackendSwitch(context, ref, v),
+                      ),
+                    ),
+                    _IosRowDivider(indent: _IosGroup.rowLabelInset),
+                    _IosAiBackendSwitchRow(
+                      leading: Icon(
+                        Icons.psychology_outlined,
+                        color: theme.colorScheme.primary,
+                        size: 22,
+                      ),
+                      title: 'DeepSeek',
+                      subtitle: snap.hasDeepSeekKey
+                          ? 'Sincronizzata tra i dispositivi (stesso account)'
+                          : 'Chiave non impostata · attiva per inserirla',
+                      value: snap.backend == AiBackend.deepseek,
+                      activeColor: _iosSwitchOn,
+                      onChanged: (v) => unawaited(
+                        _onDeepSeekBackendSwitch(context, ref, v),
+                      ),
+                    ),
+                    _IosRowDivider(indent: _IosGroup.rowLabelInset),
+                    _IosAiBackendSwitchRow(
+                      leading: Icon(
+                        Icons.public_outlined,
+                        color: theme.colorScheme.primary,
+                        size: 22,
+                      ),
+                      title: 'OpenRouter (Gemma 4 IT free)',
+                      subtitle: snap.hasOpenRouterKey
+                          ? 'Sincronizzata tra i dispositivi (stesso account)'
+                          : 'Chiave non impostata · attiva per inserirla',
+                      value: snap.backend == AiBackend.openrouter,
+                      activeColor: _iosSwitchOn,
+                      onChanged: (v) => unawaited(
+                        _onOpenRouterBackendSwitch(context, ref, v),
+                      ),
+                    ),
+                  ],
                 ),
-                _IosRowDivider(indent: _IosGroup.rowLabelInset),
-                _IosAiBackendSwitchRow(
-                  leading: Icon(
-                    Icons.psychology_outlined,
-                    color: theme.colorScheme.primary,
-                    size: 22,
+                if (snap.backend == AiBackend.openrouter) ...[
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.info_outline, size: 20),
+                    label: const Text('Info crediti OpenRouter'),
+                    onPressed: () => unawaited(
+                      _showOpenRouterCreditsDialog(context, ref),
+                    ),
                   ),
-                  title: 'DeepSeek',
-                  subtitle: snap.hasDeepSeekKey
-                      ? 'Sincronizzata tra i dispositivi (stesso account)'
-                      : 'Chiave non impostata · attiva per inserirla',
-                  value: snap.backend == AiBackend.deepseek,
-                  activeColor: _iosSwitchOn,
-                  onChanged: (v) => unawaited(
-                    _onDeepSeekBackendSwitch(context, ref, v),
-                  ),
-                ),
-                _IosRowDivider(indent: _IosGroup.rowLabelInset),
-                _IosAiBackendSwitchRow(
-                  leading: Icon(
-                    Icons.public_outlined,
-                    color: theme.colorScheme.primary,
-                    size: 22,
-                  ),
-                  title: 'OpenRouter (Gemma 4 IT free)',
-                  subtitle: snap.hasOpenRouterKey
-                      ? 'Sincronizzata tra i dispositivi (stesso account)'
-                      : 'Chiave non impostata · attiva per inserirla',
-                  value: snap.backend == AiBackend.openrouter,
-                  activeColor: _iosSwitchOn,
-                  onChanged: (v) => unawaited(
-                    _onOpenRouterBackendSwitch(context, ref, v),
-                  ),
-                ),
+                ],
               ],
             ),
             loading: () => const SizedBox.shrink(),
-            error: (_, __) => const SizedBox.shrink(),
+            error: (_, _) => const SizedBox.shrink(),
           ),
           Padding(
             padding: const EdgeInsets.only(left: 4, top: 8, right: 4),
@@ -592,6 +608,112 @@ class ImpostazioniScreen extends ConsumerWidget {
       return;
     }
     await _applyAiBackend(ref, next);
+  }
+
+  Future<void> _showOpenRouterCreditsDialog(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    // Senza await: altrimenti si attende il pop prima di fetchKeyCredits → loader infinito.
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        content: Row(
+          children: [
+            const SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Text(
+                'Recupero stato chiave OpenRouter…',
+                style: Theme.of(ctx).textTheme.bodyMedium,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    late final OpenRouterKeyCreditsResult result;
+    try {
+      result = await ref.read(openRouterServiceProvider).fetchKeyCredits();
+    } finally {
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+
+    if (!context.mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('OpenRouter · crediti'),
+        content: SingleChildScrollView(
+          child: result.isSuccess
+              ? _openRouterCreditsBody(result.data!)
+              : Text(
+                  result.errorMessage ?? 'Errore sconosciuto',
+                  style: Theme.of(ctx).textTheme.bodyMedium,
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _openRouterCreditsBody(OpenRouterKeyCredits c) {
+    String fmtUsd(double? v, {required String ifNull}) {
+      if (v == null) return ifNull;
+      return '${v.toStringAsFixed(2)} USD';
+    }
+
+    final buf = StringBuffer()
+      ..writeln(
+        'OpenRouter non espone un numero fisso di “chiamate”: il saldo è in '
+        'dollari (USD). Ogni richiesta consuma in base ai token e al modello '
+        'effettivamente usato.',
+      )
+      ..writeln()
+      ..writeln(
+        'In questa app la catena di fallback può provare circa 5 modelli '
+        'diversi se uno fallisce o va in rate limit; una sola azione utente '
+        'può quindi generare più richieste.',
+      )
+      ..writeln();
+
+    if (c.label != null && c.label!.trim().isNotEmpty) {
+      buf.writeln('Etichetta chiave: ${c.label}');
+    }
+    if (c.isFreeTier != null) {
+      buf.writeln('Free tier: ${c.isFreeTier! ? "sì" : "no"}');
+    }
+    buf
+      ..writeln(
+        'Limite chiave: ${fmtUsd(c.limitUsd, ifNull: "non indicato (spesso illimitato)")}',
+      )
+      ..writeln(
+        'Credito residuo: ${fmtUsd(c.limitRemainingUsd, ifNull: "non applicabile o illimitato")}',
+      )
+      ..writeln(
+        'Utilizzo totale (storico): ${fmtUsd(c.usageUsd, ifNull: "0,00 USD")}',
+      );
+
+    if (c.limitRemainingUsd != null && c.limitRemainingUsd! <= 0) {
+      buf.writeln();
+      buf.writeln('Attenzione: credito residuo pari o inferiore a zero.');
+    }
+
+    return Text(buf.toString());
   }
 
   Future<bool?> _showCupertinoConfirm(

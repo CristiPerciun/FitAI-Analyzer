@@ -14,6 +14,7 @@ import 'package:fitai_analyzer/services/strava_oauth_callback.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:fitai_analyzer/utils/strava_error_messages.dart';
+import 'package:fitai_analyzer/utils/web_pwa_theme_sync.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -36,8 +37,25 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     if (kIsWeb) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(_resumeStravaWebOAuthIfNeeded());
+        _syncWebPwaChrome();
       });
     }
+  }
+
+  Brightness _effectiveBrightness(ThemeMode mode, Brightness platform) {
+    return switch (mode) {
+      ThemeMode.light => Brightness.light,
+      ThemeMode.dark => Brightness.dark,
+      ThemeMode.system => platform,
+    };
+  }
+
+  void _syncWebPwaChrome() {
+    if (!kIsWeb) return;
+    final mode = ref.read(themeModeProvider);
+    final platform =
+        WidgetsBinding.instance.platformDispatcher.platformBrightness;
+    syncWebPwaChromeTheme(_effectiveBrightness(mode, platform));
   }
 
   /// Strava su web: dopo redirect da strava.com l’URL contiene ?code= — exchange via server + sync token.
@@ -82,6 +100,12 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  void didChangePlatformBrightness() {
+    super.didChangePlatformBrightness();
+    if (kIsWeb) _syncWebPwaChrome();
   }
 
   @override
@@ -174,6 +198,11 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     });
 
     final themeMode = ref.watch(themeModeProvider);
+
+    ref.listen<ThemeMode>(themeModeProvider, (prev, next) {
+      if (!kIsWeb) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _syncWebPwaChrome());
+    });
 
     return MaterialApp.router(
       scaffoldMessengerKey: scaffoldMessengerKey,
