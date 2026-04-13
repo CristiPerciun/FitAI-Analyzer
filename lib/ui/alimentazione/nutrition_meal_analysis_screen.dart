@@ -265,37 +265,37 @@ class _PortionRowState extends State<_PortionRow> {
                   },
                   icon: const Icon(Icons.remove),
                 ),
-Expanded(
-  child: Center( // Questo impedisce al TextField di allargarsi su tutto l'Expanded
-    child: SizedBox(
-      width: 160, // <--- REGOLA QUI la lunghezza esatta della linea
-      child: TextField(
-        controller: _controller,
-        focusNode: _focus,
-        keyboardType: TextInputType.number,
-        textAlign: TextAlign.center,
-        style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-        decoration: InputDecoration(
-          suffixText: 'g',
-          suffixStyle: theme.textTheme.titleMedium?.copyWith(
-            color: cs.onSurfaceVariant,
-            fontWeight: FontWeight.w600,
-          ),
-          isDense: true,
-          enabledBorder: UnderlineInputBorder(
-            borderSide: BorderSide(color: cs.outlineVariant, width: 1),
-          ),
-          focusedBorder: UnderlineInputBorder(
-            borderSide: BorderSide(color: cs.primary, width: 2),
-          ),
-          contentPadding: const EdgeInsets.only(left: 4, right: 4, top: 6, bottom: 8),
-        ),
-        onSubmitted: (_) => _focus.unfocus(),
-      ),
-    ),
-  ),
-),
+                Expanded(
+                  child: Center( 
+                        child: SizedBox(
+                      width: 160, 
+                      child: TextField(
+                        controller: _controller,
+                        focusNode: _focus,
+                        keyboardType: TextInputType.number,
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        decoration: InputDecoration(
+                          suffixText: 'g',
+                          suffixStyle: theme.textTheme.titleMedium?.copyWith(
+                            color: cs.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          isDense: true,
+                          enabledBorder: UnderlineInputBorder(
+                            borderSide: BorderSide(color: cs.outlineVariant, width: 1),
+                          ),
+                          focusedBorder: UnderlineInputBorder(
+                            borderSide: BorderSide(color: cs.primary, width: 2),
+                          ),
+                          contentPadding: const EdgeInsets.only(left: 4, right: 4, top: 6, bottom: 8),
+                        ),
+                        onSubmitted: (_) => _focus.unfocus(),
+                      ),
+                    ),
+                  ),
+                ),
                 IconButton.filled(
                   onPressed: () {
                     _beforeStep();

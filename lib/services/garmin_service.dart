@@ -650,6 +650,71 @@ class GarminService {
     }
   }
 
+  /// Scambia `code` OAuth con token (solo **web**): il browser non può POSTare a
+  /// `https://www.strava.com/oauth/token` per CORS.
+  ///
+  /// Serve su **garmin-sync-server** un endpoint `POST /strava/exchange-oauth-code`
+  /// con body JSON `{ "uid", "code", "redirect_uri" }` che esegue il POST server-side
+  /// verso Strava (`client_id`, `client_secret`, `code`, `grant_type=authorization_code`,
+  /// `redirect_uri`) e risponde con gli stessi campi token di Strava + `success: true`.
+  Future<Map<String, dynamic>> exchangeStravaOAuthCodeOnServer({
+    required String uid,
+    required String code,
+    required String redirectUri,
+  }) async {
+    final baseUrl = await _resolveBaseUrl();
+    final uri = Uri.parse('$baseUrl/strava/exchange-oauth-code');
+    final body = <String, dynamic>{
+      'uid': uid,
+      'code': code,
+      'redirect_uri': redirectUri,
+    };
+    try {
+      final sw = Stopwatch()..start();
+      final response = await _http
+          .post(uri, headers: _jsonHeaders, body: jsonEncode(body))
+          .timeout(const Duration(seconds: 45));
+      _garminTraceHttpResponse(
+        label: 'strava/exchange-oauth-code',
+        uri: uri,
+        method: 'POST',
+        response: response,
+        elapsedMs: sw.elapsedMilliseconds,
+        requestHeaders: _jsonHeaders,
+        omitBody: true,
+      );
+      final data = _tryDecodeJsonObject(response.body);
+      if (response.statusCode == 200 &&
+          data != null &&
+          data['success'] == true) {
+        return {
+          'success': true,
+          'access_token': data['access_token'],
+          'refresh_token': data['refresh_token'],
+          'expires_in': data['expires_in'],
+          'expires_at': data['expires_at'],
+        };
+      }
+      if (response.statusCode == 404) {
+        return {
+          'success': false,
+          'message':
+              'Server Garmin non espone ancora POST /strava/exchange-oauth-code '
+              '(necessario per Strava su web). Aggiorna garmin-sync-server.',
+        };
+      }
+      return {
+        'success': false,
+        'message': _serverDetailOrMessage(data).isNotEmpty
+            ? _serverDetailOrMessage(data)
+            : 'Exchange OAuth Strava sul server non riuscito (HTTP ${response.statusCode}).',
+      };
+    } on Object catch (e) {
+      _invalidateBaseUrlCacheOnNetworkFailure(e);
+      return {'success': false, 'message': 'Errore di rete: $e'};
+    }
+  }
+
   /// Registra token Strava sul server (backfill 60gg in background).
   Future<Map<String, dynamic>> registerStravaOnServer({
     required String uid,

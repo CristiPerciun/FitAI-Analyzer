@@ -157,6 +157,14 @@ class AuthNotifier extends Notifier<AuthState> {
           );
           await ref.read(stravaServiceProvider).authenticate();
         } catch (e) {
+          if (e is StravaWebOAuthRedirectPending) {
+            state = state.copyWith(
+              isLoading: false,
+              currentService: null,
+              error: null,
+            );
+            return;
+          }
           final msg = e.toString();
           if (msg.contains('permessi') ||
               msg.contains('activity:read_permission') ||
@@ -165,7 +173,16 @@ class AuthNotifier extends Notifier<AuthState> {
               StravaSyncPhase.connecting,
               message: 'Nuova autorizzazione Strava (permessi attività)...',
             );
-            await ref.read(stravaServiceProvider).authenticate();
+            try {
+              await ref.read(stravaServiceProvider).authenticate();
+            } on StravaWebOAuthRedirectPending {
+              state = state.copyWith(
+                isLoading: false,
+                currentService: null,
+                error: null,
+              );
+              return;
+            }
           } else {
             rethrow;
           }
@@ -206,6 +223,47 @@ class AuthNotifier extends Notifier<AuthState> {
     } else {
       throw ArgumentError('Servizio non supportato: $service');
     }
+  }
+
+  /// Dopo OAuth Strava su **web** (redirect + exchange via server), registra i token sul Pi/server.
+  Future<void> syncStravaToServerAfterWebOAuth() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    final tokens = await ref.read(stravaServiceProvider).getTokensForServer();
+    if (tokens == null) return;
+
+    final statusNotifier = ref.read(stravaSyncStatusProvider.notifier);
+    statusNotifier.setPhase(
+      StravaSyncPhase.connecting,
+      message: 'Invio token al server (backfill attività)...',
+    );
+
+    final reg = await ref.read(garminServiceProvider).registerStravaOnServer(
+          uid: uid,
+          accessToken: tokens.access,
+          refreshToken: tokens.refresh,
+          expiresAtMs: tokens.expiresAtMs,
+        );
+    if (reg['success'] != true) {
+      statusNotifier.reset();
+      state = state.copyWith(
+        error: reg['message']?.toString() ??
+            'Registrazione Strava sul server fallita.',
+      );
+      return;
+    }
+
+    statusNotifier.setPhase(
+      StravaSyncPhase.completed,
+      message: 'Strava collegato: sincronizzazione in background sul server.',
+    );
+
+    try {
+      await ref.read(aggregationServiceProvider).updateRolling10DaysAndBaseline(uid);
+    } catch (_) {}
+
+    ref.invalidate(stravaConnectedProvider);
   }
 
   /// Esegue [fn] sul platform thread (workaround firebase_auth Windows).

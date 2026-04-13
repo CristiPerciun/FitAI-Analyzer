@@ -1,6 +1,5 @@
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/ui/launch/launch_screen.dart';
-import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -53,15 +52,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
-
-    ref.listen(authNotifierProvider, (prev, next) {
-      if (next.error != null &&
-          next.error!.isNotEmpty &&
-          next.error != prev?.error &&
-          context.mounted) {
-        showErrorDialog(context, next.error!);
-      }
-    });
 
     if (authState.isLoading) {
       return const Scaffold(body: LaunchScreen());

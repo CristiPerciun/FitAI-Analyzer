@@ -4,12 +4,17 @@ import 'package:app_links/app_links.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/sync_backfill_status_provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitai_analyzer/services/aggregation_service.dart';
 import 'package:fitai_analyzer/services/garmin_oauth_callback.dart';
+import 'package:fitai_analyzer/services/garmin_service.dart';
 import 'package:fitai_analyzer/providers/theme_mode_provider.dart';
 import 'package:fitai_analyzer/routes/app_router.dart';
 import 'package:fitai_analyzer/services/strava_oauth_callback.dart';
+import 'package:fitai_analyzer/services/strava_service.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
+import 'package:fitai_analyzer/utils/strava_error_messages.dart';
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -28,6 +33,49 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    if (kIsWeb) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_resumeStravaWebOAuthIfNeeded());
+      });
+    }
+  }
+
+  /// Strava su web: dopo redirect da strava.com l’URL contiene ?code= — exchange via server + sync token.
+  Future<void> _resumeStravaWebOAuthIfNeeded() async {
+    if (!kIsWeb || !mounted) return;
+    var uid = FirebaseAuth.instance.currentUser?.uid ??
+        ref.read(authNotifierProvider).user?.uid;
+    if (uid == null) {
+      for (var i = 0; i < 50; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        if (!mounted) return;
+        uid = FirebaseAuth.instance.currentUser?.uid ??
+            ref.read(authNotifierProvider).user?.uid;
+        if (uid != null) break;
+      }
+    }
+    if (uid == null) return;
+
+    final strava = ref.read(stravaServiceProvider);
+    final garmin = ref.read(garminServiceProvider);
+    try {
+      final done = await strava.completeWebOAuthIfPresent(
+        garminService: garmin,
+        uid: uid,
+      );
+      if (!done || !mounted) return;
+      await ref.read(authNotifierProvider.notifier).syncStravaToServerAfterWebOAuth();
+    } catch (e, st) {
+      debugPrint('Strava web OAuth: $e\n$st');
+      if (!mounted) return;
+      scaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text(stravaErrorToUserMessage(e)),
+          backgroundColor: AppColors.error,
+          duration: const Duration(seconds: 10),
+        ),
+      );
+    }
   }
 
   @override

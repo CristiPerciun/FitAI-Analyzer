@@ -28,6 +28,15 @@ String stravaErrorToUserMessage(Object e) {
         'Salva le impostazioni e riprova.';
   }
 
+  // Web: token exchange solo lato server (CORS su Strava)
+  if (msg.contains('exchange-oauth-code') ||
+      msg.contains('non espone ancora POST')) {
+    return 'Per Strava su Chrome / web il server di sync deve esporre '
+        'POST /strava/exchange-oauth-code (scambio del codice OAuth lato server: '
+        'il browser non può chiamare direttamente strava.com/oauth/token).\n\n'
+        'Aggiorna garmin-sync-server, aggiungi l’endpoint e riavvia il servizio sul Pi.';
+  }
+
   // Server sync (garmin-sync-server) senza credenziali API Strava
   if (msg.contains('STRAVA_CLIENT_ID') ||
       msg.contains('STRAVA_CLIENT_SECRET') ||
