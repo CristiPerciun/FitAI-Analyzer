@@ -142,6 +142,16 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
     String? dateStr,
     ImageSource imageSource = ImageSource.camera,
   }) async {
+    // ⚠️ Web/PWA (iOS Chrome/Safari, Android Chrome): i browser (e WebKit/Blink
+    // su mobile) bloccano silenziosamente <input>.click() se viene chiamato dopo
+    // qualsiasi `await`. Il file-picker / camera input DEVE essere avviato come
+    // PRIMA operazione sincronà, prima di qualsiasi gap asincrono, altrimenti il
+    // "user gesture token" scade e il tasto non fa nulla senza errori visibili.
+    // Soluzione: avviamo `pickerFuture` qui (nessun await prima), poi facciamo la
+    // validazione mentre l'utente sceglie/scatta la foto, poi aspettiamo il risultato.
+    final source = _isCameraSupported ? imageSource : ImageSource.gallery;
+    final pickerFuture = ImagePicker().pickImage(source: source, imageQuality: 85);
+
     final uid = await _ensureNutritionUid(context, ref);
     if (uid == null) return;
 
@@ -150,10 +160,7 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
     }
     if (!context.mounted) return;
 
-    final source = _isCameraSupported ? imageSource : ImageSource.gallery;
-
-    final picker = ImagePicker();
-    final xFile = await picker.pickImage(source: source, imageQuality: 85);
+    final xFile = await pickerFuture;
     if (xFile == null || !context.mounted) return;
 
     final bytes = await xFile.readAsBytes();
@@ -420,8 +427,11 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
                 if (_isCameraSupported)
                   FilledButton.icon(
                     onPressed: () {
-                      Navigator.of(ctx).pop();
+                      // Su web/PWA: avvia _onAnalisiPiatto (che chiama pickImage
+                      // come prima op.) PRIMA di Navigator.pop(), così il browser
+                      // riceve input.click() ancora dentro il gesto utente.
                       _onAnalisiPiatto(context, ref, mealLabel: mealLabel, dateStr: dateStr, imageSource: ImageSource.camera);
+                      Navigator.of(ctx).pop();
                     },
                     icon: const Icon(Icons.camera_alt),
                     label: const Text('Scatta foto'),
@@ -429,8 +439,8 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
                 if (_isCameraSupported) const SizedBox(height: 12),
                 FilledButton.icon(
                   onPressed: () {
-                    Navigator.of(ctx).pop();
                     _onAnalisiPiatto(context, ref, mealLabel: mealLabel, dateStr: dateStr, imageSource: ImageSource.gallery);
+                    Navigator.of(ctx).pop();
                   },
                   icon: const Icon(Icons.photo_library),
                   label: Text(_galleryButtonLabel),
