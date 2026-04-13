@@ -13,8 +13,8 @@ import 'package:fitai_analyzer/routes/app_router.dart';
 import 'package:fitai_analyzer/services/strava_oauth_callback.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
+import 'package:fitai_analyzer/utils/ios_pwa_chrome.dart';
 import 'package:fitai_analyzer/utils/strava_error_messages.dart';
-import 'package:fitai_analyzer/utils/web_pwa_theme_sync.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -37,7 +37,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     if (kIsWeb) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(_resumeStravaWebOAuthIfNeeded());
-        _syncWebPwaChrome();
+        _syncIosPwaChrome();
       });
     }
   }
@@ -50,12 +50,12 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     };
   }
 
-  void _syncWebPwaChrome() {
+  void _syncIosPwaChrome() {
     if (!kIsWeb) return;
     final mode = ref.read(themeModeProvider);
     final platform =
         WidgetsBinding.instance.platformDispatcher.platformBrightness;
-    syncWebPwaChromeTheme(_effectiveBrightness(mode, platform));
+    syncIosPwaDocumentForTheme(_effectiveBrightness(mode, platform));
   }
 
   /// Strava su web: dopo redirect da strava.com l’URL contiene ?code= — exchange via server + sync token.
@@ -105,7 +105,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   @override
   void didChangePlatformBrightness() {
     super.didChangePlatformBrightness();
-    if (kIsWeb) _syncWebPwaChrome();
+    if (kIsWeb) _syncIosPwaChrome();
   }
 
   @override
@@ -201,7 +201,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
     ref.listen<ThemeMode>(themeModeProvider, (prev, next) {
       if (!kIsWeb) return;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _syncWebPwaChrome());
+      WidgetsBinding.instance.addPostFrameCallback((_) => _syncIosPwaChrome());
     });
 
     return MaterialApp.router(

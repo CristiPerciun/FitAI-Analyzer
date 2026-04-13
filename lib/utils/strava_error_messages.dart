@@ -17,15 +17,20 @@ String stravaErrorToUserMessage(Object e) {
         '3. Salva e riprova la connessione.';
   }
 
-  // Errore redirect URI da Strava (bad request)
+  // Errore redirect URI da Strava (bad request) — tipico su web/PWA se l’URL non coincide
   if (msg.contains('redirect') &&
       (msg.contains('invalid') ||
           msg.contains('bad request') ||
           msg.contains('application field'))) {
     return 'Strava ha rifiutato il redirect URI.\n\n'
-        'Configura l\'app su https://www.strava.com/settings/api:\n'
-        '• Authorization Callback Domain: myhealthsync\n\n'
-        'Salva le impostazioni e riprova.';
+        'Su app nativa: in https://www.strava.com/settings/api imposta '
+        'Authorization Callback Domain: myhealthsync\n\n'
+        'Su web / PWA (Chrome, iPhone): il dominio dell’URL deve essere lo stesso '
+        'del Callback Domain; se da iPhone vedi l’errore e da PC no, spesso è un '
+        'mismatch (es. www vs senza www, slash finale).\n'
+        'Imposta in `.env` STRAVA_WEB_REDIRECT_URI con l’URL esatto autorizzato da Strava '
+        '(es. https://tuodominio.it/) e ricompila il web.\n\n'
+        'Salva le impostazioni Strava e riprova.';
   }
 
   // Web: token exchange solo lato server (CORS su Strava)

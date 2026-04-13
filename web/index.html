@@ -23,13 +23,12 @@
   <!-- Safari / iOS PWA: area sopra safe zone (Dynamic Island, notch) -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="color-scheme" content="dark light">
-  <!-- theme-color senza media: su PWA iOS (Chrome) i meta con media possono essere ignorati;
-       lo script sotto + Flutter impostano il colore in base al tema salvato nell’app. -->
+  <!-- Valore iniziale; lo script in body allinea a tema app (localStorage) + iOS bar -->
   <meta name="theme-color" content="#F5F3F0">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
-  <!-- black-translucent: la barra di stato è trasparente; il colore sotto viene da html/body (evita fascia chiara con tema scuro) -->
+  <!-- black-translucent = chiaro; con tema scuro lo script imposta black (barra opaca anche se iOS è “Chiaro”) -->
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="fitai_analyzer">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
@@ -62,33 +61,32 @@
 <body>
   <script>
     (function () {
-      var dark = '#1C1C1E';
-      var light = '#F5F3F0';
-      function paint(c, scheme) {
-        document.documentElement.style.backgroundColor = c;
-        if (document.body) document.body.style.backgroundColor = c;
-        document.documentElement.style.setProperty('color-scheme', scheme);
-        document.querySelectorAll('meta[name="theme-color"]').forEach(function (n) { n.remove(); });
-        var m = document.createElement('meta');
-        m.setAttribute('name', 'theme-color');
-        m.setAttribute('content', c);
-        document.head.appendChild(m);
-      }
-      function systemDark() {
+      var darkBg = '#1C1C1E';
+      var lightBg = '#F5F3F0';
+      function effectiveDark() {
+        try {
+          var raw = localStorage.getItem('flutter.theme_mode');
+          if (raw != null) {
+            var v = JSON.parse(raw);
+            if (v === 1) return true;
+            if (v === 0) return false;
+          }
+        } catch (e) {}
         return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
       }
-      try {
-        var raw = localStorage.getItem('flutter.theme_mode');
-        if (raw != null) {
-          var v = JSON.parse(raw);
-          if (v === 1) return paint(dark, 'dark');
-          if (v === 0) return paint(light, 'light');
-          if (v === 2) return paint(systemDark() ? dark : light, systemDark() ? 'dark' : 'light');
-        }
-        return paint(systemDark() ? dark : light, systemDark() ? 'dark' : 'light');
-      } catch (e) {
-        paint(systemDark() ? dark : light, systemDark() ? 'dark' : 'light');
-      }
+      var dark = effectiveDark();
+      var bg = dark ? darkBg : lightBg;
+      document.documentElement.style.backgroundColor = bg;
+      if (document.body) document.body.style.backgroundColor = bg;
+      document.documentElement.style.setProperty('color-scheme', dark ? 'dark' : 'light');
+      document.querySelectorAll('meta[name="theme-color"]').forEach(function (n) { n.remove(); });
+      var tm = document.createElement('meta');
+      tm.setAttribute('name', 'theme-color');
+      tm.setAttribute('content', bg);
+      document.head.appendChild(tm);
+      var apple = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+      var bar = dark ? 'black' : 'black-translucent';
+      if (apple) apple.setAttribute('content', bar);
     })();
   </script>
   <script src="flutter_bootstrap.js" async></script>
