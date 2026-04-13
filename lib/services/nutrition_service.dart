@@ -76,6 +76,10 @@ class NutritionService {
     final carbsG = _num(nutritionGemini['carbs_g'] ?? nutritionGemini['carbs'] ?? 0);
     final fatG = _num(nutritionGemini['fat_g'] ?? nutritionGemini['fat'] ?? 0);
     final calories = _num(nutritionGemini['total_calories'] ?? nutritionGemini['calories'] ?? 0);
+    final portionG = _num(
+      nutritionGemini['portion_grams'] ?? nutritionGemini['estimated_portion_grams'] ?? 0,
+    );
+    final portionGrams = portionG > 0 ? portionG : null;
 
     final advice = _stringField(nutritionGemini['advice']);
     final longevityScore = _num(nutritionGemini['longevity_score'] ?? 0);
@@ -123,7 +127,7 @@ class NutritionService {
         proteinG: proteinG,
         carbsG: carbsG,
         fatG: fatG,
-        portionGrams: null,
+        portionGrams: portionGrams,
         ingredients: ingredients,
         timestamp: oldMeal.timestamp,
         mealType: oldMeal.mealType.isNotEmpty ? oldMeal.mealType : mealType,
@@ -177,7 +181,7 @@ class NutritionService {
       proteinG: proteinG,
       carbsG: carbsG,
       fatG: fatG,
-      portionGrams: null, // Gemini non restituisce ancora grammatura totale
+      portionGrams: portionGrams,
       ingredients: ingredients,
       timestamp: timeStr,
       mealType: mealType,

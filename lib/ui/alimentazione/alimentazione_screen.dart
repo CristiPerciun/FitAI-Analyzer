@@ -26,6 +26,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:fitai_analyzer/ui/widgets/NutritionChartCard.dart';
 import 'package:fitai_analyzer/ui/widgets/weekly_macro_stacked_bar_chart.dart';
+import 'package:fitai_analyzer/ui/alimentazione/nutrition_meal_analysis_screen.dart';
 //import 'package:fitai_analyzer/utils/activity_utils.dart';
 import 'package:fitai_analyzer/ui/home/widgets/manual_entry_dialog.dart';
 
@@ -265,6 +266,7 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
   }
 
   Map<String, dynamic> _mealModelToGeminiEditMap(MealModel meal) {
+    final portion = meal.portionGrams;
     return {
       'dish_name': meal.displayTitle,
       'total_calories': meal.calories,
@@ -273,6 +275,8 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
       'carbs_g': meal.carbsG.round(),
       'fat_g': meal.fatG.round(),
       'sugar_g': 0,
+      if (portion != null && portion > 0) 'estimated_portion_grams': portion,
+      if (portion != null && portion > 0) 'portion_grams': portion,
       'advice': meal.rawAiAnalysis,
       'foods': meal.ingredients.map((name) => <String, dynamic>{'name': name}).toList(),
     };
@@ -312,46 +316,46 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
 
     ref.read(nutritionMealEditProvider.notifier).beginFrom(_mealModelToGeminiEditMap(meal));
 
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => _NutritionEditDialog(
-        advice: advice,
-        foods: foods,
-        onSave: (modifiedNut) async {
-          Navigator.of(ctx).pop();
-          try {
-            await ref.read(nutritionServiceProvider).saveToFirestore(
-                  uid,
-                  modifiedNut,
-                  mealLabel: meal.mealType.isNotEmpty ? meal.mealType.toLowerCase() : null,
-                  date: DateTime.parse(dateStr),
-                  existingMealId: mealDocId,
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (ctx) => NutritionMealAnalysisScreen(
+          advice: advice,
+          foods: foods,
+          onSave: (modifiedNut) async {
+            try {
+              await ref.read(nutritionServiceProvider).saveToFirestore(
+                    uid,
+                    modifiedNut,
+                    mealLabel: meal.mealType.isNotEmpty ? meal.mealType.toLowerCase() : null,
+                    date: DateTime.parse(dateStr),
+                    existingMealId: mealDocId,
+                  );
+              _refreshNutritionAfterMealChange(ref);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Pasto aggiornato')),
                 );
-            _refreshNutritionAfterMealChange(ref);
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Pasto aggiornato')),
-              );
+              }
+            } catch (e) {
+              if (context.mounted) showErrorDialog(context, e.toString());
             }
-          } catch (e) {
-            if (context.mounted) showErrorDialog(context, e.toString());
-          }
-        },
-        onDelete: () async {
-          try {
-            await ref.read(nutritionServiceProvider).deleteMeal(uid, dateStr, mealDocId);
-            _refreshNutritionAfterMealChange(ref);
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Pasto eliminato')),
-              );
+          },
+          onDelete: () async {
+            try {
+              await ref.read(nutritionServiceProvider).deleteMeal(uid, dateStr, mealDocId);
+              _refreshNutritionAfterMealChange(ref);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Pasto eliminato')),
+                );
+              }
+            } catch (e) {
+              if (context.mounted) showErrorDialog(context, e.toString());
             }
-          } catch (e) {
-            if (context.mounted) showErrorDialog(context, e.toString());
-          }
-        },
+          },
+        ),
       ),
-    ).whenComplete(() {
+    ).then((_) {
       ref.read(nutritionMealEditProvider.notifier).clear();
     });
   }
@@ -369,32 +373,32 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
 
     ref.read(nutritionMealEditProvider.notifier).beginFrom(nut);
 
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => _NutritionEditDialog(
-        advice: advice,
-        foods: foods,
-        onSave: (modifiedNut) async {
-          Navigator.of(ctx).pop();
-          try {
-            await ref.read(nutritionServiceProvider).saveToFirestore(
-                  uid,
-                  modifiedNut,
-                  mealLabel: mealLabel,
-                  date: dateStr != null ? DateTime.parse(dateStr) : null,
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (ctx) => NutritionMealAnalysisScreen(
+          advice: advice,
+          foods: foods,
+          onSave: (modifiedNut) async {
+            try {
+              await ref.read(nutritionServiceProvider).saveToFirestore(
+                    uid,
+                    modifiedNut,
+                    mealLabel: mealLabel,
+                    date: dateStr != null ? DateTime.parse(dateStr) : null,
+                  );
+              _refreshNutritionAfterMealChange(ref);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Analisi salvata')),
                 );
-            _refreshNutritionAfterMealChange(ref);
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Analisi salvata')),
-              );
+              }
+            } catch (e) {
+              if (context.mounted) showErrorDialog(context, e.toString());
             }
-          } catch (e) {
-            if (context.mounted) showErrorDialog(context, e.toString());
-          }
-        },
+          },
+        ),
       ),
-    ).whenComplete(() {
+    ).then((_) {
       ref.read(nutritionMealEditProvider.notifier).clear();
     });
   }
@@ -1130,150 +1134,6 @@ class _PendingMealTile extends StatelessWidget {
                 tooltip: 'Chiudi',
               ),
           ],
-        ],
-      ),
-    );
-  }
-}
-
-class _NutritionEditDialog extends ConsumerStatefulWidget {
-  const _NutritionEditDialog({
-    required this.advice,
-    required this.foods,
-    required this.onSave,
-    this.onDelete,
-  });
-
-  final String advice;
-  final List<dynamic> foods;
-  final void Function(Map<String, dynamic> modifiedNut) onSave;
-  /// Solo per pasti già salvati su Firestore (modifica da lista diario).
-  final Future<void> Function()? onDelete;
-
-  @override
-  ConsumerState<_NutritionEditDialog> createState() => _NutritionEditDialogState();
-}
-
-class _NutritionEditDialogState extends ConsumerState<_NutritionEditDialog> {
-  @override
-  Widget build(BuildContext context) {
-    final draft = ref.watch(nutritionMealEditProvider);
-    if (draft == null) {
-      return const AlertDialog(content: Text('Caricamento…'));
-    }
-
-    return AlertDialog(
-      title: const Text('Analisi nutrizione'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildStepper(
-              'Calorie',
-              draft.calories,
-              (v) => ref.read(nutritionMealEditProvider.notifier).setCalories(v),
-              suffix: ' kcal',
-            ),
-            _buildStepper(
-              'Proteine',
-              draft.protein,
-              (v) => ref.read(nutritionMealEditProvider.notifier).setProtein(v),
-            ),
-            _buildStepper(
-              'Carbs',
-              draft.carbs,
-              (v) => ref.read(nutritionMealEditProvider.notifier).setCarbs(v),
-            ),
-            _buildStepper(
-              'Grassi',
-              draft.fat,
-              (v) => ref.read(nutritionMealEditProvider.notifier).setFat(v),
-            ),
-            _buildStepper(
-              'Zuccheri',
-              draft.sugar,
-              (v) => ref.read(nutritionMealEditProvider.notifier).setSugar(v),
-            ),
-            if (widget.foods.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              const Text('Alimenti', style: TextStyle(fontWeight: FontWeight.bold)),
-              ...widget.foods.take(8).map((e) {
-                if (e is! Map) return const Text('• ?');
-                return Text('• ${e['name'] ?? '?'}');
-              }),
-            ],
-            if (widget.advice.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              const Text('Consiglio', style: TextStyle(fontWeight: FontWeight.bold)),
-              Text(widget.advice),
-            ],
-          ],
-        ),
-      ),
-      actions: [
-        Row(
-          children: [
-            if (widget.onDelete != null)
-              TextButton(
-                onPressed: () => _confirmDelete(context),
-                child: Text(
-                  'Elimina',
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              ),
-            const Spacer(),
-            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Annulla')),
-            const SizedBox(width: 8),
-            FilledButton(
-              onPressed: () {
-                final d = ref.read(nutritionMealEditProvider);
-                if (d == null) return;
-                widget.onSave(d.toModifiedNut());
-              },
-              child: const Text('Salva'),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Future<void> _confirmDelete(BuildContext dialogContext) async {
-    final ok = await showDialog<bool>(
-      context: dialogContext,
-      builder: (c) => AlertDialog(
-        title: const Text('Eliminare il pasto?'),
-        content: const Text('Verrà rimosso dal diario e i totali del giorno verranno aggiornati.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(c).pop(false), child: const Text('Annulla')),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(c).colorScheme.error,
-              foregroundColor: Theme.of(c).colorScheme.onError,
-            ),
-            onPressed: () => Navigator.of(c).pop(true),
-            child: const Text('Elimina'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true || !dialogContext.mounted) return;
-    Navigator.of(dialogContext).pop();
-    await widget.onDelete?.call();
-  }
-
-  Widget _buildStepper(String label, int value, ValueChanged<int> onChanged, {String suffix = 'g'}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          SizedBox(width: 90, child: Text(label)),
-          IconButton.filled(onPressed: () => onChanged(value - 1), icon: const Icon(Icons.exposure_minus_1)),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Text('$value$suffix', style: const TextStyle(fontWeight: FontWeight.bold)),
-          ),
-          IconButton.filled(onPressed: () => onChanged(value + 1), icon: const Icon(Icons.add)),
         ],
       ),
     );

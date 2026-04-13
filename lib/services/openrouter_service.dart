@@ -193,6 +193,7 @@ Restituisci SOLO un JSON valido con questo schema esatto:
 {
   "dish_name": "...",
   "total_calories": numero,
+  "estimated_portion_grams": numero (grammi totali del piatto usati per la stima),
   "protein_g": numero,
   "carbs_g": numero,
   "fat_g": numero,
@@ -243,6 +244,7 @@ Restituisci **SOLO** un JSON valido con questo schema esatto:
 {
   "dish_name": "descrizione breve",
   "total_calories": numero,
+  "estimated_portion_grams": numero (grammi totali del piatto usati per la stima),
   "protein_g": numero,
   "carbs_g": numero,
   "fat_g": numero,

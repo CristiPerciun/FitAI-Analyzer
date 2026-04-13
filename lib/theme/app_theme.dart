@@ -15,6 +15,7 @@ abstract final class AppColors {
   static const Color textDark = Color(0xFF2C2C2C);
   static const Color textMuted = Color(0xFF6B7280);
   static const Color hintMedium = Color(0xFF9CA3AF);
+  static const Color greenSave = Color.fromARGB(255, 24, 254, 44);
   static const Color white = Colors.white;
   static const Color transparent = Colors.transparent;
   static const Color shadow = Colors.black12;

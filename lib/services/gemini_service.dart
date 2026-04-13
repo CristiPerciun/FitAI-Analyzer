@@ -58,6 +58,7 @@ Future<Map<String, dynamic>> getFoodInfoFromText(String description) async {
     {
       "dish_name": "nome del piatto",
       "total_calories": numero,
+      "estimated_portion_grams": numero (grammi totali del piatto usati per la stima),
       "protein_g": numero,
       "carbs_g": numero,
       "fat_g": numero,
@@ -181,6 +182,7 @@ Restituisci un JSON con questo schema esatto:
 {
   "dish_name": "stringa breve descrittiva del piatto (es. Pollo e Broccoli)",
   "total_calories": numero,
+  "estimated_portion_grams": numero (grammi totali del piatto porzionato usati per la stima),
   "protein_g": numero,
   "carbs_g": numero,
   "fat_g": numero,
