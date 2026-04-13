@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart'
     show debugPrint, kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:http/http.dart' as http;
@@ -133,7 +134,7 @@ class StravaService {
 
   static bool _webOAuthReturnHandled = false;
 
-  /// Base URL di redirect per OAuth web (stesso valore in authorize e in token exchange).
+  /// Base URL di redirect per OAuth web (pulizia URL dopo OAuth, stesso host/path normalizzati).
   static Uri stravaWebRedirectBase(Uri loc) {
     var path = loc.path;
     if (path.isEmpty) {
@@ -141,10 +142,26 @@ class StravaService {
     }
     return Uri(
       scheme: loc.scheme,
-      host: loc.host,
+      host: loc.host.toLowerCase(),
       port: loc.hasPort ? loc.port : null,
       path: path,
     );
+  }
+
+  /// `redirect_uri` per Strava su web (authorize + exchange): deve essere **identico** a quanto
+  /// accettato in https://www.strava.com/settings/api (dominio + path + eventuale slash finale).
+  ///
+  /// Su PWA iPhone il [loc] può differire leggermente dal desktop (www vs bare, path): imposta
+  /// `STRAVA_WEB_REDIRECT_URI` in `.env` (es. `https://tuodominio.it/`) uguale alla voce Strava.
+  static String stravaOAuthWebRedirectUriString(Uri loc) {
+    if (dotenv.isInitialized) {
+      final raw = dotenv.env['STRAVA_WEB_REDIRECT_URI']?.trim();
+      if (raw != null && raw.isNotEmpty) {
+        final u = Uri.parse(raw);
+        return u.replace(query: '', fragment: '').toString();
+      }
+    }
+    return stravaWebRedirectBase(loc).toString();
   }
 
   String? _accessToken;
@@ -234,7 +251,7 @@ class StravaService {
       );
     }
 
-    final redirectStr = stravaWebRedirectBase(loc).toString();
+    final redirectStr = stravaOAuthWebRedirectUriString(loc);
     _webOAuthReturnHandled = true;
     try {
       final reg = await garminService.exchangeStravaOAuthCodeOnServer(
@@ -408,7 +425,7 @@ class StravaService {
       strava_web.stravaWebSessionSet(_sessionOAuthState, state);
       strava_web.stravaWebSessionSet(_sessionPendingRegister, '1');
 
-      final redirectStr = stravaWebRedirectBase(loc).toString();
+      final redirectStr = stravaOAuthWebRedirectUriString(loc);
       if (!redirectStr.startsWith('https://') &&
           !redirectStr.startsWith('http://localhost') &&
           !redirectStr.startsWith('http://127.0.0.1')) {
