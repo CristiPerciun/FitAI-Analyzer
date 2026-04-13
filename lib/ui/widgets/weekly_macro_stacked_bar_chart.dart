@@ -26,6 +26,10 @@ class WeeklyMacroStackedBarChartCard extends ConsumerWidget {
       data: (data) {
         final totalKcal = data.caloriesData.fold<double>(0, (a, e) => a + e.value);
         final dailyAvgKcal = totalKcal / 7.0;
+        final weekMaxKcal = data.caloriesData.fold<double>(
+          0,
+          (m, e) => e.value > m ? e.value : m,
+        );
         final macroColors = _macroColors(theme);
 
         return Card(
@@ -117,6 +121,7 @@ class WeeklyMacroStackedBarChartCard extends ConsumerWidget {
                           child: _DayMacroColumn(
                             dayLabel: data.caloriesData[dayIndex].day,
                             kcal: data.caloriesData[dayIndex].value,
+                            weekMaxKcal: weekMaxKcal,
                             proteinG: data.proteinData[dayIndex].value,
                             carbsG: data.carbsData[dayIndex].value,
                             fatG: data.fatData[dayIndex].value,
@@ -229,6 +234,7 @@ class _DayMacroColumn extends StatelessWidget {
   const _DayMacroColumn({
     required this.dayLabel,
     required this.kcal,
+    required this.weekMaxKcal,
     required this.proteinG,
     required this.carbsG,
     required this.fatG,
@@ -240,6 +246,8 @@ class _DayMacroColumn extends StatelessWidget {
 
   final String dayLabel;
   final double kcal;
+  /// Massimo kcal tra i 7 giorni: l’altezza della barra di quel giorno è `kcal / weekMaxKcal` dello spazio massimo.
+  final double weekMaxKcal;
   final double proteinG;
   final double carbsG;
   final double fatG;
@@ -258,10 +266,15 @@ class _DayMacroColumn extends StatelessWidget {
     final totalG = proteinG + carbsG + fatG;
     final hasData = totalG > 0;
 
+    final maxK = weekMaxKcal <= 0 ? 0.0 : weekMaxKcal;
+    // Altezza totale dello stack proporzionale alle calorie del giorno rispetto al picco settimanale (non più sempre piena).
+    final stackBudget =
+        (kcal > 0 && maxK > 0) ? (_maxStackPx * (kcal / maxK)).clamp(0.0, _maxStackPx) : 0.0;
+
     double hFor(double grams) {
-      if (!hasData || grams <= 0) return 0;
-      final raw = (grams / totalG) * _maxStackPx;
-      return raw.clamp(grams > 0 ? 18.0 : 0.0, _maxStackPx);
+      if (!hasData || grams <= 0 || stackBudget <= 0) return 0;
+      final raw = (grams / totalG) * stackBudget;
+      return raw.clamp(grams > 0 ? 18.0 : 0.0, stackBudget);
     }
 
     var hp = hFor(proteinG);
@@ -270,8 +283,8 @@ class _DayMacroColumn extends StatelessWidget {
     final sum = hp + hc + hf;
     final gaps = (proteinG > 0 ? 1 : 0) + (carbsG > 0 ? 1 : 0) + (fatG > 0 ? 1 : 0) - 1;
     final gapTotal = gaps > 0 ? (gaps * _segmentGap) : 0.0;
-    if (sum + gapTotal > _maxStackPx && sum > 0) {
-      final scale = (_maxStackPx - gapTotal) / sum;
+    if (sum + gapTotal > stackBudget && sum > 0) {
+      final scale = (stackBudget - gapTotal) / sum;
       hp *= scale;
       hc *= scale;
       hf *= scale;

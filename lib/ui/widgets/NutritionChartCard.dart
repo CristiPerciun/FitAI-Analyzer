@@ -5,6 +5,14 @@ import 'package:fitai_analyzer/providers/today_longevity_metrics_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+/// Valore per oggi nella serie lun–dom (stesso ordine del fetch in `nutrition_chart_provider`: indice = `DateTime.weekday` − 1).
+double _valueForTodayInIsoWeek(List<DailyNutrient> weeklyData) {
+  if (weeklyData.isEmpty) return 0;
+  final idx = DateTime.now().weekday - 1;
+  if (idx < 0 || idx >= weeklyData.length) return 0;
+  return weeklyData[idx].value;
+}
+
 class NutritionChartCard extends ConsumerStatefulWidget {
   // Passiamo la lista di tutti i goal per estrarre i dati di Carbi, Proteine e Grassi
   final List<NutrientGoal> allGoals;
@@ -38,9 +46,7 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
 
     // Calcolo valori reali
     double targetCal = calGoal.target;
-    double foodCal = calGoal.weeklyData.isNotEmpty
-        ? calGoal.weeklyData.last.value
-        : 0;
+    final foodCal = _valueForTodayInIsoWeek(calGoal.weeklyData);
 
     final double exercise = metrics.caloriesBurned;
     final double remainingCal = targetCal - foodCal + exercise;
@@ -173,7 +179,7 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
   }
 
   Widget _macroCircle(NutrientGoal goal, String label) {
-    double consumed = goal.weeklyData.isNotEmpty ? goal.weeklyData.last.value : 0;
+    final consumed = _valueForTodayInIsoWeek(goal.weeklyData);
     double target = goal.target;
     double left = target - consumed;
     final targetSafe = target <= 0 ? 1.0 : target;
