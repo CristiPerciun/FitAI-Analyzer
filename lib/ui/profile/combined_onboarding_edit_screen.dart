@@ -1,6 +1,7 @@
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
+import 'package:fitai_analyzer/providers/providers.dart'
+    show nutritionMealPlanServiceProvider;
 import 'package:fitai_analyzer/providers/user_profile_notifier.dart';
-import 'package:fitai_analyzer/services/aggregation_service.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:fitai_analyzer/ui/onboarding/main_profile_single_page_fields.dart';
 import 'package:fitai_analyzer/ui/onboarding/nutrition_goal_screen.dart';
@@ -53,11 +54,7 @@ class _CombinedOnboardingEditScreenState
 
       final uid = ref.read(authNotifierProvider).user?.uid;
       if (uid != null) {
-        try {
-          await ref
-              .read(aggregationServiceProvider)
-              .updateRolling10DaysAndBaseline(uid);
-        } catch (_) {}
+        await ref.read(nutritionMealPlanServiceProvider).generateAndSave(uid);
       }
 
       if (mounted) {
@@ -86,70 +83,105 @@ class _CombinedOnboardingEditScreenState
       }
     });
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Modifica onboarding')),
-      body: Column(
-        children: [
-          Expanded(
-            child: Form(
-              key: _formKey,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 440),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        MainProfileSinglePageFields(key: _mainKey),
-                        const Divider(height: 48, thickness: 1),
-                        NutritionGoalScreen(
-                          key: _nutritionKey,
-                          presentation:
-                              NutritionGoalPresentation.singleScrollColumn,
+    return Stack(
+      children: [
+        Scaffold(
+          appBar: AppBar(title: const Text('Modifica onboarding')),
+          body: Column(
+            children: [
+              Expanded(
+                child: Form(
+                  key: _formKey,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 440),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            MainProfileSinglePageFields(key: _mainKey),
+                            const Divider(height: 48, thickness: 1),
+                            NutritionGoalScreen(
+                              key: _nutritionKey,
+                              presentation:
+                                  NutritionGoalPresentation.singleScrollColumn,
+                            ),
+                            const Divider(height: 48, thickness: 1),
+                            Text(
+                              'Obiettivo allenamento',
+                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Qui potrai definire obiettivi di forza, volume e recupero '
+                              '(separati dall’obiettivo mangiare). Sezione in arrivo.',
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color:
+                                        Theme.of(context).colorScheme.onSurfaceVariant,
+                                    height: 1.35,
+                                  ),
+                            ),
+                            const SizedBox(height: 24),
+                          ],
                         ),
-                        const Divider(height: 48, thickness: 1),
-                        Text(
-                          'Obiettivo allenamento',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Qui potrai definire obiettivi di forza, volume e recupero '
-                          '(separati dall’obiettivo mangiare). Sezione in arrivo.',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                height: 1.35,
-                              ),
-                        ),
-                        const SizedBox(height: 24),
-                      ],
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                child: FilledButton(
+                  onPressed: (loading || _saving) ? null : _saveAll,
+                  child: (loading || _saving)
+                      ? const SizedBox(
+                          height: 22,
+                          width: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.white,
+                          ),
+                        )
+                      : const Text('Salva tutto'),
+                ),
+              ),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-            child: FilledButton(
-              onPressed: (loading || _saving) ? null : _saveAll,
-              child: (loading || _saving)
-                  ? const SizedBox(
-                      height: 22,
-                      width: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: AppColors.white,
-                      ),
-                    )
-                  : const Text('Salva tutto'),
+        ),
+        if (_saving) ...[
+          const ModalBarrier(dismissible: false, color: Color(0x66000000)),
+          Center(
+            child: Material(
+              color: Theme.of(context).colorScheme.surface,
+              elevation: 6,
+              borderRadius: BorderRadius.circular(16),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: CircularProgressIndicator(),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'Salvataggio e generazione piano pasti…',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],
-      ),
+      ],
     );
   }
 }

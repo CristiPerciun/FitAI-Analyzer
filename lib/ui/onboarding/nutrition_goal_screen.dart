@@ -1,4 +1,7 @@
 import 'package:fitai_analyzer/models/user_profile.dart';
+import 'package:fitai_analyzer/providers/auth_notifier.dart';
+import 'package:fitai_analyzer/providers/providers.dart'
+    show nutritionMealPlanServiceProvider;
 import 'package:fitai_analyzer/providers/user_profile_notifier.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:fitai_analyzer/ui/widgets/custom_slider.dart';
@@ -81,6 +84,8 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
   int _pageIndex = 0;
   static const _totalPages = 4;
   bool _seeded = false;
+  /// Copre salvataggio profilo, aggregazione e generazione piano pasti IA.
+  bool _flowBusy = false;
 
   // Sezione 1 — abitudini (1–3)
   double _mealsPerDay = 3;
@@ -281,8 +286,14 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
   Future<void> _submit() async {
     final goal = buildNutritionGoalModel();
 
+    setState(() => _flowBusy = true);
     try {
       await ref.read(userProfileNotifierProvider.notifier).updateNutritionGoal(goal);
+      if (!mounted) return;
+      final uid = ref.read(authNotifierProvider).user?.uid;
+      if (uid != null) {
+        await ref.read(nutritionMealPlanServiceProvider).generateAndSave(uid);
+      }
       if (!mounted) return;
       final cb = widget.onSuccess;
       if (cb != null) {
@@ -292,6 +303,8 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
       }
     } catch (e) {
       if (mounted) showErrorDialog(context, e.toString());
+    } finally {
+      if (mounted) setState(() => _flowBusy = false);
     }
   }
 
@@ -415,97 +428,140 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
       return _buildSingleScrollColumn(styleLabels, keyForStyleLabel);
     }
 
-    return Scaffold(
-      appBar: widget.hideAppBar
-          ? null
-          : AppBar(
-              title: Text(_sectionTitle),
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: _prevPage,
-              ),
-              bottom: PreferredSize(
-                preferredSize: const Size.fromHeight(4),
-                child: LinearProgressIndicator(
+    final busy = loading || _flowBusy;
+
+    return Stack(
+      children: [
+        Scaffold(
+          appBar: widget.hideAppBar
+              ? null
+              : AppBar(
+                  title: Text(_sectionTitle),
+                  leading: IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: busy ? null : _prevPage,
+                  ),
+                  bottom: PreferredSize(
+                    preferredSize: const Size.fromHeight(4),
+                    child: LinearProgressIndicator(
+                      value: (_pageIndex + 1) / _totalPages,
+                      backgroundColor:
+                          Theme.of(context).colorScheme.surfaceContainerHighest,
+                    ),
+                  ),
+                ),
+          body: Column(
+            children: [
+              if (widget.hideAppBar) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+                  child: Text(
+                    _sectionTitle,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                ),
+                LinearProgressIndicator(
                   value: (_pageIndex + 1) / _totalPages,
                   backgroundColor:
                       Theme.of(context).colorScheme.surfaceContainerHighest,
                 ),
-              ),
-            ),
-      body: Column(
-        children: [
-          if (widget.hideAppBar) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
-              child: Text(
-                _sectionTitle,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
-            ),
-            LinearProgressIndicator(
-              value: (_pageIndex + 1) / _totalPages,
-              backgroundColor:
-                  Theme.of(context).colorScheme.surfaceContainerHighest,
-            ),
-            const SizedBox(height: 8),
-          ],
-          Expanded(
-            child: PageView(
-              controller: _pageController!,
-              onPageChanged: (i) => setState(() => _pageIndex = i),
-              children: [
-                _buildSection1(),
-                _buildSection2(),
-                _buildSection3(styleLabels, keyForStyleLabel),
-                _buildSection4(),
+                const SizedBox(height: 8),
               ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Row(
-              children: [
-                if (_pageIndex > 0)
-                  TextButton(
-                    onPressed: loading ? null : _prevPage,
-                    child: const Text('Indietro'),
-                  )
-                else if (widget.onBackFromFirstPage != null)
-                  TextButton(
-                    onPressed: loading ? null : _prevPage,
-                    child: const Text('Indietro'),
-                  ),
-                const Spacer(),
-                FilledButton(
-                  onPressed: loading
-                      ? null
-                      : () {
-                          if (!_validatePage()) return;
-                          _nextPage();
-                        },
-                  child: loading
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppColors.white,
-                          ),
-                        )
-                      : Text(
-                          _pageIndex == _totalPages - 1
-                              ? 'Salva obiettivo'
-                              : 'Continua',
-                        ),
+              Expanded(
+                child: PageView(
+                  controller: _pageController!,
+                  onPageChanged: (i) => setState(() => _pageIndex = i),
+                  children: [
+                    _buildSection1(),
+                    _buildSection2(),
+                    _buildSection3(styleLabels, keyForStyleLabel),
+                    _buildSection4(),
+                  ],
                 ),
-              ],
+              ),
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Row(
+                  children: [
+                    if (_pageIndex > 0)
+                      TextButton(
+                        onPressed: busy ? null : _prevPage,
+                        child: const Text('Indietro'),
+                      )
+                    else if (widget.onBackFromFirstPage != null)
+                      TextButton(
+                        onPressed: busy ? null : _prevPage,
+                        child: const Text('Indietro'),
+                      ),
+                    const Spacer(),
+                    FilledButton(
+                      onPressed: busy
+                          ? null
+                          : () {
+                              if (!_validatePage()) return;
+                              _nextPage();
+                            },
+                      child: busy
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppColors.white,
+                              ),
+                            )
+                          : Text(
+                              _pageIndex == _totalPages - 1
+                                  ? 'Salva obiettivo'
+                                  : 'Continua',
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (_flowBusy) ...[
+          const ModalBarrier(dismissible: false, color: Color(0x66000000)),
+          Center(
+            child: Material(
+              color: Theme.of(context).colorScheme.surface,
+              elevation: 6,
+              borderRadius: BorderRadius.circular(16),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: CircularProgressIndicator(),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'Aggiornamento profilo e generazione piano pasti…',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'L’intelligenza artificiale può richiedere qualche secondo.',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],
-      ),
+      ],
     );
   }
 

@@ -550,15 +550,19 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
             if (nutritionGoal == null)
               _NutritionOnboardingCard(
                 onConfigure: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => NutritionGoalScreen(
+                  Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (routeContext) => NutritionGoalScreen(
                         onSuccess: () {
+                          Navigator.of(routeContext).pop();
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Obiettivo mangiare salvato')),
+                              const SnackBar(
+                                content: Text(
+                                  'Obiettivo mangiare e piano pasti salvati',
+                                ),
+                              ),
                             );
-                            Navigator.of(context).pop();
                           }
                         },
                       ),

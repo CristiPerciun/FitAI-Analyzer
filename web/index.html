@@ -20,9 +20,16 @@
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="A new Flutter project.">
 
+  <!-- Safari / iOS PWA: area sopra safe zone (Dynamic Island, notch) -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F5F3F0">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1C1C1E">
+
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <!-- black-translucent: la barra di stato è trasparente; il colore sotto viene da html/body (evita fascia chiara con tema scuro) -->
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="fitai_analyzer">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
@@ -31,6 +38,25 @@
 
   <title>fitai_analyzer</title>
   <link rel="manifest" href="manifest.json">
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overscroll-behavior: none;
+    }
+    @media (prefers-color-scheme: dark) {
+      html, body { background-color: #1C1C1E; }
+    }
+    @media (prefers-color-scheme: light) {
+      html, body { background-color: #F5F3F0; }
+    }
+    /* Renderer CanvasKit / fallback: niente “buchi” bianchi attorno al canvas */
+    flt-scene-host, flt-glass-pane, flutter-view {
+      background-color: transparent;
+    }
+  </style>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>
