@@ -3,13 +3,16 @@ import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart'
-    show debugPrint, kDebugMode, visibleForTesting;
+    show debugPrint, kDebugMode, kIsWeb, visibleForTesting;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/fitness_data.dart';
 import '../utils/platform_firestore_fix.dart';
+import 'garmin_web_oauth_stub.dart'
+    if (dart.library.html) 'garmin_web_oauth_web.dart'
+    as garmin_web;
 
 final garminServiceProvider = Provider<GarminService>((ref) => GarminService());
 
@@ -309,6 +312,85 @@ class GarminService {
 
   /// Delta all'avvio (Garmin + Strava lato server).
   static const Duration _deltaTimeout = Duration(seconds: 120);
+  static const String _webSessionPendingEmail = 'fitai_garmin_pending_email';
+
+  /// URL di ritorno base per Garmin OAuth su web (stesso host/path, senza query/fragment).
+  static Uri garminWebRedirectBase(Uri loc) {
+    var path = loc.path;
+    if (path.isEmpty) {
+      path = '/';
+    }
+    return Uri(
+      scheme: loc.scheme,
+      host: loc.host.toLowerCase(),
+      port: loc.hasPort ? loc.port : null,
+      path: path,
+    );
+  }
+
+  /// Costruisce URL Garmin SSO forzando callback HTTP(S) per Web/PWA.
+  static String buildGarminWebBrowserLoginUrl(
+    String loginUrl,
+    Uri currentLocation,
+  ) {
+    final uri = Uri.parse(loginUrl);
+    final callback = garminWebRedirectBase(currentLocation).toString();
+    final query = Map<String, String>.from(uri.queryParameters);
+    query['service'] = callback;
+    query['source'] = callback;
+    query['redirectAfterAccountLoginUrl'] = callback;
+    query['redirectAfterAccountCreationUrl'] = callback;
+    return uri.replace(queryParameters: query).toString();
+  }
+
+  /// Avvia fallback browser Garmin su web/PWA.
+  /// Salva email in sessionStorage e naviga verso SSO Garmin.
+  void startGarminWebBrowserFallback({
+    required String email,
+    required String loginUrl,
+  }) {
+    final loc = garmin_web.garminWebCurrentUri();
+    if (loc == null) {
+      throw StateError('URL corrente non disponibile (Garmin web).');
+    }
+    garmin_web.garminWebSessionSet(_webSessionPendingEmail, email.trim());
+    final target = buildGarminWebBrowserLoginUrl(loginUrl, loc);
+    garmin_web.garminWebAssignLocation(target);
+  }
+
+  /// Completa OAuth Garmin su web quando l'app rientra con `?ticket=...`.
+  Future<Map<String, dynamic>?> completeGarminWebOAuthIfPresent({
+    required String uid,
+  }) async {
+    if (!kIsWeb) return null;
+    final loc = garmin_web.garminWebCurrentUri();
+    if (loc == null) return null;
+    final ticket = loc.queryParameters['ticket'];
+    final error = loc.queryParameters['error'];
+    if ((ticket == null || ticket.isEmpty) &&
+        (error == null || error.isEmpty)) {
+      return null;
+    }
+
+    final clean = garminWebRedirectBase(loc);
+    final pendingEmail = garmin_web.garminWebSessionGet(
+      _webSessionPendingEmail,
+    );
+    garmin_web.garminWebSessionRemove(_webSessionPendingEmail);
+    garmin_web.garminWebReplaceCleanUrl(clean);
+
+    if (error != null && error.isNotEmpty) {
+      return {'success': false, 'message': 'Garmin: $error'};
+    }
+    final ticketOrUrl = loc.toString();
+    return connect3ExchangeTicket(
+      uid: uid,
+      ticketOrUrl: ticketOrUrl,
+      email: (pendingEmail != null && pendingEmail.isNotEmpty)
+          ? pendingEmail
+          : null,
+    );
+  }
 
   Future<bool> isConnected(String uid) async {
     final doc = await _firestore.collection('users').doc(uid).get();

@@ -82,7 +82,7 @@ Se **`GARMIN_SERVER_BEARER_TOKEN`** è impostato, le route (tranne **`/internal/
 
 ## 4. App Flutter (`FitAI Analyzer`)
 
-| Componente | Ruolo |
+| Componente | Ruolo  |
 |------------|--------|
 | `GarminService` | `connect`, `disconnect`, **`syncToday`** (alias `syncNow`), **`deltaSync`**, **`registerStravaOnServer`**, **`disconnectStravaOnServer`**, probe LAN/REMOTE, Bearer opzionale |
 | `GarminSyncNotifier.syncNow` | `trigger == 'login'` → **`deltaSync`**; altrimenti **`syncToday`** (serve `garmin_linked` per refresh manuale) |

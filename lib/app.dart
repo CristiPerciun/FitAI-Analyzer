@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app_links/app_links.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
+import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/sync_backfill_status_provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -37,6 +38,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     if (kIsWeb) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(_resumeStravaWebOAuthIfNeeded());
+        unawaited(_resumeGarminWebOAuthIfNeeded());
         _syncIosPwaChrome();
       });
     }
@@ -61,13 +63,15 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   /// Strava su web: dopo redirect da strava.com l’URL contiene ?code= — exchange via server + sync token.
   Future<void> _resumeStravaWebOAuthIfNeeded() async {
     if (!kIsWeb || !mounted) return;
-    var uid = FirebaseAuth.instance.currentUser?.uid ??
+    var uid =
+        FirebaseAuth.instance.currentUser?.uid ??
         ref.read(authNotifierProvider).user?.uid;
     if (uid == null) {
       for (var i = 0; i < 50; i++) {
         await Future<void>.delayed(const Duration(milliseconds: 100));
         if (!mounted) return;
-        uid = FirebaseAuth.instance.currentUser?.uid ??
+        uid =
+            FirebaseAuth.instance.currentUser?.uid ??
             ref.read(authNotifierProvider).user?.uid;
         if (uid != null) break;
       }
@@ -82,7 +86,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         uid: uid,
       );
       if (!done || !mounted) return;
-      await ref.read(authNotifierProvider.notifier).syncStravaToServerAfterWebOAuth();
+      await ref
+          .read(authNotifierProvider.notifier)
+          .syncStravaToServerAfterWebOAuth();
     } catch (e, st) {
       debugPrint('Strava web OAuth: $e\n$st');
       if (!mounted) return;
@@ -91,6 +97,67 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
           content: Text(stravaErrorToUserMessage(e)),
           backgroundColor: AppColors.error,
           duration: const Duration(seconds: 10),
+        ),
+      );
+    }
+  }
+
+  /// Garmin su web/PWA: dopo fallback SSO il ritorno contiene `?ticket=...`.
+  /// Completa lo scambio ticket sul server e avvia una sync leggera.
+  Future<void> _resumeGarminWebOAuthIfNeeded() async {
+    if (!kIsWeb || !mounted) return;
+    var uid =
+        FirebaseAuth.instance.currentUser?.uid ??
+        ref.read(authNotifierProvider).user?.uid;
+    if (uid == null) {
+      for (var i = 0; i < 50; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        if (!mounted) return;
+        uid =
+            FirebaseAuth.instance.currentUser?.uid ??
+            ref.read(authNotifierProvider).user?.uid;
+        if (uid != null) break;
+      }
+    }
+    if (uid == null) return;
+
+    final garmin = ref.read(garminServiceProvider);
+    try {
+      final result = await garmin.completeGarminWebOAuthIfPresent(uid: uid);
+      if (result == null || !mounted) return;
+
+      if (result['success'] == true) {
+        ref.invalidate(garminConnectedProvider);
+        ref.invalidate(activitiesStreamProvider);
+        ref.invalidate(dailyHealthStreamProvider);
+        unawaited(
+          ref
+              .read(garminSyncNotifierProvider.notifier)
+              .syncNow(uid: uid, trigger: 'settings_garmin_connect_web'),
+        );
+        scaffoldMessengerKey.currentState?.showSnackBar(
+          const SnackBar(content: Text('✅ Garmin collegato via web.')),
+        );
+        return;
+      }
+
+      final msg =
+          result['message']?.toString() ?? 'Errore completamento OAuth Garmin.';
+      scaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: AppColors.error,
+          duration: const Duration(seconds: 8),
+        ),
+      );
+    } catch (e, st) {
+      debugPrint('Garmin web OAuth: $e\n$st');
+      if (!mounted) return;
+      scaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text('Garmin web OAuth: $e'),
+          backgroundColor: AppColors.error,
+          duration: const Duration(seconds: 8),
         ),
       );
     }

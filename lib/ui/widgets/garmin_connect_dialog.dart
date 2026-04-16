@@ -57,10 +57,16 @@ Future<bool?> showGarminConnectDialog(
             String loginUrl,
           ) async {
             if (kIsWeb) {
+              ref
+                  .read(garminServiceProvider)
+                  .startGarminWebBrowserFallback(
+                    email: email,
+                    loginUrl: loginUrl,
+                  );
               return {
                 'success': false,
                 'message':
-                    'Login Garmin via browser automatico non supportato sul web.',
+                    'Reindirizzamento a Garmin in corso... completa il login e attendi il rientro automatico.',
               };
             }
             if (defaultTargetPlatform == TargetPlatform.iOS) {
