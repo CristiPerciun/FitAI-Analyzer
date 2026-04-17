@@ -165,6 +165,11 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       if (kIsWeb) {
         unawaited(_resumeGarminWebOAuthIfNeeded());
+        // Su iOS la PWA torna in primo piano DOPO che l'auth Garmin è avvenuta
+        // in una tab Safari separata. L'exchange ha già scritto garmin_linked=true
+        // su Firestore: forziamo un re-read del provider in modo che la UI si
+        // aggiorni immediatamente senza aspettare il prossimo event Firestore.
+        if (mounted) ref.invalidate(garminConnectedProvider);
       }
       // Quando l'app torna attiva (es. da Safari/Chrome), controlla link in sospeso
       AppLinks().getLatestLink().then((uri) {

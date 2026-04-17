@@ -417,10 +417,13 @@ class GarminService {
   /// `garmin_oauth_return.html`. Usando il flusso CAS standard il redirect va
   /// direttamente al `service` → `garmin_oauth_return.html?ticket=ST-…`.
   static String buildGarminPopupSsoLoginUrl(String returnPageUrl) {
+    // Non usiamo id=gauth-widget né embedWidget: la modalità widget di Garmin
+    // usa navigazione JS (non HTTP 302) e su iOS/Safari può non reindirizzare
+    // correttamente al service URL. Il flusso CAS standard garantisce un redirect
+    // HTTP 302 affidabile su tutti i browser.
     return Uri.parse('https://sso.garmin.com/sso/signin')
         .replace(
           queryParameters: {
-            'id': 'gauth-widget',
             'service': returnPageUrl,
             'source': returnPageUrl,
             'redirectAfterAccountLoginUrl': returnPageUrl,

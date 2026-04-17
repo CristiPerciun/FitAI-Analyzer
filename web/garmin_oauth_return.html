@@ -6,12 +6,17 @@
   <title>Garmin Auth</title>
   <style>
     body { font-family: system-ui, sans-serif; display: flex; align-items: center;
-           justify-content: center; height: 100vh; margin: 0; }
-    p { color: #555; }
+           justify-content: center; height: 100vh; margin: 0; background: #f5f5f5; }
+    .card { text-align: center; padding: 2rem; }
+    p { color: #555; margin: 0 0 .5rem; }
+    small { color: #999; font-size: .8rem; }
   </style>
 </head>
 <body>
-  <p>Collegamento Garmin in corso…</p>
+  <div class="card">
+    <p>Collegamento Garmin in corso…</p>
+    <small>Attendi qualche secondo</small>
+  </div>
   <script>
     (function () {
       var params  = new URLSearchParams(window.location.search);
@@ -19,27 +24,42 @@
       var error   = params.get('error')  || '';
       var payload = JSON.stringify({ type: 'garmin_oauth_result', ticket: ticket, error: error });
 
-      /* Caso 1 – popup desktop: notifica il parent via postMessage e chiudi */
-      var sentOk = false;
-      try {
-        var opener = window.opener;
-        if (opener && !opener.closed) {
-          opener.postMessage(payload, window.location.origin);
-          sentOk = true;
-          window.close();
-          /* Fallback: se window.close() non ha effetto (es. tab non aperto da script)
-             aspettiamo 800 ms; se la pagina è ancora aperta facciamo il redirect full-page. */
-          setTimeout(function () {
-            if (!window.closed) {
-              window.location.replace(window.location.origin + '/' + window.location.search);
-            }
-          }, 800);
-          return;
-        }
-      } catch (e) {}
+      /* ── Rilevamento iOS (iPhone / iPad / iPod) ─────────────────────────────
+         Su iOS, window.open() apre una FINESTRA SAFARI separata dal processo PWA.
+         - window.opener.postMessage() non attraversa il confine PWA↔Safari
+           perché la PWA è SOSPESA mentre Safari è in primo piano.
+         - window.close() chiude la finestra Safari PRIMA che il ticket venga
+           scambiato col server (il setTimeout da 800 ms non fa in tempo).
+         Soluzione iOS: redirect immediato all'app con ?ticket= nella stessa tab
+         (senza provare postMessage né close). Il ticket viene poi scambiato da
+         completeGarminWebOAuthIfPresent quando l'app si ricarica. ────────────── */
+      var isIos = /iphone|ipad|ipod/i.test(navigator.userAgent.toLowerCase());
 
-      /* Caso 2 – full-page (iOS PWA o popup bloccato): torna al root dell'app con ?ticket= */
-      window.location.replace(window.location.origin + '/' + window.location.search);
+      if (!isIos) {
+        /* ── Desktop / Android: popup + postMessage ─────────────────────────── */
+        try {
+          var opener = window.opener;
+          if (opener && !opener.closed) {
+            opener.postMessage(payload, window.location.origin);
+            window.close();
+            /* Fallback: se window.close() non chiude (tab non aperto da script)
+               aspetta 800 ms e reindirizza full-page. */
+            setTimeout(function () {
+              if (!window.closed) {
+                window.location.replace(
+                  window.location.origin + '/' + window.location.search
+                );
+              }
+            }, 800);
+            return;
+          }
+        } catch (e) {}
+      }
+
+      /* ── iOS o nessun opener: redirect full-page al root app con ?ticket= ─── */
+      window.location.replace(
+        window.location.origin + '/' + window.location.search
+      );
     })();
   </script>
 </body>
