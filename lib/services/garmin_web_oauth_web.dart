@@ -29,6 +29,21 @@ Uri garminWebOAuthReturnPageUri() {
   );
 }
 
+/// URL assoluto della pagina statica `web/garmin_oauth_start.html`.
+Uri garminWebOAuthStartPageUri() {
+  final loc = Uri.parse(html.window.location.href);
+  final base = loc.replace(query: '', fragment: '');
+  final dir = base.resolve('.');
+  var p = dir.path;
+  if (!p.endsWith('/')) p = '$p/';
+  return Uri(
+    scheme: dir.scheme,
+    host: dir.host,
+    port: dir.hasPort ? dir.port : null,
+    path: '${p}garmin_oauth_start.html',
+  );
+}
+
 /// Apre Garmin SSO in un popup e attende il ticket via `postMessage`.
 ///
 /// La pagina `garmin_oauth_return.html` riceve il redirect da Garmin e chiama

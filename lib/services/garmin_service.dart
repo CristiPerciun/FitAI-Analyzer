@@ -496,28 +496,32 @@ class GarminService {
     }
 
     final baseReturnPage = garmin_web.garminWebOAuthReturnPageUri();
-    final returnPageUri = isIos
-        ? baseReturnPage.replace(
-            fragment: Uri(
-              queryParameters: {
-                'uid': uid,
-                'base_url': baseUrl,
-                if (authHeader.isNotEmpty) 'auth': authHeader,
-                'ios_popup': '1',
-              },
-            ).query,
-          )
-        : baseReturnPage;
+    final returnPageUri = baseReturnPage;
     final returnPage = returnPageUri.toString();
     // CAS puro senza embedWidget: Garmin redirige esattamente al `service` URL.
     final ssoUrl = buildGarminPopupSsoLoginUrl(returnPage);
 
     // ── iOS Safari / PWA (iPhone/iPad): apriamo una finestra script-opened.
-    //    La return page fa l'exchange del ticket e poi prova a chiudersi con
+    //    Prima apriamo una pagina locale che salva il contesto nel popup stesso,
+    //    poi navighiamo a Garmin. La return page fa l'exchange del ticket e poi prova a chiudersi con
     //    `window.close()`, riportando l'utente alla PWA.
     if (isIos) {
-      _garminHttpVerbose('Web SSO iOS popup/open → $ssoUrl');
-      final opened = garmin_web.garminWebOpenPopup(ssoUrl);
+      final startPage = garmin_web
+          .garminWebOAuthStartPageUri()
+          .replace(
+            fragment: Uri(
+              queryParameters: {
+                'uid': uid,
+                'base_url': baseUrl,
+                'sso_url': ssoUrl,
+                if (authHeader.isNotEmpty) 'auth': authHeader,
+                'ios_popup': '1',
+              },
+            ).query,
+          )
+          .toString();
+      _garminHttpVerbose('Web SSO iOS popup/open start-page → $startPage');
+      final opened = garmin_web.garminWebOpenPopup(startPage);
       if (!opened) {
         return {
           'success': false,
