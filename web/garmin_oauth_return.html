@@ -19,19 +19,27 @@
       var error   = params.get('error')  || '';
       var payload = JSON.stringify({ type: 'garmin_oauth_result', ticket: ticket, error: error });
 
-      /* Caso 1 – popup: notifica il parent e chiudi */
+      /* Caso 1 – popup desktop: notifica il parent via postMessage e chiudi */
+      var sentOk = false;
       try {
         var opener = window.opener;
         if (opener && !opener.closed) {
           opener.postMessage(payload, window.location.origin);
+          sentOk = true;
           window.close();
+          /* Fallback: se window.close() non ha effetto (es. tab non aperto da script)
+             aspettiamo 800 ms; se la pagina è ancora aperta facciamo il redirect full-page. */
+          setTimeout(function () {
+            if (!window.closed) {
+              window.location.replace(window.location.origin + '/' + window.location.search);
+            }
+          }, 800);
           return;
         }
       } catch (e) {}
 
-      /* Caso 2 – redirect full-page (iOS PWA, popup bloccato): torna alla root con ?ticket= */
-      var search = window.location.search;
-      window.location.replace(window.location.origin + '/' + search);
+      /* Caso 2 – full-page (iOS PWA o popup bloccato): torna al root dell'app con ?ticket= */
+      window.location.replace(window.location.origin + '/' + window.location.search);
     })();
   </script>
 </body>

@@ -74,6 +74,11 @@ Future<bool?> showGarminConnectDialog(
 
             if (result['success'] == true) {
               Navigator.of(ctx).pop(true);
+            } else if (result['ios_redirect'] == true) {
+              // iOS PWA: la pagina sta navigando verso Garmin SSO.
+              // Chiude il dialog senza errore; il risultato arriverà tramite
+              // completeGarminWebOAuthIfPresent al ricaricamento dell'app.
+              Navigator.of(ctx).pop(null);
             } else {
               final msg =
                   result['message']?.toString() ?? 'Errore sconosciuto.';

@@ -443,8 +443,24 @@ class GarminService {
       return {'success': false, 'message': 'Metodo solo per web.'};
     }
     final returnPage = garmin_web.garminWebOAuthReturnPageUri().toString();
-    // CAS puro senza embedWidget: Garmin redirige il popup esattamente al `service` URL.
+    // CAS puro senza embedWidget: Garmin redirige esattamente al `service` URL.
     final ssoUrl = buildGarminPopupSsoLoginUrl(returnPage);
+
+    // ── iOS Safari (iPhone/iPad): window.open() apre Safari in un processo
+    //    separato dalla PWA. postMessage e window.close() non funzionano
+    //    cross-process → l'utente rimane bloccato su "Collegamento in corso…".
+    //    Soluzione: navighiamo la PWA stessa verso il SSO URL (full-page).
+    //    Garmin redirige poi a garmin_oauth_return.html dentro la PWA stessa,
+    //    che fa redirect a /?ticket=ST-… e completeGarminWebOAuthIfPresent
+    //    cattura il ticket al prossimo init (senza uscire dal contesto PWA).
+    if (garmin_web.garminWebIsIos()) {
+      _garminHttpVerbose('Web SSO iOS full-page → $ssoUrl');
+      garmin_web.garminWebAssignLocation(ssoUrl);
+      // La pagina sta per navigare via; ritorniamo un segnale speciale
+      // che il dialog interpreterà come "redirect avviato, chiudi senza errore".
+      return {'success': null, 'ios_redirect': true};
+    }
+
     _garminHttpVerbose('Web SSO popup: apertura → $ssoUrl');
 
     final ticket = await garmin_web.garminWebOAuthViaPopup(ssoUrl);
