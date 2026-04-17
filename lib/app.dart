@@ -102,10 +102,14 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     }
   }
 
-  /// Safety net per web: se per qualsiasi motivo l'URL contiene `?ticket=`
-  /// (es. residuo da un vecchio redirect) tentiamo lo scambio e poi puliamo l'URL.
-  /// Il flusso principale usa `connect2/start` server-side — questo non viene chiamato
-  /// nel caso normale.
+  /// Riprende l'OAuth Garmin su web.
+  ///
+  /// Flusso principale:
+  /// - desktop: popup -> postMessage -> exchange nel client Flutter;
+  /// - iOS PWA: `garmin_oauth_return.html` fa l'exchange e salva l'esito in sessionStorage.
+  ///
+  /// Safety net: se per qualsiasi motivo l'URL contiene ancora `?ticket=`,
+  /// tentiamo comunque lo scambio e poi puliamo l'URL.
   Future<void> _resumeGarminWebOAuthIfNeeded() async {
     if (!kIsWeb || !mounted) return;
     var uid =
@@ -125,6 +129,36 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
     final garmin = ref.read(garminServiceProvider);
     try {
+      final sessionResult = garmin.consumeGarminWebOAuthSessionResult();
+      if (sessionResult != null) {
+        if (sessionResult['success'] == true) {
+          ref.invalidate(garminConnectedProvider);
+          ref.invalidate(activitiesStreamProvider);
+          ref.invalidate(dailyHealthStreamProvider);
+          unawaited(
+            ref
+                .read(garminSyncNotifierProvider.notifier)
+                .syncNow(uid: uid, trigger: 'settings_garmin_connect_web'),
+          );
+          scaffoldMessengerKey.currentState?.showSnackBar(
+            const SnackBar(content: Text('✅ Garmin collegato.')),
+          );
+        } else {
+          final msg =
+              sessionResult['message']?.toString().trim() ?? '';
+          if (msg.isNotEmpty) {
+            scaffoldMessengerKey.currentState?.showSnackBar(
+              SnackBar(
+                content: Text('Garmin: $msg'),
+                backgroundColor: AppColors.error,
+                duration: const Duration(seconds: 10),
+              ),
+            );
+          }
+        }
+        return;
+      }
+
       final result = await garmin.completeGarminWebOAuthIfPresent(uid: uid);
       if (result == null || !mounted) return;
 
@@ -141,8 +175,8 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
           const SnackBar(content: Text('✅ Garmin collegato.')),
         );
       }
-      // Errori silenziosi: l'URL viene pulito comunque; il flusso principale
-      // (connect2/start) non produce ?ticket= quindi questo ramo è quasi mai attivo.
+      // Errori silenziosi: l'URL viene pulito comunque; questo ramo resta come
+      // safety net per eventuali redirect web legacy con `?ticket=`.
     } catch (e, st) {
       debugPrint('Garmin web ticket cleanup: $e\n$st');
     }

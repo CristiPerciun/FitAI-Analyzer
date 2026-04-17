@@ -5,24 +5,200 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Garmin Auth</title>
   <style>
-    body { font-family: system-ui, sans-serif; display: flex; align-items: center;
-           justify-content: center; height: 100vh; margin: 0; background: #f5f5f5; }
-    .card { text-align: center; padding: 2rem; }
-    p { color: #555; margin: 0 0 .5rem; }
-    small { color: #999; font-size: .8rem; }
+    body {
+      font-family: system-ui, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #f5f5f5;
+      color: #1f2937;
+    }
+    .card {
+      width: min(92vw, 420px);
+      text-align: center;
+      padding: 24px 20px;
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.10);
+    }
+    h1 {
+      font-size: 1.1rem;
+      margin: 0 0 8px;
+    }
+    p {
+      color: #4b5563;
+      margin: 0;
+      line-height: 1.45;
+    }
+    .spacer {
+      height: 14px;
+    }
+    .button {
+      display: inline-block;
+      margin-top: 16px;
+      padding: 10px 16px;
+      border-radius: 10px;
+      background: #2563eb;
+      color: #fff;
+      text-decoration: none;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
   <div class="card">
-    <p>Collegamento Garmin in corso…</p>
-    <small>Attendi qualche secondo</small>
+    <h1 id="title">Collegamento Garmin in corso...</h1>
+    <p id="detail">Attendi qualche secondo mentre completo l'autenticazione.</p>
+    <div class="spacer"></div>
+    <a id="backLink" class="button" href="/" style="display:none;">Torna all'app</a>
   </div>
   <script>
     (function () {
-      var params  = new URLSearchParams(window.location.search);
-      var ticket  = params.get('ticket') || '';
-      var error   = params.get('error')  || '';
+      var params = new URLSearchParams(window.location.search);
+      var ticket = params.get('ticket') || '';
+      var error = params.get('error') || '';
+      var uid = params.get('uid') || sessionStorage.getItem('garmin_oauth_uid') || '';
+      var baseUrl = sessionStorage.getItem('garmin_oauth_base_url') || '';
+      var authHeader = sessionStorage.getItem('garmin_oauth_auth') || '';
+      var appUrl = window.location.origin + '/';
       var payload = JSON.stringify({ type: 'garmin_oauth_result', ticket: ticket, error: error });
+      var titleEl = document.getElementById('title');
+      var detailEl = document.getElementById('detail');
+      var backLinkEl = document.getElementById('backLink');
+
+      function setStatus(title, detail, showBackLink) {
+        titleEl.textContent = title;
+        detailEl.textContent = detail;
+        backLinkEl.href = appUrl;
+        backLinkEl.style.display = showBackLink ? 'inline-block' : 'none';
+      }
+
+      function clearOAuthContext() {
+        sessionStorage.removeItem('garmin_oauth_uid');
+        sessionStorage.removeItem('garmin_oauth_base_url');
+        sessionStorage.removeItem('garmin_oauth_auth');
+      }
+
+      function storeResult(success, message) {
+        sessionStorage.setItem('garmin_oauth_result', success ? 'success' : 'error');
+        if (message && message.length) {
+          sessionStorage.setItem('garmin_oauth_message', message);
+        } else {
+          sessionStorage.removeItem('garmin_oauth_message');
+        }
+      }
+
+      function closeOrReturn(delayMs) {
+        setTimeout(function () {
+          try {
+            window.close();
+          } catch (e) {}
+        }, delayMs);
+
+        setTimeout(function () {
+          window.location.replace(appUrl);
+        }, delayMs + 300);
+      }
+
+      function serverMessage(data, fallback) {
+        if (!data || typeof data !== 'object') return fallback;
+        if (typeof data.message === 'string' && data.message) return data.message;
+        if (typeof data.detail === 'string' && data.detail) return data.detail;
+        return fallback;
+      }
+
+      async function exchangeTicketInReturnPage() {
+        if (error) {
+          clearOAuthContext();
+          storeResult(false, 'Garmin: ' + error);
+          setStatus('Autenticazione Garmin non riuscita', error, true);
+          closeOrReturn(900);
+          return;
+        }
+
+        if (!ticket) {
+          clearOAuthContext();
+          storeResult(false, 'Ticket Garmin mancante nella pagina di ritorno.');
+          setStatus(
+            'Ticket Garmin mancante',
+            'Non ho ricevuto il token da Garmin. Torna all app e riprova.',
+            true
+          );
+          return;
+        }
+
+        if (!uid || !baseUrl) {
+          clearOAuthContext();
+          storeResult(false, 'Contesto OAuth Garmin mancante su iOS.');
+          setStatus(
+            'Contesto Garmin mancante',
+            'Non ho trovato le informazioni necessarie per salvare il token.',
+            true
+          );
+          return;
+        }
+
+        setStatus(
+          'Salvataggio token Garmin...',
+          'Ho intercettato il ticket. Sto completando il collegamento.',
+          false
+        );
+
+        var headers = { 'Content-Type': 'application/json' };
+        if (authHeader) {
+          headers['Authorization'] = authHeader;
+        }
+
+        try {
+          var response = await fetch(baseUrl + '/garmin/connect3/exchange-ticket', {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({
+              uid: uid,
+              ticket_or_url: window.location.href
+            })
+          });
+
+          var raw = await response.text();
+          var data = {};
+          if (raw) {
+            try {
+              data = JSON.parse(raw);
+            } catch (e) {}
+          }
+
+          clearOAuthContext();
+
+          if (response.ok && data && data.success === true) {
+            storeResult(true, 'Garmin collegato.');
+            setStatus(
+              'Garmin collegato',
+              'Token salvato correttamente. Torno all app...',
+              false
+            );
+            closeOrReturn(250);
+            return;
+          }
+
+          var message = serverMessage(
+            data,
+            'Exchange ticket Garmin non riuscito (HTTP ' + response.status + ').'
+          );
+          storeResult(false, message);
+          setStatus('Collegamento Garmin non riuscito', message, true);
+          closeOrReturn(1200);
+        } catch (e) {
+          clearOAuthContext();
+          storeResult(false, 'Errore di rete durante il salvataggio del token Garmin.');
+          setStatus(
+            'Errore di rete',
+            'Non sono riuscito a salvare il token Garmin. Torna all app e riprova.',
+            true
+          );
+        }
+      }
 
       /* ── Rilevamento iOS (iPhone / iPad / iPod) ─────────────────────────────
          Su iOS, window.open() apre una FINESTRA SAFARI separata dal processo PWA.
@@ -56,10 +232,8 @@
         } catch (e) {}
       }
 
-      /* ── iOS o nessun opener: redirect full-page al root app con ?ticket= ─── */
-      window.location.replace(
-        window.location.origin + '/' + window.location.search
-      );
+      /* ── iOS o nessun opener: exchange diretto nella return page ──────────── */
+      exchangeTicketInReturnPage();
     })();
   </script>
 </body>

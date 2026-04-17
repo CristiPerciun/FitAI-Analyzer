@@ -337,6 +337,49 @@ class GarminService {
   static const Duration _deltaTimeout = Duration(seconds: 120);
   static bool _garminWebOAuthInFlight = false;
   static String? _garminWebLastExchangedTicket;
+  static const String _garminWebSessionUidKey = 'garmin_oauth_uid';
+  static const String _garminWebSessionBaseUrlKey = 'garmin_oauth_base_url';
+  static const String _garminWebSessionAuthKey = 'garmin_oauth_auth';
+  static const String _garminWebSessionResultKey = 'garmin_oauth_result';
+  static const String _garminWebSessionMessageKey = 'garmin_oauth_message';
+
+  void _garminWebStoreOAuthContext({
+    required String uid,
+    required String baseUrl,
+  }) {
+    if (!kIsWeb) return;
+    garmin_web.garminWebSessionSet(_garminWebSessionUidKey, uid);
+    garmin_web.garminWebSessionSet(_garminWebSessionBaseUrlKey, baseUrl);
+    final auth = _jsonHeaders['Authorization']?.trim() ?? '';
+    if (auth.isNotEmpty) {
+      garmin_web.garminWebSessionSet(_garminWebSessionAuthKey, auth);
+    } else {
+      garmin_web.garminWebSessionRemove(_garminWebSessionAuthKey);
+    }
+  }
+
+  void _garminWebClearOAuthContext() {
+    if (!kIsWeb) return;
+    garmin_web.garminWebSessionRemove(_garminWebSessionUidKey);
+    garmin_web.garminWebSessionRemove(_garminWebSessionBaseUrlKey);
+    garmin_web.garminWebSessionRemove(_garminWebSessionAuthKey);
+  }
+
+  Map<String, dynamic>? consumeGarminWebOAuthSessionResult() {
+    if (!kIsWeb) return null;
+    final status = garmin_web.garminWebSessionGet(_garminWebSessionResultKey);
+    final message = garmin_web.garminWebSessionGet(_garminWebSessionMessageKey);
+    if ((status == null || status.isEmpty) &&
+        (message == null || message.isEmpty)) {
+      return null;
+    }
+    garmin_web.garminWebSessionRemove(_garminWebSessionResultKey);
+    garmin_web.garminWebSessionRemove(_garminWebSessionMessageKey);
+    return {
+      'success': status == 'success',
+      'message': message ?? '',
+    };
+  }
 
   /// URL di ritorno base per Garmin OAuth su web (stesso host/path, senza query/fragment).
   static Uri garminWebRedirectBase(Uri loc) {
@@ -433,29 +476,32 @@ class GarminService {
         .toString();
   }
 
-  /// SSO Garmin via **popup + postMessage** (solo web).
+  /// SSO Garmin su web.
   ///
   /// Apre `garmin_oauth_return.html` come `service` redirect di Garmin SSO (flusso CAS puro).
-  /// Dopo il login, Garmin redirige il popup a `garmin_oauth_return.html?ticket=ST-…`
-  /// che manda `postMessage` al parent e si chiude senza ricaricare l'app.
-  /// Il ticket viene subito scambiato con il server prima che scada.
+  /// Dopo il login, Garmin redirige a `garmin_oauth_return.html?ticket=ST-…`.
+  /// Su desktop il ticket torna al parent via `postMessage`; su iOS la return page
+  /// esegue lo scambio col server e poi rientra nell'app.
   Future<Map<String, dynamic>> connectViaGarminSsoWeb({
     required String uid,
   }) async {
     if (!kIsWeb) {
       return {'success': false, 'message': 'Metodo solo per web.'};
     }
-    final returnPage = garmin_web.garminWebOAuthReturnPageUri().toString();
+    final baseUrl = await _resolveBaseUrl();
+    _garminWebStoreOAuthContext(uid: uid, baseUrl: baseUrl);
+    final returnPage = garmin_web
+        .garminWebOAuthReturnPageUri()
+        .replace(queryParameters: {'uid': uid})
+        .toString();
     // CAS puro senza embedWidget: Garmin redirige esattamente al `service` URL.
     final ssoUrl = buildGarminPopupSsoLoginUrl(returnPage);
 
-    // ── iOS Safari (iPhone/iPad): window.open() apre Safari in un processo
-    //    separato dalla PWA. postMessage e window.close() non funzionano
-    //    cross-process → l'utente rimane bloccato su "Collegamento in corso…".
-    //    Soluzione: navighiamo la PWA stessa verso il SSO URL (full-page).
-    //    Garmin redirige poi a garmin_oauth_return.html dentro la PWA stessa,
-    //    che fa redirect a /?ticket=ST-… e completeGarminWebOAuthIfPresent
-    //    cattura il ticket al prossimo init (senza uscire dal contesto PWA).
+    // ── iOS Safari / PWA (iPhone/iPad): niente popup.
+    //    Navighiamo la PWA stessa verso Garmin SSO. Al ritorno,
+    //    `garmin_oauth_return.html` intercetta il ticket, chiama subito
+    //    `/garmin/connect3/exchange-ticket`, salva l'esito in sessionStorage
+    //    e prova a chiudere / rientrare nell'app.
     if (garmin_web.garminWebIsIos()) {
       _garminHttpVerbose('Web SSO iOS full-page → $ssoUrl');
       garmin_web.garminWebAssignLocation(ssoUrl);
@@ -469,6 +515,7 @@ class GarminService {
     final ticket = await garmin_web.garminWebOAuthViaPopup(ssoUrl);
 
     if (ticket == null || ticket.trim().isEmpty) {
+      _garminWebClearOAuthContext();
       return {
         'success': false,
         'message': 'Login Garmin annullato o il popup è stato bloccato.',
@@ -484,7 +531,9 @@ class GarminService {
         .replace(queryParameters: {'ticket': ticket.trim()})
         .toString();
     _garminHttpVerbose('Web SSO: ticket ricevuto, exchange → $ticketOrUrl');
-    return connect3ExchangeTicket(uid: uid, ticketOrUrl: ticketOrUrl);
+    final result = await connect3ExchangeTicket(uid: uid, ticketOrUrl: ticketOrUrl);
+    _garminWebClearOAuthContext();
+    return result;
   }
 
   /// Completa OAuth Garmin su web quando l'app ha `?ticket=...` (o errore) dopo il redirect.
