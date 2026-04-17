@@ -109,6 +109,18 @@ Future<String?> garminWebOAuthViaPopup(
   }
 }
 
+bool garminWebOpenPopup(String url) {
+  // ignore: unnecessary_cast
+  final popup =
+      html.window.open(
+            url,
+            'garmin_oauth',
+            'width=560,height=720,scrollbars=yes,toolbar=no,menubar=no,location=no',
+          )
+          as html.WindowBase?;
+  return popup != null;
+}
+
 void garminWebAssignLocation(String url) {
   html.window.location.assign(url);
 }

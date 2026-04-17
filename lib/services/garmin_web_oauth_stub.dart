@@ -10,6 +10,8 @@ Future<String?> garminWebOAuthViaPopup(
   Duration timeout = const Duration(minutes: 5),
 }) async => null;
 
+bool garminWebOpenPopup(String url) => false;
+
 void garminWebAssignLocation(String url) {
   throw UnsupportedError('Garmin web OAuth: solo su piattaforma web');
 }

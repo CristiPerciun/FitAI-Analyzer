@@ -489,24 +489,41 @@ class GarminService {
       return {'success': false, 'message': 'Metodo solo per web.'};
     }
     final baseUrl = await _resolveBaseUrl();
-    _garminWebStoreOAuthContext(uid: uid, baseUrl: baseUrl);
-    final returnPage = garmin_web
-        .garminWebOAuthReturnPageUri()
-        .replace(queryParameters: {'uid': uid})
-        .toString();
+    final isIos = garmin_web.garminWebIsIos();
+    final authHeader = _jsonHeaders['Authorization']?.trim() ?? '';
+    if (!isIos) {
+      _garminWebStoreOAuthContext(uid: uid, baseUrl: baseUrl);
+    }
+
+    final baseReturnPage = garmin_web.garminWebOAuthReturnPageUri();
+    final returnPageUri = isIos
+        ? baseReturnPage.replace(
+            fragment: Uri(
+              queryParameters: {
+                'uid': uid,
+                'base_url': baseUrl,
+                if (authHeader.isNotEmpty) 'auth': authHeader,
+                'ios_popup': '1',
+              },
+            ).query,
+          )
+        : baseReturnPage;
+    final returnPage = returnPageUri.toString();
     // CAS puro senza embedWidget: Garmin redirige esattamente al `service` URL.
     final ssoUrl = buildGarminPopupSsoLoginUrl(returnPage);
 
-    // ── iOS Safari / PWA (iPhone/iPad): niente popup.
-    //    Navighiamo la PWA stessa verso Garmin SSO. Al ritorno,
-    //    `garmin_oauth_return.html` intercetta il ticket, chiama subito
-    //    `/garmin/connect3/exchange-ticket`, salva l'esito in sessionStorage
-    //    e prova a chiudere / rientrare nell'app.
-    if (garmin_web.garminWebIsIos()) {
-      _garminHttpVerbose('Web SSO iOS full-page → $ssoUrl');
-      garmin_web.garminWebAssignLocation(ssoUrl);
-      // La pagina sta per navigare via; ritorniamo un segnale speciale
-      // che il dialog interpreterà come "redirect avviato, chiudi senza errore".
+    // ── iOS Safari / PWA (iPhone/iPad): apriamo una finestra script-opened.
+    //    La return page fa l'exchange del ticket e poi prova a chiudersi con
+    //    `window.close()`, riportando l'utente alla PWA.
+    if (isIos) {
+      _garminHttpVerbose('Web SSO iOS popup/open → $ssoUrl');
+      final opened = garmin_web.garminWebOpenPopup(ssoUrl);
+      if (!opened) {
+        return {
+          'success': false,
+          'message': 'Il browser ha bloccato l\'apertura della pagina Garmin.',
+        };
+      }
       return {'success': null, 'ios_redirect': true};
     }
 
@@ -526,8 +543,8 @@ class GarminService {
     // Il server leggerà il base URL (senza ?ticket=) come `login-url` per la chiamata
     // `connectapi.garmin.com/oauth-service/oauth/preauthorized?ticket=ST-...&login-url=...`.
     // In questo modo il `login-url` corrisponde al service URL con cui il ticket è stato emesso.
-    final returnPageUri = Uri.parse(returnPage);
-    final ticketOrUrl = returnPageUri
+    final exchangeReturnPageUri = Uri.parse(returnPage);
+    final ticketOrUrl = exchangeReturnPageUri
         .replace(queryParameters: {'ticket': ticket.trim()})
         .toString();
     _garminHttpVerbose('Web SSO: ticket ricevuto, exchange → $ticketOrUrl');
