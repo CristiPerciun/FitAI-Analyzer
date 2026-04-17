@@ -19,6 +19,36 @@ void main() {
     });
   });
 
+  group('Garmin web OAuth helpers', () {
+    test('extractGarminTicketFromUri legge query', () {
+      final u = Uri.parse('https://app.test/?ticket=ST-abc&x=1');
+      expect(GarminService.extractGarminTicketFromUri(u), 'ST-abc');
+    });
+
+    test('extractGarminTicketFromUri legge ticket nel fragment', () {
+      final u = Uri.parse('https://app.test/#ticket=ST-xyz');
+      expect(GarminService.extractGarminTicketFromUri(u), 'ST-xyz');
+    });
+
+    test('garminTicketToEmbedUrl codifica il ticket', () {
+      expect(
+        GarminService.garminTicketToEmbedUrl('ST-abc'),
+        'https://sso.garmin.com/sso/embed?ticket=ST-abc',
+      );
+    });
+
+    test('buildGarminWebSsoSigninUrl include service verso return page', () {
+      final u = GarminService.buildGarminWebSsoSigninUrl(
+        'https://app.test/garmin_oauth_return.html',
+      );
+      expect(u, contains('sso.garmin.com/sso/signin'));
+      expect(
+        u,
+        contains('service=https%3A%2F%2Fapp.test%2Fgarmin_oauth_return.html'),
+      );
+    });
+  });
+
   group('GarminService HTTP verso garmin-sync-server', () {
     test('GarminOAuthCallback completa con ticket da custom scheme', () async {
       final future = GarminOAuthCallback.instance.waitForCallback();

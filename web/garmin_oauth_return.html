@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Garmin Auth</title>
+  <style>
+    body { font-family: system-ui, sans-serif; display: flex; align-items: center;
+           justify-content: center; height: 100vh; margin: 0; }
+    p { color: #555; }
+  </style>
+</head>
+<body>
+  <p>Collegamento Garmin in corso…</p>
+  <script>
+    (function () {
+      var params  = new URLSearchParams(window.location.search);
+      var ticket  = params.get('ticket') || '';
+      var error   = params.get('error')  || '';
+      var payload = JSON.stringify({ type: 'garmin_oauth_result', ticket: ticket, error: error });
+
+      /* Caso 1 – popup: notifica il parent e chiudi */
+      try {
+        var opener = window.opener;
+        if (opener && !opener.closed) {
+          opener.postMessage(payload, window.location.origin);
+          window.close();
+          return;
+        }
+      } catch (e) {}
+
+      /* Caso 2 – redirect full-page (iOS PWA, popup bloccato): torna alla root con ?ticket= */
+      var search = window.location.search;
+      window.location.replace(window.location.origin + '/' + search);
+    })();
+  </script>
+</body>
+</html>

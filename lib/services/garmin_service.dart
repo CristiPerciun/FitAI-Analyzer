@@ -211,6 +211,29 @@ class GarminService {
     final lan = _garminServerUrlLan;
     final remote = _garminServerUrlRemote;
 
+    // Web: non fare probe LAN (spesso 3s di timeout fuori casa / mixed-content HTTPS→HTTP).
+    // `exchange-ticket` deve partire subito: i service ticket Garmin scadono in pochi secondi.
+    if (kIsWeb) {
+      if (_cachedBaseUrl != null) {
+        final c = _cachedBaseUrl!;
+        if (c == lan) {
+          _garminHttpDiag(
+            'Web: cache LAN ignorata -> REMOTE ($remote) (OAuth/ticket time-sensitive)',
+          );
+          _cachedBaseUrl = remote;
+          return remote;
+        }
+        _garminHttpVerbose('Web: cache base URL -> $c');
+        return c;
+      }
+      _cachedBaseUrl = remote;
+      _garminHttpVerbose(
+        'Web: REMOTE senza probe LAN -> $remote '
+        '(per forzare un URL diverso usa GARMIN_SERVER_URL in .env)',
+      );
+      return remote;
+    }
+
     if (_cachedBaseUrl != null) {
       final cached = _cachedBaseUrl!;
       if (cached == lan) {
@@ -312,7 +335,8 @@ class GarminService {
 
   /// Delta all'avvio (Garmin + Strava lato server).
   static const Duration _deltaTimeout = Duration(seconds: 120);
-  static const String _webSessionPendingEmail = 'fitai_garmin_pending_email';
+  static bool _garminWebOAuthInFlight = false;
+  static String? _garminWebLastExchangedTicket;
 
   /// URL di ritorno base per Garmin OAuth su web (stesso host/path, senza query/fragment).
   static Uri garminWebRedirectBase(Uri loc) {
@@ -328,68 +352,177 @@ class GarminService {
     );
   }
 
-  /// Costruisce URL Garmin SSO forzando callback HTTP(S) per Web/PWA.
-  static String buildGarminWebBrowserLoginUrl(
-    String loginUrl,
-    Uri currentLocation,
-  ) {
-    final uri = Uri.parse(loginUrl);
-    final callback = garminWebRedirectBase(currentLocation).toString();
-    final query = Map<String, String>.from(uri.queryParameters);
-    query['service'] = callback;
-    query['source'] = callback;
-    query['redirectAfterAccountLoginUrl'] = callback;
-    query['redirectAfterAccountCreationUrl'] = callback;
-    return uri.replace(queryParameters: query).toString();
-  }
-
-  /// Avvia fallback browser Garmin su web/PWA.
-  /// Salva email in sessionStorage e naviga verso SSO Garmin.
-  void startGarminWebBrowserFallback({
-    required String email,
-    required String loginUrl,
-  }) {
-    final loc = garmin_web.garminWebCurrentUri();
-    if (loc == null) {
-      throw StateError('URL corrente non disponibile (Garmin web).');
+  @visibleForTesting
+  static String? extractGarminTicketFromUri(Uri loc) {
+    var t = loc.queryParameters['ticket'];
+    if (t != null && t.isNotEmpty) return t;
+    final frag = loc.fragment;
+    if (frag.isEmpty) return null;
+    final q = frag.startsWith('?') ? frag.substring(1) : frag;
+    try {
+      t = Uri.splitQueryString(q)['ticket'];
+      if (t != null && t.isNotEmpty) return t;
+    } on Object {
+      return null;
     }
-    garmin_web.garminWebSessionSet(_webSessionPendingEmail, email.trim());
-    final target = buildGarminWebBrowserLoginUrl(loginUrl, loc);
-    garmin_web.garminWebAssignLocation(target);
+    return null;
   }
 
-  /// Completa OAuth Garmin su web quando l'app rientra con `?ticket=...`.
+  static String? _garminOAuthErrorFromUri(Uri loc) {
+    var e = loc.queryParameters['error'];
+    if (e != null && e.isNotEmpty) return e;
+    final frag = loc.fragment;
+    if (frag.isEmpty) return null;
+    final q = frag.startsWith('?') ? frag.substring(1) : frag;
+    try {
+      e = Uri.splitQueryString(q)['error'];
+    } on Object {
+      return null;
+    }
+    return (e != null && e.isNotEmpty) ? e : null;
+  }
+
+  /// Formato atteso da `POST /garmin/connect3/exchange-ticket` (come redirect mobile/embed).
+  @visibleForTesting
+  static String garminTicketToEmbedUrl(String ticket) {
+    return 'https://sso.garmin.com/sso/embed?ticket=${Uri.encodeQueryComponent(ticket)}';
+  }
+
+  /// URL signin Garmin per piattaforme **native** (FlutterWebAuth2).
+  ///
+  /// Usa `embedWidget=true` + `gauthHost=sso.garmin.com/sso/embed` in modo che
+  /// FlutterWebAuth2 intercetti il redirect verso `https://sso.garmin.com/sso/embed?ticket=…`.
+  static String buildGarminWebSsoSigninUrl(String serviceUrl) {
+    const garminEmbedHost = 'https://sso.garmin.com/sso/embed';
+    final base = Uri.parse('https://sso.garmin.com/sso/signin');
+    return base
+        .replace(
+          queryParameters: {
+            'id': 'gauth-widget',
+            'embedWidget': 'true',
+            'gauthHost': garminEmbedHost,
+            'service': serviceUrl,
+            'source': serviceUrl,
+            'redirectAfterAccountLoginUrl': serviceUrl,
+            'redirectAfterAccountCreationUrl': serviceUrl,
+          },
+        )
+        .toString();
+  }
+
+  /// URL signin Garmin per il **popup web** (flusso CAS puro, senza embedWidget).
+  ///
+  /// `embedWidget=true` + `gauthHost` fanno sì che Garmin rediriga verso il gauthHost
+  /// ignorando il `service` personalizzato — il popup non raggiungerebbe mai
+  /// `garmin_oauth_return.html`. Usando il flusso CAS standard il redirect va
+  /// direttamente al `service` → `garmin_oauth_return.html?ticket=ST-…`.
+  static String buildGarminPopupSsoLoginUrl(String returnPageUrl) {
+    return Uri.parse('https://sso.garmin.com/sso/signin')
+        .replace(
+          queryParameters: {
+            'id': 'gauth-widget',
+            'service': returnPageUrl,
+            'source': returnPageUrl,
+            'redirectAfterAccountLoginUrl': returnPageUrl,
+            'redirectAfterAccountCreationUrl': returnPageUrl,
+          },
+        )
+        .toString();
+  }
+
+  /// SSO Garmin via **popup + postMessage** (solo web).
+  ///
+  /// Apre `garmin_oauth_return.html` come `service` redirect di Garmin SSO (flusso CAS puro).
+  /// Dopo il login, Garmin redirige il popup a `garmin_oauth_return.html?ticket=ST-…`
+  /// che manda `postMessage` al parent e si chiude senza ricaricare l'app.
+  /// Il ticket viene subito scambiato con il server prima che scada.
+  Future<Map<String, dynamic>> connectViaGarminSsoWeb({
+    required String uid,
+  }) async {
+    if (!kIsWeb) {
+      return {'success': false, 'message': 'Metodo solo per web.'};
+    }
+    final returnPage = garmin_web.garminWebOAuthReturnPageUri().toString();
+    // CAS puro senza embedWidget: Garmin redirige il popup esattamente al `service` URL.
+    final ssoUrl = buildGarminPopupSsoLoginUrl(returnPage);
+    _garminHttpVerbose('Web SSO popup: apertura → $ssoUrl');
+
+    final ticket = await garmin_web.garminWebOAuthViaPopup(ssoUrl);
+
+    if (ticket == null || ticket.trim().isEmpty) {
+      return {
+        'success': false,
+        'message': 'Login Garmin annullato o il popup è stato bloccato.',
+      };
+    }
+
+    // Invia la URL COMPLETA del return-page con il ticket come query param.
+    // Il server leggerà il base URL (senza ?ticket=) come `login-url` per la chiamata
+    // `connectapi.garmin.com/oauth-service/oauth/preauthorized?ticket=ST-...&login-url=...`.
+    // In questo modo il `login-url` corrisponde al service URL con cui il ticket è stato emesso.
+    final returnPageUri = Uri.parse(returnPage);
+    final ticketOrUrl = returnPageUri
+        .replace(queryParameters: {'ticket': ticket.trim()})
+        .toString();
+    _garminHttpVerbose('Web SSO: ticket ricevuto, exchange → $ticketOrUrl');
+    return connect3ExchangeTicket(uid: uid, ticketOrUrl: ticketOrUrl);
+  }
+
+  /// Completa OAuth Garmin su web quando l'app ha `?ticket=...` (o errore) dopo il redirect.
   Future<Map<String, dynamic>?> completeGarminWebOAuthIfPresent({
     required String uid,
   }) async {
     if (!kIsWeb) return null;
     final loc = garmin_web.garminWebCurrentUri();
     if (loc == null) return null;
-    final ticket = loc.queryParameters['ticket'];
-    final error = loc.queryParameters['error'];
+
+    final ticket = extractGarminTicketFromUri(loc);
+    final error = _garminOAuthErrorFromUri(loc);
     if ((ticket == null || ticket.isEmpty) &&
         (error == null || error.isEmpty)) {
       return null;
     }
 
+    if (_garminWebOAuthInFlight) return null;
+    if (ticket != null &&
+        ticket.isNotEmpty &&
+        _garminWebLastExchangedTicket == ticket) {
+      final clean = garminWebRedirectBase(loc);
+      garmin_web.garminWebReplaceCleanUrl(clean);
+      return null;
+    }
+
+    _garminWebOAuthInFlight = true;
     final clean = garminWebRedirectBase(loc);
-    final pendingEmail = garmin_web.garminWebSessionGet(
-      _webSessionPendingEmail,
-    );
-    garmin_web.garminWebSessionRemove(_webSessionPendingEmail);
     garmin_web.garminWebReplaceCleanUrl(clean);
 
-    if (error != null && error.isNotEmpty) {
-      return {'success': false, 'message': 'Garmin: $error'};
+    try {
+      if (error != null && error.isNotEmpty) {
+        return {'success': false, 'message': 'Garmin: $error'};
+      }
+      // Costruiamo ticketOrUrl come returnPage?ticket=ST-...
+      // In questo modo il server può estrarre il login-url corretto (= returnPage)
+      // da passare a connectapi.garmin.com/oauth-service/oauth/preauthorized.
+      final String ticketOrUrl;
+      if (ticket != null && ticket.isNotEmpty) {
+        final returnPage = garmin_web.garminWebOAuthReturnPageUri();
+        ticketOrUrl = returnPage
+            .replace(queryParameters: {'ticket': ticket})
+            .toString();
+      } else {
+        ticketOrUrl = loc.toString();
+      }
+      final result = await connect3ExchangeTicket(
+        uid: uid,
+        ticketOrUrl: ticketOrUrl,
+      );
+      if (result['success'] == true && ticket != null && ticket.isNotEmpty) {
+        _garminWebLastExchangedTicket = ticket;
+      }
+      return result;
+    } finally {
+      _garminWebOAuthInFlight = false;
     }
-    final ticketOrUrl = loc.toString();
-    return connect3ExchangeTicket(
-      uid: uid,
-      ticketOrUrl: ticketOrUrl,
-      email: (pendingEmail != null && pendingEmail.isNotEmpty)
-          ? pendingEmail
-          : null,
-    );
   }
 
   Future<bool> isConnected(String uid) async {
@@ -513,7 +646,7 @@ class GarminService {
           if (data['mfaRequired'] == true) 'mfaRequired': true,
           if (data['loginSessionId'] is String)
             'loginSessionId': data['loginSessionId'],
-          if (loginUrl != null) 'loginUrl': loginUrl,
+          'loginUrl': ?loginUrl,
         };
       }
       return {

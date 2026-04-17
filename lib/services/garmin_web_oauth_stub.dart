@@ -1,4 +1,14 @@
+import 'dart:async';
+
 Uri? garminWebCurrentUri() => null;
+
+Uri garminWebOAuthReturnPageUri() =>
+    Uri.parse('https://localhost/garmin_oauth_return.html');
+
+Future<String?> garminWebOAuthViaPopup(
+  String ssoUrl, {
+  Duration timeout = const Duration(minutes: 5),
+}) async => null;
 
 void garminWebAssignLocation(String url) {
   throw UnsupportedError('Garmin web OAuth: solo su piattaforma web');

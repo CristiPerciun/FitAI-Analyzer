@@ -102,8 +102,10 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     }
   }
 
-  /// Garmin su web/PWA: dopo fallback SSO il ritorno contiene `?ticket=...`.
-  /// Completa lo scambio ticket sul server e avvia una sync leggera.
+  /// Safety net per web: se per qualsiasi motivo l'URL contiene `?ticket=`
+  /// (es. residuo da un vecchio redirect) tentiamo lo scambio e poi puliamo l'URL.
+  /// Il flusso principale usa `connect2/start` server-side — questo non viene chiamato
+  /// nel caso normale.
   Future<void> _resumeGarminWebOAuthIfNeeded() async {
     if (!kIsWeb || !mounted) return;
     var uid =
@@ -136,30 +138,13 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
               .syncNow(uid: uid, trigger: 'settings_garmin_connect_web'),
         );
         scaffoldMessengerKey.currentState?.showSnackBar(
-          const SnackBar(content: Text('✅ Garmin collegato via web.')),
+          const SnackBar(content: Text('✅ Garmin collegato.')),
         );
-        return;
       }
-
-      final msg =
-          result['message']?.toString() ?? 'Errore completamento OAuth Garmin.';
-      scaffoldMessengerKey.currentState?.showSnackBar(
-        SnackBar(
-          content: Text(msg),
-          backgroundColor: AppColors.error,
-          duration: const Duration(seconds: 8),
-        ),
-      );
+      // Errori silenziosi: l'URL viene pulito comunque; il flusso principale
+      // (connect2/start) non produce ?ticket= quindi questo ramo è quasi mai attivo.
     } catch (e, st) {
-      debugPrint('Garmin web OAuth: $e\n$st');
-      if (!mounted) return;
-      scaffoldMessengerKey.currentState?.showSnackBar(
-        SnackBar(
-          content: Text('Garmin web OAuth: $e'),
-          backgroundColor: AppColors.error,
-          duration: const Duration(seconds: 8),
-        ),
-      );
+      debugPrint('Garmin web ticket cleanup: $e\n$st');
     }
   }
 
@@ -178,6 +163,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      if (kIsWeb) {
+        unawaited(_resumeGarminWebOAuthIfNeeded());
+      }
       // Quando l'app torna attiva (es. da Safari/Chrome), controlla link in sospeso
       AppLinks().getLatestLink().then((uri) {
         StravaOAuthCallback.instance.handleUri(uri);
