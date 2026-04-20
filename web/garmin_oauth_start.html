@@ -41,12 +41,22 @@
   </div>
   <script>
     (function () {
+      console.log('[GarminOAuthStart]', 'href=', window.location.href);
       var hash = window.location.hash ? window.location.hash.substring(1) : '';
       var params = new URLSearchParams(hash);
       var uid = params.get('uid') || '';
       var baseUrl = params.get('base_url') || '';
       var auth = params.get('auth') || '';
       var ssoUrl = params.get('sso_url') || '';
+      console.log(
+        '[GarminOAuthStart]',
+        'uid=', uid ? '(presente)' : '(mancante)',
+        'baseUrl=', baseUrl || '(mancante)',
+        'auth=', auth ? '(presente)' : '(assente)',
+        'ssoUrl host=', ssoUrl ? (function () {
+          try { return new URL(ssoUrl).host; } catch (e) { return '(URL non valido)'; }
+        })() : '(mancante)'
+      );
 
       if (uid) sessionStorage.setItem('garmin_oauth_uid', uid);
       if (baseUrl) sessionStorage.setItem('garmin_oauth_base_url', baseUrl);
@@ -57,11 +67,13 @@
       }
 
       if (!ssoUrl) {
+        console.error('[GarminOAuthStart]', 'sso_url mancante nel fragment');
         document.body.innerHTML =
           '<div class="card"><h1>Errore Garmin</h1><p>URL Garmin mancante.</p></div>';
         return;
       }
 
+      console.log('[GarminOAuthStart]', 'redirect verso Garmin SSO');
       window.location.replace(ssoUrl);
     })();
   </script>

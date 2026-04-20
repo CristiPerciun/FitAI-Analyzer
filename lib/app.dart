@@ -105,8 +105,8 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   /// Riprende l'OAuth Garmin su web.
   ///
   /// Flusso principale:
-  /// - desktop: popup -> postMessage -> exchange nel client Flutter;
-  /// - iOS PWA: `garmin_oauth_return.html` fa l'exchange e salva l'esito in sessionStorage.
+  /// - desktop / Android browser: full-page verso Garmin → rientro con `?ticket=` → exchange;
+  /// - iOS PWA: popup + `garmin_oauth_return.html` (exchange in pagina, esito in sessionStorage).
   ///
   /// Safety net: se per qualsiasi motivo l'URL contiene ancora `?ticket=`,
   /// tentiamo comunque lo scambio e poi puliamo l'URL.

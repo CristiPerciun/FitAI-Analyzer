@@ -36,6 +36,28 @@ void _garminHttpDiag(String message) {
   debugPrint('[GarminHTTP] $message');
 }
 
+/// Log OAuth Garmin su web: sempre in debug; in release/profile se `.env` ha
+/// `GARMIN_OAUTH_WEB_DEBUG=1` (utile su iPhone / Chrome senza DevTools Dart).
+bool _garminOAuthWebDebugEnabled() {
+  if (kDebugMode) return true;
+  if (!dotenv.isInitialized) return false;
+  final v = dotenv.env['GARMIN_OAUTH_WEB_DEBUG']?.trim().toLowerCase() ?? '';
+  return v == '1' || v == 'true' || v == 'yes' || v == 'on';
+}
+
+void _garminOAuthWebLog(String message) {
+  if (_garminOAuthWebDebugEnabled()) {
+    debugPrint('[GarminOAuthWeb] $message');
+  }
+}
+
+String _ticketSnippetForLog(String? ticket) {
+  if (ticket == null || ticket.isEmpty) return '(vuoto)';
+  final t = ticket.trim();
+  if (t.length <= 12) return '${t.substring(0, t.length)}… (len=${t.length})';
+  return '${t.substring(0, 8)}…${t.substring(t.length - 4)} (len=${t.length})';
+}
+
 String _headersOneLine(Map<String, String> h) {
   final keys = h.keys.toList()..sort();
   return keys
@@ -337,33 +359,8 @@ class GarminService {
   static const Duration _deltaTimeout = Duration(seconds: 120);
   static bool _garminWebOAuthInFlight = false;
   static String? _garminWebLastExchangedTicket;
-  static const String _garminWebSessionUidKey = 'garmin_oauth_uid';
-  static const String _garminWebSessionBaseUrlKey = 'garmin_oauth_base_url';
-  static const String _garminWebSessionAuthKey = 'garmin_oauth_auth';
   static const String _garminWebSessionResultKey = 'garmin_oauth_result';
   static const String _garminWebSessionMessageKey = 'garmin_oauth_message';
-
-  void _garminWebStoreOAuthContext({
-    required String uid,
-    required String baseUrl,
-  }) {
-    if (!kIsWeb) return;
-    garmin_web.garminWebSessionSet(_garminWebSessionUidKey, uid);
-    garmin_web.garminWebSessionSet(_garminWebSessionBaseUrlKey, baseUrl);
-    final auth = _jsonHeaders['Authorization']?.trim() ?? '';
-    if (auth.isNotEmpty) {
-      garmin_web.garminWebSessionSet(_garminWebSessionAuthKey, auth);
-    } else {
-      garmin_web.garminWebSessionRemove(_garminWebSessionAuthKey);
-    }
-  }
-
-  void _garminWebClearOAuthContext() {
-    if (!kIsWeb) return;
-    garmin_web.garminWebSessionRemove(_garminWebSessionUidKey);
-    garmin_web.garminWebSessionRemove(_garminWebSessionBaseUrlKey);
-    garmin_web.garminWebSessionRemove(_garminWebSessionAuthKey);
-  }
 
   Map<String, dynamic>? consumeGarminWebOAuthSessionResult() {
     if (!kIsWeb) return null;
@@ -373,6 +370,9 @@ class GarminService {
         (message == null || message.isEmpty)) {
       return null;
     }
+    _garminOAuthWebLog(
+      'consumeGarminWebOAuthSessionResult: status=$status message=${message ?? ''}',
+    );
     garmin_web.garminWebSessionRemove(_garminWebSessionResultKey);
     garmin_web.garminWebSessionRemove(_garminWebSessionMessageKey);
     return {
@@ -491,21 +491,30 @@ class GarminService {
     final baseUrl = await _resolveBaseUrl();
     final isIos = garmin_web.garminWebIsIos();
     final authHeader = _jsonHeaders['Authorization']?.trim() ?? '';
-    if (!isIos) {
-      _garminWebStoreOAuthContext(uid: uid, baseUrl: baseUrl);
-    }
+    final currentHref = garmin_web.garminWebCurrentUri()?.toString() ?? '(n/a)';
+    _garminOAuthWebLog(
+      'connectViaGarminSsoWeb: uid=$uid isIos=$isIos baseUrl=$baseUrl '
+      'bearer=${authHeader.isNotEmpty}',
+    );
+    _garminOAuthWebLog('connectViaGarminSsoWeb: window.href=$currentHref');
 
-    final baseReturnPage = garmin_web.garminWebOAuthReturnPageUri();
-    final returnPageUri = baseReturnPage;
-    final returnPage = returnPageUri.toString();
-    // CAS puro senza embedWidget: Garmin redirige esattamente al `service` URL.
-    final ssoUrl = buildGarminPopupSsoLoginUrl(returnPage);
+    final loc = garmin_web.garminWebCurrentUri();
+    if (loc == null) {
+      return {
+        'success': false,
+        'message': 'URL corrente non disponibile (Garmin web).',
+      };
+    }
 
     // ── iOS Safari / PWA (iPhone/iPad): apriamo una finestra script-opened.
     //    Prima apriamo una pagina locale che salva il contesto nel popup stesso,
     //    poi navighiamo a Garmin. La return page fa l'exchange del ticket e poi prova a chiudersi con
     //    `window.close()`, riportando l'utente alla PWA.
     if (isIos) {
+      final returnPage = garmin_web.garminWebOAuthReturnPageUri().toString();
+      final ssoUrl = buildGarminPopupSsoLoginUrl(returnPage);
+      _garminOAuthWebLog('connectViaGarminSsoWeb: iOS returnPage(service)=$returnPage');
+      _garminOAuthWebLog('connectViaGarminSsoWeb: iOS ssoUrl=$ssoUrl');
       final startPage = garmin_web
           .garminWebOAuthStartPageUri()
           .replace(
@@ -521,40 +530,31 @@ class GarminService {
           )
           .toString();
       _garminHttpVerbose('Web SSO iOS popup/open start-page → $startPage');
+      _garminOAuthWebLog('iOS: startPage=$startPage');
       final opened = garmin_web.garminWebOpenPopup(startPage);
       if (!opened) {
+        _garminOAuthWebLog('iOS: window.open(startPage) ha restituito null (popup bloccato?)');
         return {
           'success': false,
           'message': 'Il browser ha bloccato l\'apertura della pagina Garmin.',
         };
       }
+      _garminOAuthWebLog('iOS: popup aperta, in attesa return page + exchange');
       return {'success': null, 'ios_redirect': true};
     }
 
-    _garminHttpVerbose('Web SSO popup: apertura → $ssoUrl');
-
-    final ticket = await garmin_web.garminWebOAuthViaPopup(ssoUrl);
-
-    if (ticket == null || ticket.trim().isEmpty) {
-      _garminWebClearOAuthContext();
-      return {
-        'success': false,
-        'message': 'Login Garmin annullato o il popup è stato bloccato.',
-      };
-    }
-
-    // Invia la URL COMPLETA del return-page con il ticket come query param.
-    // Il server leggerà il base URL (senza ?ticket=) come `login-url` per la chiamata
-    // `connectapi.garmin.com/oauth-service/oauth/preauthorized?ticket=ST-...&login-url=...`.
-    // In questo modo il `login-url` corrisponde al service URL con cui il ticket è stato emesso.
-    final exchangeReturnPageUri = Uri.parse(returnPage);
-    final ticketOrUrl = exchangeReturnPageUri
-        .replace(queryParameters: {'ticket': ticket.trim()})
-        .toString();
-    _garminHttpVerbose('Web SSO: ticket ricevuto, exchange → $ticketOrUrl');
-    final result = await connect3ExchangeTicket(uid: uid, ticketOrUrl: ticketOrUrl);
-    _garminWebClearOAuthContext();
-    return result;
+    // Desktop / Android browser: navigazione full-page verso Garmin (flusso legacy
+    // ~04896ea). Il `service` è l'URL base dell'app; dopo il login Garmin torna con
+    // `?ticket=` sulla stessa scheda e `completeGarminWebOAuthIfPresent` completa.
+    final callbackUrl = garminWebRedirectBase(loc).toString();
+    final ssoUrl = buildGarminPopupSsoLoginUrl(callbackUrl);
+    _garminHttpVerbose('Web SSO full-page: navigazione → $ssoUrl');
+    _garminOAuthWebLog(
+      'desktop/Android: full-page callback(service)=$callbackUrl',
+    );
+    _garminOAuthWebLog('desktop/Android: ssoUrl=$ssoUrl');
+    garmin_web.garminWebAssignLocation(ssoUrl);
+    return {'success': null, 'web_redirect': true};
   }
 
   /// Completa OAuth Garmin su web quando l'app ha `?ticket=...` (o errore) dopo il redirect.
@@ -572,10 +572,16 @@ class GarminService {
       return null;
     }
 
+    _garminOAuthWebLog(
+      'completeGarminWebOAuthIfPresent: href=${loc.toString()} '
+      'ticket=${_ticketSnippetForLog(ticket)} error=${error ?? ''}',
+    );
+
     if (_garminWebOAuthInFlight) return null;
     if (ticket != null &&
         ticket.isNotEmpty &&
         _garminWebLastExchangedTicket == ticket) {
+      _garminOAuthWebLog('completeGarminWebOAuthIfPresent: ticket già scambiato, skip');
       final clean = garminWebRedirectBase(loc);
       garmin_web.garminWebReplaceCleanUrl(clean);
       return null;
@@ -587,6 +593,7 @@ class GarminService {
 
     try {
       if (error != null && error.isNotEmpty) {
+        _garminOAuthWebLog('completeGarminWebOAuthIfPresent: errore OAuth in URL');
         return {'success': false, 'message': 'Garmin: $error'};
       }
       // Costruiamo ticketOrUrl come returnPage?ticket=ST-...
@@ -594,16 +601,23 @@ class GarminService {
       // da passare a connectapi.garmin.com/oauth-service/oauth/preauthorized.
       final String ticketOrUrl;
       if (ticket != null && ticket.isNotEmpty) {
-        final returnPage = garmin_web.garminWebOAuthReturnPageUri();
-        ticketOrUrl = returnPage
+        // `login-url` sul server deve coincidere col `service` usato col ticket
+        // (app principale `/` oppure `garmin_oauth_return.html` su iOS popup).
+        ticketOrUrl = garminWebRedirectBase(loc)
             .replace(queryParameters: {'ticket': ticket})
             .toString();
       } else {
         ticketOrUrl = loc.toString();
       }
+      _garminOAuthWebLog(
+        'completeGarminWebOAuthIfPresent: exchange-ticket (URL app) ticketOrUrl len=${ticketOrUrl.length}',
+      );
       final result = await connect3ExchangeTicket(
         uid: uid,
         ticketOrUrl: ticketOrUrl,
+      );
+      _garminOAuthWebLog(
+        'completeGarminWebOAuthIfPresent: exchange risultato success=${result['success']} message=${result['message']}',
       );
       if (result['success'] == true && ticket != null && ticket.isNotEmpty) {
         _garminWebLastExchangedTicket = ticket;

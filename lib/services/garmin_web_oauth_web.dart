@@ -2,7 +2,12 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:html' as html;
+
+void _oauthWebLog(String message) {
+  developer.log(message, name: 'GarminOAuthWeb');
+}
 
 Uri? garminWebCurrentUri() {
   try {
@@ -58,6 +63,9 @@ Future<String?> garminWebOAuthViaPopup(
   html.EventListener? listener;
   Timer? pollTimer;
 
+  _oauthWebLog('garminWebOAuthViaPopup: inizio timeout=${timeout.inMinutes}m');
+  _oauthWebLog('garminWebOAuthViaPopup: ssoUrl=$ssoUrl');
+
   void cleanup() {
     if (listener != null) {
       html.window.removeEventListener('message', listener!);
@@ -69,17 +77,27 @@ Future<String?> garminWebOAuthViaPopup(
 
   listener = (html.Event event) {
     if (event is! html.MessageEvent) return;
+    final me = event;
     if (completer.isCompleted) return;
     try {
-      final raw = event.data?.toString() ?? '';
+      final raw = me.data?.toString() ?? '';
       if (raw.isEmpty) return;
       final data = jsonDecode(raw) as Map<String, dynamic>;
       if (data['type'] != 'garmin_oauth_result') return;
+      _oauthWebLog(
+        'garminWebOAuthViaPopup: postMessage ricevuto origin=${me.origin} '
+        'ticketLen=${(data['ticket'] as String?)?.length ?? 0}',
+      );
       cleanup();
       final ticket = (data['ticket'] as String?) ?? '';
       completer.complete(ticket.isEmpty ? null : ticket);
-    } on Object {
-      // messaggio non nostro, ignorato
+    } on Object catch (e) {
+      final raw = me.data?.toString() ?? '';
+      final preview = raw.length > 120 ? '${raw.substring(0, 120)}…' : raw;
+      _oauthWebLog(
+        'garminWebOAuthViaPopup: message ignorato o JSON non valido: $e '
+        'origin=${me.origin} preview=$preview',
+      );
     }
   };
 
@@ -97,14 +115,17 @@ Future<String?> garminWebOAuthViaPopup(
           as html.WindowBase?;
 
   if (popup == null) {
+    _oauthWebLog('garminWebOAuthViaPopup: window.open ha restituito null (popup bloccato?)');
     // Popup bloccato dal browser
     cleanup();
     return null;
   }
+  _oauthWebLog('garminWebOAuthViaPopup: popup aperta, in ascolto postMessage');
 
   // Monitora chiusura manuale del popup
   pollTimer = Timer.periodic(const Duration(milliseconds: 750), (timer) {
     if (!completer.isCompleted && (popup.closed == true)) {
+      _oauthWebLog('garminWebOAuthViaPopup: popup chiusa dall utente');
       cleanup();
       completer.complete(null);
     }
@@ -114,17 +135,20 @@ Future<String?> garminWebOAuthViaPopup(
     return await completer.future.timeout(
       timeout,
       onTimeout: () {
+        _oauthWebLog('garminWebOAuthViaPopup: timeout dopo ${timeout.inMinutes}m');
         cleanup();
         return null;
       },
     );
   } catch (e) {
+    _oauthWebLog('garminWebOAuthViaPopup: eccezione $e');
     cleanup();
     return null;
   }
 }
 
 bool garminWebOpenPopup(String url) {
+  _oauthWebLog('garminWebOpenPopup: url=$url');
   // ignore: unnecessary_cast
   final popup =
       html.window.open(
@@ -133,7 +157,9 @@ bool garminWebOpenPopup(String url) {
             'width=560,height=720,scrollbars=yes,toolbar=no,menubar=no,location=no',
           )
           as html.WindowBase?;
-  return popup != null;
+  final ok = popup != null;
+  _oauthWebLog('garminWebOpenPopup: opened=$ok');
+  return ok;
 }
 
 void garminWebAssignLocation(String url) {

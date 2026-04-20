@@ -13,9 +13,10 @@ const _garminEmbedService = 'https://sso.garmin.com/sso/embed';
 /// ### Flusso unico per tutti i target:
 /// 1. L'utente clicca "Apri login Garmin".
 /// 2. **Web (kIsWeb)**: si apre la pagina di login Garmin.
-///    Dopo il login, Garmin redirige a `garmin_oauth_return.html?ticket=ST-…`;
-///    su desktop il ticket torna al parent via `postMessage`; su iOS la return page
-///    esegue direttamente lo scambio col server e poi rientra nell'app.
+///    Su **desktop / Android browser** la navigazione è full-page: dopo il login
+///    Garmin torna all’URL dell’app con `?ticket=ST-…` e l’app completa lo scambio.
+///    Su **iOS** si usa un popup verso `garmin_oauth_return.html` che scambia il
+///    ticket e poi rientra nell’app.
 /// 3. **Native** (iOS, Android, Windows, macOS, Linux): `FlutterWebAuth2` apre un
 ///    browser di sistema con `service=https://sso.garmin.com/sso/embed`.
 ///    Garmin redirige a `https://sso.garmin.com/sso/embed?ticket=ST-…` che viene
@@ -43,7 +44,7 @@ Future<bool?> showGarminConnectDialog(
             try {
               final garmin = ref.read(garminServiceProvider);
               if (kIsWeb) {
-                // Web / PWA: desktop usa popup+postMessage; iOS usa return page+redirect.
+                // Web: desktop full-page verso SSO; iOS popup + garmin_oauth_return.html.
                 result = await garmin.connectViaGarminSsoWeb(uid: uid);
               } else {
                 // Native: FlutterWebAuth2 intercetta il redirect a sso.garmin.com/sso/embed.
@@ -73,9 +74,10 @@ Future<bool?> showGarminConnectDialog(
 
             if (result['success'] == true) {
               Navigator.of(ctx).pop(true);
-            } else if (result['ios_redirect'] == true) {
-              // iOS PWA: la pagina sta navigando verso Garmin SSO.
-              // Il risultato arriverà tramite garmin_oauth_return.html al rientro nell'app.
+            } else if (result['ios_redirect'] == true ||
+                result['web_redirect'] == true) {
+              // Navigazione verso Garmin (full-page o popup iOS): al rientro
+              // `completeGarminWebOAuthIfPresent` / sessionStorage gestiscono l’esito.
               Navigator.of(ctx).pop(null);
             } else {
               final msg =

@@ -56,6 +56,12 @@
   </div>
   <script>
     (function () {
+      console.log(
+        '[GarminOAuthReturn]',
+        'entry href=', window.location.href,
+        'search=', window.location.search,
+        'hash=', window.location.hash
+      );
       var params = new URLSearchParams(window.location.search);
       var hash = window.location.hash ? window.location.hash.substring(1) : '';
       var fragmentParams = new URLSearchParams(hash);
@@ -94,6 +100,7 @@
       }
 
       function closeOrReturn(delayMs) {
+        console.log('[GarminOAuthReturn]', 'closeOrReturn delayMs=', delayMs, 'isIosPopup=', isIosPopup);
         setTimeout(function () {
           try {
             window.close();
@@ -106,6 +113,7 @@
         }, delayMs);
 
         setTimeout(function () {
+          console.log('[GarminOAuthReturn]', 'fallback replace ->', appUrl);
           window.location.replace(appUrl);
         }, delayMs + (isIosPopup ? 1200 : 300));
       }
@@ -118,6 +126,13 @@
       }
 
       async function exchangeTicketInReturnPage() {
+        console.log(
+          '[GarminOAuthReturn]',
+          'exchangeTicketInReturnPage ticket=', ticket ? '(len ' + ticket.length + ')' : '(mancante)',
+          'error=', error || '(nessuno)',
+          'uid=', uid ? '(ok)' : '(mancante)',
+          'baseUrl=', baseUrl || '(mancante)'
+        );
         if (error) {
           clearOAuthContext();
           storeResult(false, 'Garmin: ' + error);
@@ -127,6 +142,7 @@
         }
 
         if (!ticket) {
+          console.warn('[GarminOAuthReturn]', 'Nessun ticket in query: Garmin non ha rediretto al service oppure param diverso');
           clearOAuthContext();
           storeResult(false, 'Ticket Garmin mancante nella pagina di ritorno.');
           setStatus(
@@ -138,6 +154,7 @@
         }
 
         if (!uid || !baseUrl) {
+          console.error('[GarminOAuthReturn]', 'Contesto mancante: uid o baseUrl assenti (sessionStorage nel popup?)');
           clearOAuthContext();
           storeResult(false, 'Contesto OAuth Garmin mancante su iOS.');
           setStatus(
@@ -159,8 +176,10 @@
           headers['Authorization'] = authHeader;
         }
 
+        var exchangeUrl = baseUrl + '/garmin/connect3/exchange-ticket';
         try {
-          var response = await fetch(baseUrl + '/garmin/connect3/exchange-ticket', {
+          console.log('[GarminOAuthReturn]', 'POST', exchangeUrl, 'ticket_or_url len=', window.location.href.length);
+          var response = await fetch(exchangeUrl, {
             method: 'POST',
             headers: headers,
             body: JSON.stringify({
@@ -170,16 +189,24 @@
           });
 
           var raw = await response.text();
+          console.log(
+            '[GarminOAuthReturn]',
+            'exchange response status=', response.status,
+            'bodyLen=', raw ? raw.length : 0
+          );
           var data = {};
           if (raw) {
             try {
               data = JSON.parse(raw);
-            } catch (e) {}
+            } catch (e) {
+              console.warn('[GarminOAuthReturn]', 'risposta non JSON', e);
+            }
           }
 
           clearOAuthContext();
 
           if (response.ok && data && data.success === true) {
+            console.log('[GarminOAuthReturn]', 'exchange OK');
             storeResult(true, 'Garmin collegato.');
             setStatus(
               'Garmin collegato',
@@ -194,10 +221,12 @@
             data,
             'Exchange ticket Garmin non riuscito (HTTP ' + response.status + ').'
           );
+          console.error('[GarminOAuthReturn]', 'exchange fallito', message);
           storeResult(false, message);
           setStatus('Collegamento Garmin non riuscito', message, true);
           closeOrReturn(1200);
         } catch (e) {
+          console.error('[GarminOAuthReturn]', 'fetch exchange errore', e);
           clearOAuthContext();
           storeResult(false, 'Errore di rete durante il salvataggio del token Garmin.');
           setStatus(
@@ -218,7 +247,9 @@
         /* ── Desktop / Android: popup + postMessage ─────────────────────────── */
         try {
           var opener = window.opener;
+          console.log('[GarminOAuthReturn]', 'desktop branch opener=', opener ? 'presente' : 'assente', 'closed=', opener ? opener.closed : 'n/a');
           if (opener && !opener.closed) {
+            console.log('[GarminOAuthReturn]', 'postMessage verso opener origin=', window.location.origin);
             opener.postMessage(payload, window.location.origin);
             window.close();
             /* Fallback: se window.close() non chiude (tab non aperto da script)
@@ -236,6 +267,7 @@
       }
 
       /* ── iOS o nessun opener: exchange diretto nella return page ──────────── */
+      console.log('[GarminOAuthReturn]', 'branch iOS o senza opener -> exchange in-page');
       exchangeTicketInReturnPage();
     })();
   </script>
