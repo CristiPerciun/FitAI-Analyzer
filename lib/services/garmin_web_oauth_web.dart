@@ -166,17 +166,6 @@ void garminWebAssignLocation(String url) {
   html.window.location.assign(url);
 }
 
-/// Ritorna `true` se il browser è Safari su iOS (iPhone/iPad/iPod).
-///
-/// Su iOS PWA (standalone), `window.open()` apre una finestra Safari separata
-/// (processo distinto): `postMessage` e `window.close()` non funzionano
-/// cross-process. Questa funzione serve a scegliere la navigazione full-page
-/// invece del popup.
-bool garminWebIsIos() {
-  final ua = html.window.navigator.userAgent.toLowerCase();
-  return ua.contains('iphone') || ua.contains('ipad') || ua.contains('ipod');
-}
-
 void garminWebReplaceCleanUrl(Uri clean) {
   html.window.history.replaceState(null, '', clean.toString());
 }

@@ -19,8 +19,6 @@ void garminWebAssignLocation(String url) {
   throw UnsupportedError('Garmin web OAuth: solo su piattaforma web');
 }
 
-bool garminWebIsIos() => false;
-
 void garminWebReplaceCleanUrl(Uri clean) {}
 
 void garminWebSessionSet(String key, String value) {}

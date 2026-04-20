@@ -104,9 +104,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
   /// Riprende l'OAuth Garmin su web.
   ///
-  /// Flusso principale:
-  /// - desktop / Android browser: full-page verso Garmin → rientro con `?ticket=` → exchange;
-  /// - iOS PWA: popup + `garmin_oauth_return.html` (exchange in pagina, esito in sessionStorage).
+  /// Flusso principale: full-page verso Garmin → rientro con `?ticket=` → exchange.
+  /// Resta il ramo `consumeGarminWebOAuthSessionResult` per eventuali redirect legacy
+  /// verso `garmin_oauth_return.html`.
   ///
   /// Safety net: se per qualsiasi motivo l'URL contiene ancora `?ticket=`,
   /// tentiamo comunque lo scambio e poi puliamo l'URL.
