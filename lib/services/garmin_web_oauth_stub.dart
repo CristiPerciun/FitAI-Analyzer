@@ -8,7 +8,7 @@ Uri garminWebOAuthReturnPageUri() =>
 Uri garminWebOAuthStartPageUri() =>
     Uri.parse('https://localhost/garmin_oauth_start.html');
 
-Future<String?> garminWebOAuthViaPopup(
+Future<Map<String, dynamic>?> garminWebOAuthViaPopup(
   String ssoUrl, {
   Duration timeout = const Duration(minutes: 5),
 }) async => null;

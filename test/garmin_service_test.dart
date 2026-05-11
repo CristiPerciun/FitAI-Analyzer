@@ -178,6 +178,36 @@ void main() {
       },
     );
 
+    test(
+      'connect3PrepareWebSso invia POST /garmin/connect3/web-sso/prepare',
+      () async {
+        final mock = MockClient((request) async {
+          expect(request.method, 'POST');
+          expect(request.url.path, '/garmin/connect3/web-sso/prepare');
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          expect(body['uid'], 'u5');
+          return http.Response(
+            jsonEncode({
+              'success': true,
+              'state': 'tok-prepare-test',
+              'public_origin': 'https://example.test',
+            }),
+            200,
+          );
+        });
+
+        final svc = GarminService(
+          httpClient: mock,
+          serverUrlOverride: 'https://example.test',
+        );
+        final result = await svc.connect3PrepareWebSso(uid: 'u5');
+
+        expect(result['success'], true);
+        expect(result['state'], 'tok-prepare-test');
+        expect(result['public_origin'], 'https://example.test');
+      },
+    );
+
     test('syncToday invia POST /garmin/sync-today con uid', () async {
       final mock = MockClient((request) async {
         expect(request.method, 'POST');

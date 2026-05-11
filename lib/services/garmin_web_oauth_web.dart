@@ -49,17 +49,20 @@ Uri garminWebOAuthStartPageUri() {
   );
 }
 
-/// Apre Garmin SSO in un popup e attende il ticket via `postMessage`.
+/// Apre Garmin SSO in un popup e attende l'esito via `postMessage`.
 ///
-/// La pagina `garmin_oauth_return.html` riceve il redirect da Garmin e chiama
-/// `window.opener.postMessage({type:'garmin_oauth_result', ticket:'ST-...'}, origin)`.
-/// Questa funzione risolve con il ticket grezzo (es. `ST-abc`) oppure `null` se
-/// l'utente chiude il popup senza completare il login o scatta il timeout.
-Future<String?> garminWebOAuthViaPopup(
+/// La pagina `garmin_oauth_return.html` invia
+/// `{type:'garmin_oauth_result', ticket_or_url: '<href>', error?: ...}`.
+///
+/// Ritorna:
+/// - `{'ticket_or_url': '...'}` se OK (href completo dopo redirect Garmin),
+/// - `{'error': '...'}` se Garmin ha passato `error` in query,
+/// - `null` se popup bloccata, chiusa senza completare, o timeout.
+Future<Map<String, dynamic>?> garminWebOAuthViaPopup(
   String ssoUrl, {
   Duration timeout = const Duration(minutes: 5),
 }) async {
-  final completer = Completer<String?>();
+  final completer = Completer<Map<String, dynamic>?>();
   html.EventListener? listener;
   Timer? pollTimer;
 
@@ -79,32 +82,61 @@ Future<String?> garminWebOAuthViaPopup(
     if (event is! html.MessageEvent) return;
     final me = event;
     if (completer.isCompleted) return;
+    if (me.origin != html.window.location.origin) {
+      _oauthWebLog(
+        'garminWebOAuthViaPopup: origin ignorato=${me.origin} atteso=${html.window.location.origin}',
+      );
+      return;
+    }
     try {
-      final raw = me.data?.toString() ?? '';
-      if (raw.isEmpty) return;
-      final data = jsonDecode(raw) as Map<String, dynamic>;
+      dynamic payload = me.data;
+      Map<String, dynamic>? data;
+      if (payload is String) {
+        if (payload.isEmpty) return;
+        data = jsonDecode(payload) as Map<String, dynamic>;
+      } else if (payload is Map) {
+        data = Map<String, dynamic>.from(payload);
+      } else {
+        return;
+      }
       if (data['type'] != 'garmin_oauth_result') return;
       _oauthWebLog(
-        'garminWebOAuthViaPopup: postMessage ricevuto origin=${me.origin} '
-        'ticketLen=${(data['ticket'] as String?)?.length ?? 0}',
+        'garminWebOAuthViaPopup: postMessage origin=${me.origin} '
+        'keys=${data.keys.join(",")}',
       );
       cleanup();
+      final err = (data['error'] as String?)?.trim();
+      if (err != null && err.isNotEmpty) {
+        completer.complete({'error': err});
+        return;
+      }
+      final ticketOrUrl = (data['ticket_or_url'] as String?)?.trim();
+      if (ticketOrUrl != null && ticketOrUrl.isNotEmpty) {
+        completer.complete({'ticket_or_url': ticketOrUrl});
+        return;
+      }
       final ticket = (data['ticket'] as String?) ?? '';
-      completer.complete(ticket.isEmpty ? null : ticket);
+      if (ticket.isNotEmpty) {
+        final synthetic = garminWebOAuthReturnPageUri().replace(
+          queryParameters: {'ticket': ticket},
+        );
+        completer.complete({'ticket_or_url': synthetic.toString()});
+        return;
+      }
+      completer.complete(null);
     } on Object catch (e) {
-      final raw = me.data?.toString() ?? '';
-      final preview = raw.length > 120 ? '${raw.substring(0, 120)}…' : raw;
+      final preview = me.data?.toString() ?? '';
+      final short =
+          preview.length > 120 ? '${preview.substring(0, 120)}…' : preview;
       _oauthWebLog(
         'garminWebOAuthViaPopup: message ignorato o JSON non valido: $e '
-        'origin=${me.origin} preview=$preview',
+        'origin=${me.origin} preview=$short',
       );
     }
   };
 
   html.window.addEventListener('message', listener!);
 
-  // javascript window.open() returns null at runtime if the popup is blocked,
-  // even though dart:html types it as non-nullable.
   // ignore: unnecessary_cast
   final popup =
       html.window.open(
@@ -116,13 +148,11 @@ Future<String?> garminWebOAuthViaPopup(
 
   if (popup == null) {
     _oauthWebLog('garminWebOAuthViaPopup: window.open ha restituito null (popup bloccato?)');
-    // Popup bloccato dal browser
     cleanup();
     return null;
   }
   _oauthWebLog('garminWebOAuthViaPopup: popup aperta, in ascolto postMessage');
 
-  // Monitora chiusura manuale del popup
   pollTimer = Timer.periodic(const Duration(milliseconds: 750), (timer) {
     if (!completer.isCompleted && (popup.closed == true)) {
       _oauthWebLog('garminWebOAuthViaPopup: popup chiusa dall utente');
