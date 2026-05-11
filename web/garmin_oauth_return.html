@@ -67,8 +67,12 @@
       var fragmentParams = new URLSearchParams(hash);
       var ticket = params.get('ticket') || '';
       var error = params.get('error') || '';
-      var uid = fragmentParams.get('uid') || params.get('uid') || sessionStorage.getItem('garmin_oauth_uid') || '';
-      var baseUrl = fragmentParams.get('base_url') || sessionStorage.getItem('garmin_oauth_base_url') || '';
+      // uid / base_url: preferenza query string (passati nel service URL di
+      // Garmin SSO da connectViaGarminSsoWeb), fallback fragment / sessionStorage.
+      // sessionStorage NON è disponibile se il redirect è atterrato in un contesto
+      // diverso dalla PWA che ha avviato l'OAuth (es. iOS PWA → Safari).
+      var uid = params.get('uid') || fragmentParams.get('uid') || sessionStorage.getItem('garmin_oauth_uid') || '';
+      var baseUrl = params.get('base_url') || fragmentParams.get('base_url') || sessionStorage.getItem('garmin_oauth_base_url') || '';
       var authHeader = fragmentParams.get('auth') || sessionStorage.getItem('garmin_oauth_auth') || '';
       var isIosPopup = fragmentParams.get('ios_popup') === '1';
       var appUrl = window.location.origin + '/';

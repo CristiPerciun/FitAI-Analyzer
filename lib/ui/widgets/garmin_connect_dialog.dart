@@ -73,7 +73,15 @@ Future<bool?> showGarminConnectDialog(
             if (result['success'] == true) {
               Navigator.of(ctx).pop(true);
             } else if (result['web_redirect'] == true) {
-              // Full-page verso Garmin: al rientro `completeGarminWebOAuthIfPresent` gestisce l’esito.
+              // Full-page verso Garmin SSO. Al ritorno l'esito arriva via:
+              // - sessionStorage (`consumeGarminWebOAuthSessionResult`) se la
+              //   return page atterra nella stessa tab della PWA (Safari non-PWA,
+              //   desktop, Android), OPPURE
+              // - Firestore stream (`garminConnectedProvider`) se atterra in
+              //   Safari separato (iOS PWA standalone): l'exchange è fatto da
+              //   `garmin_oauth_return.html` lato browser, server aggiorna
+              //   `users/{uid}.garmin_linked = true`, e il listener in app.dart
+              //   reagisce alla transizione false → true al rientro nella PWA.
               Navigator.of(ctx).pop(null);
             } else {
               final msg =

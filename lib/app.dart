@@ -31,6 +31,11 @@ class MyApp extends ConsumerStatefulWidget {
 }
 
 class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
+  /// Ultimo valore *stabile* (non-loading) di `garmin_linked` osservato sul web.
+  /// Usato per distinguere una vera transizione false → true (es. dopo OAuth
+  /// in Safari su iOS PWA) da emit Loading intermedi causati da `ref.invalidate`.
+  bool? _lastWebGarminLinkedStable;
+
   @override
   void initState() {
     super.initState();
@@ -228,6 +233,40 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
             .syncNow(uid: next, trigger: 'login'),
       );
     });
+
+    // Web: rileva quando `garmin_linked` passa false → true mentre l'utente è
+    // già loggato. Caso tipico su **iOS PWA**: l'utente avvia OAuth Garmin dalla
+    // PWA, iOS apre Safari per il SSO, `garmin_oauth_return.html` esegue
+    // l'exchange in Safari → server scrive `garmin_linked=true` su Firestore.
+    // Quando l'utente torna alla PWA, `AppLifecycleState.resumed` invalida il
+    // provider, lo stream emette `true` e qui scatta sync + snackbar — senza
+    // dipendere da sessionStorage/Firebase Auth (separati tra PWA e Safari).
+    if (kIsWeb) {
+      ref.listen<AsyncValue<bool>>(garminConnectedProvider, (prev, next) {
+        // Ignora AsyncLoading (valueOrNull=null) per non perdere la transizione
+        // false→true quando `ref.invalidate` re-fa il subscribe (passa per
+        // un emit Loading intermedio).
+        final value = next.valueOrNull;
+        if (value == null) return;
+        final wasFalse = _lastWebGarminLinkedStable == false;
+        _lastWebGarminLinkedStable = value;
+        if (!wasFalse || value != true) return;
+
+        final uid = ref.read(authNotifierProvider).user?.uid;
+        if (uid == null) return;
+        unawaited(
+          ref
+              .read(garminSyncNotifierProvider.notifier)
+              .syncNow(
+                uid: uid,
+                trigger: 'settings_garmin_connect_web_resume',
+              ),
+        );
+        scaffoldMessengerKey.currentState?.showSnackBar(
+          const SnackBar(content: Text('✅ Garmin collegato.')),
+        );
+      });
+    }
 
     ref.listen<AsyncValue<SyncBackfillStatus?>>(
       syncBackfillStatusStreamProvider,

@@ -476,15 +476,28 @@ class GarminService {
         .toString();
   }
 
-  /// SSO Garmin su web (tutte le piattaforme, inclusa iOS / PWA).
+  /// SSO Garmin su web (tutte le piattaforme, inclusa iOS Safari / PWA standalone).
   ///
-  /// Navigazione **full-page** verso Garmin CAS: il `service` è l’URL base dell’app.
-  /// Dopo il login, Garmin redirige sulla **stessa** scheda con `?ticket=ST-…` e
-  /// [completeGarminWebOAuthIfPresent] completa lo scambio.
+  /// **Flusso**:
+  /// 1. Navigazione **full-page** verso Garmin CAS con
+  ///    `service=https://app/garmin_oauth_return.html?uid=…&base_url=…`.
+  /// 2. Dopo login, Garmin redirige a `garmin_oauth_return.html?uid=…&base_url=…&ticket=ST-…`.
+  /// 3. **`garmin_oauth_return.html` esegue l'exchange via `fetch()` direttamente lato browser**
+  ///    (chiamata a `POST /garmin/connect3/exchange-ticket` sul mini-server).
+  /// 4. Il server salva i token e setta `users/{uid}.garmin_linked = true` su Firestore.
+  /// 5. Quando l'utente torna alla PWA, `AppLifecycleState.resumed` invalida
+  ///    `garminConnectedProvider` (vedi [_resumeGarminWebOAuthIfNeeded] / `app.dart`)
+  ///    e il Firestore stream rileva immediatamente il flag aggiornato.
   ///
-  /// Non usiamo `window.open` su iOS: il popup è spesso un contesto WebKit separato
-  /// dalla PWA (cookie/sessione CAS non condivisi) e Garmin può riciclare il form
-  /// di sign-in invece di redirigere all’app.
+  /// **Perché `uid` e `base_url` in query string (non in fragment, non in sessionStorage)**:
+  /// su iOS PWA in modalità standalone, `window.location.assign()` verso un URL
+  /// esterno (sso.garmin.com) viene aperto da iOS in **Safari** (processo separato
+  /// dalla PWA). Il redirect post-login da Garmin atterra in Safari, non nella PWA:
+  /// - sessionStorage / localStorage / Firebase Auth della PWA NON sono visibili
+  ///   alla pagina caricata in Safari (storage partitioning iOS).
+  /// - URL fragment (#…) può essere stripato dal redirect CAS di Garmin.
+  /// - URL query è l'unico canale affidabile per trasportare `uid` e `base_url`
+  ///   fino a `garmin_oauth_return.html` indipendentemente dal contesto.
   Future<Map<String, dynamic>> connectViaGarminSsoWeb({
     required String uid,
   }) async {
@@ -505,8 +518,30 @@ class GarminService {
       };
     }
 
-    final callbackUrl = garminWebRedirectBase(loc).toString();
+    final baseUrl = await _resolveBaseUrl();
+    final authHeader = _jsonHeaders['Authorization']?.trim() ?? '';
+
+    // Service URL = garmin_oauth_return.html con uid+base_url in query string.
+    // Query string sopravvive al redirect CAS di Garmin (a differenza del fragment).
+    final returnPage = garmin_web.garminWebOAuthReturnPageUri().replace(
+      queryParameters: <String, String>{'uid': uid, 'base_url': baseUrl},
+    );
+    final callbackUrl = returnPage.toString();
     final ssoUrl = buildGarminPopupSsoLoginUrl(callbackUrl);
+
+    // Auth bearer (se configurato lato server): in sessionStorage come fallback,
+    // utile solo nel contesto Safari/PWA in cui il redirect atterra nella stessa
+    // origin e tab; comunque la return page ha un fallback graceful se manca.
+    if (authHeader.isNotEmpty) {
+      garmin_web.garminWebSessionSet('garmin_oauth_auth', authHeader);
+    } else {
+      garmin_web.garminWebSessionRemove('garmin_oauth_auth');
+    }
+    // sessionStorage di uid/base_url come backup nel caso in cui il redirect
+    // resti nella stessa tab (Safari non-PWA). Non garantito su iOS PWA → Safari.
+    garmin_web.garminWebSessionSet('garmin_oauth_uid', uid);
+    garmin_web.garminWebSessionSet('garmin_oauth_base_url', baseUrl);
+
     _garminHttpVerbose('Web SSO full-page: navigazione → $ssoUrl');
     _garminOAuthWebLog('full-page callback(service)=$callbackUrl');
     _garminOAuthWebLog('ssoUrl=$ssoUrl');
