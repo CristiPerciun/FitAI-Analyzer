@@ -210,10 +210,34 @@ class GarminService {
     _garminHttpDiag('cache base URL azzerata dopo errore rete: $error');
   }
 
+  /// Da una pagina web **HTTPS** (hosting / PWA) il browser blocca `fetch`/`XHR`
+  /// verso server **HTTP** (mixed active content). Forza l’URL pubblico HTTPS
+  /// (`GARMIN_SERVER_URL_REMOTE`) quando serve OAuth / sync dal browser.
+  String _upgradeHttpSyncOriginForHttpsWebApp(String candidate) {
+    if (!kIsWeb) return candidate;
+    final page = garmin_web.garminWebCurrentUri();
+    if (page == null) return candidate;
+    if (page.scheme.toLowerCase() != 'https') return candidate;
+    final u = Uri.tryParse(candidate.trim());
+    if (u == null || u.scheme.toLowerCase() != 'http') return candidate;
+    final remote = _garminServerUrlRemote;
+    _garminHttpDiag(
+      'Web HTTPS (${page.origin}): il mini-server su HTTP ($candidate) è '
+      'bloccato dal browser (mixed content). Uso HTTPS pubblico: $remote. '
+      'Configura GARMIN_SERVER_URL_REMOTE / HTTPS sul Pi o PUBLIC_SERVER_URL sul server.',
+    );
+    return remote;
+  }
+
   /// Risolve URL: prova LAN prima (192.168.1.200:8080), se fallisce usa REMOTE (DuckDNS).
   /// A casa: LAN raggiungibile. Fuori: solo REMOTE.
   /// Se GARMIN_SERVER_URL e' impostato, usa solo quello (override).
   Future<String> _resolveBaseUrl() async {
+    final resolved = await _resolveBaseUrlUnadjusted();
+    return _upgradeHttpSyncOriginForHttpsWebApp(resolved);
+  }
+
+  Future<String> _resolveBaseUrlUnadjusted() async {
     final o = _serverUrlOverride?.trim();
     if (o != null && o.isNotEmpty) {
       _garminHttpVerbose('URL server = override costruttore: $o');
@@ -479,25 +503,18 @@ class GarminService {
   /// SSO Garmin su web (tutte le piattaforme, inclusa iOS Safari / PWA standalone).
   ///
   /// **Flusso**:
-  /// 1. Navigazione **full-page** verso Garmin CAS con
-  ///    `service=https://app/garmin_oauth_return.html?uid=…&base_url=…`.
-  /// 2. Dopo login, Garmin redirige a `garmin_oauth_return.html?uid=…&base_url=…&ticket=ST-…`.
-  /// 3. **`garmin_oauth_return.html` esegue l'exchange via `fetch()` direttamente lato browser**
-  ///    (chiamata a `POST /garmin/connect3/exchange-ticket` sul mini-server).
-  /// 4. Il server salva i token e setta `users/{uid}.garmin_linked = true` su Firestore.
-  /// 5. Quando l'utente torna alla PWA, `AppLifecycleState.resumed` invalida
-  ///    `garminConnectedProvider` (vedi [_resumeGarminWebOAuthIfNeeded] / `app.dart`)
-  ///    e il Firestore stream rileva immediatamente il flag aggiornato.
+  /// 1. `POST /garmin/connect3/web-sso/prepare` crea uno **`state`** su Firestore (uid lato server).
+  /// 2. Navigazione full-page verso Garmin CAS con
+  ///    `service=https://app/garmin_oauth_return.html?state=…&gx_api=https%3A%2F%2F…`.
+  ///    (`gx_api` = origine pubblica HTTPS del mini-server; deve coincidere col ticket CAS.)
+  /// 3. Dopo login, Garmin redirige con `ticket`; la pagina statica chiama
+  ///    `POST /garmin/connect3/exchange-ticket-with-state`.
+  /// 4. Il server salva i token e `users/{uid}.garmin_linked = true`.
+  /// 5. Su iOS PWA l’utente completa spesso il login in Safari separato: al rientro
+  ///    nella PWA il listener su `garminConnectedProvider` + lifecycle aggiornano la UI.
   ///
-  /// **Perché `uid` e `base_url` in query string (non in fragment, non in sessionStorage)**:
-  /// su iOS PWA in modalità standalone, `window.location.assign()` verso un URL
-  /// esterno (sso.garmin.com) viene aperto da iOS in **Safari** (processo separato
-  /// dalla PWA). Il redirect post-login da Garmin atterra in Safari, non nella PWA:
-  /// - sessionStorage / localStorage / Firebase Auth della PWA NON sono visibili
-  ///   alla pagina caricata in Safari (storage partitioning iOS).
-  /// - URL fragment (#…) può essere stripato dal redirect CAS di Garmin.
-  /// - URL query è l'unico canale affidabile per trasportare `uid` e `base_url`
-  ///   fino a `garmin_oauth_return.html` indipendentemente dal contesto.
+  /// Nota: da hosting **HTTPS** non è possibile chiamare un mini-server solo **HTTP**
+  /// (mixed content): `_resolveBaseUrl()` forza l’URL remoto HTTPS se necessario.
   Future<Map<String, dynamic>> connectViaGarminSsoWeb({
     required String uid,
   }) async {
@@ -518,29 +535,41 @@ class GarminService {
       };
     }
 
-    final baseUrl = await _resolveBaseUrl();
+    final prep = await connect3PrepareWebSso(uid: uid);
+    if (prep['success'] != true) {
+      final rawMsg = prep['message']?.toString().trim() ?? '';
+      final msg = rawMsg.isNotEmpty
+          ? rawMsg
+          : 'Impossibile avviare OAuth Garmin (prepare fallito). Aggiorna garmin-sync-server e PUBLIC_SERVER_URL.';
+      _garminOAuthWebLog('connectViaGarminSsoWeb: prepare failed message=$msg');
+      return {'success': false, 'message': msg};
+    }
+
+    final state = prep['state']?.toString().trim() ?? '';
+    final originRaw = prep['public_origin']?.toString().trim() ?? '';
+    if (state.isEmpty || originRaw.isEmpty) {
+      return {
+        'success': false,
+        'message':
+            'Risposta prepare Garmin incompleta (state/public_origin). Aggiorna garmin-sync-server.',
+      };
+    }
+    final gxApi = normalizeGarminServerBaseUrl(originRaw);
     final authHeader = _jsonHeaders['Authorization']?.trim() ?? '';
 
-    // Service URL = garmin_oauth_return.html con uid+base_url in query string.
-    // Query string sopravvive al redirect CAS di Garmin (a differenza del fragment).
     final returnPage = garmin_web.garminWebOAuthReturnPageUri().replace(
-      queryParameters: <String, String>{'uid': uid, 'base_url': baseUrl},
+      queryParameters: <String, String>{'state': state, 'gx_api': gxApi},
     );
     final callbackUrl = returnPage.toString();
     final ssoUrl = buildGarminPopupSsoLoginUrl(callbackUrl);
 
-    // Auth bearer (se configurato lato server): in sessionStorage come fallback,
-    // utile solo nel contesto Safari/PWA in cui il redirect atterra nella stessa
-    // origin e tab; comunque la return page ha un fallback graceful se manca.
     if (authHeader.isNotEmpty) {
       garmin_web.garminWebSessionSet('garmin_oauth_auth', authHeader);
     } else {
       garmin_web.garminWebSessionRemove('garmin_oauth_auth');
     }
-    // sessionStorage di uid/base_url come backup nel caso in cui il redirect
-    // resti nella stessa tab (Safari non-PWA). Non garantito su iOS PWA → Safari.
-    garmin_web.garminWebSessionSet('garmin_oauth_uid', uid);
-    garmin_web.garminWebSessionSet('garmin_oauth_base_url', baseUrl);
+    garmin_web.garminWebSessionRemove('garmin_oauth_uid');
+    garmin_web.garminWebSessionRemove('garmin_oauth_base_url');
 
     _garminHttpVerbose('Web SSO full-page: navigazione → $ssoUrl');
     _garminOAuthWebLog('full-page callback(service)=$callbackUrl');
@@ -697,6 +726,15 @@ class GarminService {
     );
   }
 
+  /// Registra una sessione OAuth web (state server-side) prima del redirect Garmin CAS.
+  Future<Map<String, dynamic>> connect3PrepareWebSso({required String uid}) async {
+    return _connect2Post(
+      path: '/garmin/connect3/web-sso/prepare',
+      body: {'uid': uid},
+      logLabel: 'garmin/connect3/web-sso/prepare',
+    );
+  }
+
   Future<Map<String, dynamic>> _connect2Post({
     required String path,
     required Map<String, dynamic> body,
@@ -730,19 +768,27 @@ class GarminService {
       final data = _tryDecodeJsonObject(response.body);
       if (data != null) {
         final message = _serverDetailOrMessage(data);
-        final loginUrl =
+        final extractedLoginUrl =
             (data['loginUrl'] is String &&
                 (data['loginUrl'] as String).isNotEmpty)
             ? data['loginUrl'] as String
             : _extractGarminLoginUrl(message);
-        return {
+        final out = <String, dynamic>{
           'success': data['success'] == true,
           'message': message,
           if (data['mfaRequired'] == true) 'mfaRequired': true,
           if (data['loginSessionId'] is String)
             'loginSessionId': data['loginSessionId'],
-          'loginUrl': ?loginUrl,
+          if (extractedLoginUrl != null && extractedLoginUrl.isNotEmpty)
+            'loginUrl': extractedLoginUrl,
         };
+        final st = data['state'];
+        if (st is String && st.trim().isNotEmpty) out['state'] = st.trim();
+        final po = data['public_origin'];
+        if (po is String && po.trim().isNotEmpty) {
+          out['public_origin'] = normalizeGarminServerBaseUrl(po.trim());
+        }
+        return out;
       }
       return {
         'success': false,

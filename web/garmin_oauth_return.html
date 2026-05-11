@@ -67,19 +67,39 @@
       var fragmentParams = new URLSearchParams(hash);
       var ticket = params.get('ticket') || '';
       var error = params.get('error') || '';
-      // uid / base_url: preferenza query string (passati nel service URL di
-      // Garmin SSO da connectViaGarminSsoWeb), fallback fragment / sessionStorage.
-      // sessionStorage NON è disponibile se il redirect è atterrato in un contesto
-      // diverso dalla PWA che ha avviato l'OAuth (es. iOS PWA → Safari).
-      var uid = params.get('uid') || fragmentParams.get('uid') || sessionStorage.getItem('garmin_oauth_uid') || '';
-      var baseUrl = params.get('base_url') || fragmentParams.get('base_url') || sessionStorage.getItem('garmin_oauth_base_url') || '';
-      var authHeader = fragmentParams.get('auth') || sessionStorage.getItem('garmin_oauth_auth') || '';
+      var stateVal = (params.get('state') || '').trim();
+      var gxApi = (params.get('gx_api') || '').trim();
+      var uid =
+        params.get('uid') ||
+        fragmentParams.get('uid') ||
+        sessionStorage.getItem('garmin_oauth_uid') ||
+        '';
+      var baseUrl =
+        params.get('base_url') ||
+        fragmentParams.get('base_url') ||
+        sessionStorage.getItem('garmin_oauth_base_url') ||
+        '';
+      var authHeader =
+        fragmentParams.get('auth') ||
+        sessionStorage.getItem('garmin_oauth_auth') ||
+        '';
       var isIosPopup = fragmentParams.get('ios_popup') === '1';
       var appUrl = window.location.origin + '/';
-      var payload = JSON.stringify({ type: 'garmin_oauth_result', ticket: ticket, error: error });
+      var payload = JSON.stringify({
+        type: 'garmin_oauth_result',
+        ticket: ticket,
+        error: error,
+      });
       var titleEl = document.getElementById('title');
       var detailEl = document.getElementById('detail');
       var backLinkEl = document.getElementById('backLink');
+
+      function normalizeGxApi(raw) {
+        if (!raw || typeof raw !== 'string') return '';
+        var s = raw.trim();
+        while (s.endsWith('/')) s = s.slice(0, -1);
+        return s;
+      }
 
       function setStatus(title, detail, showBackLink) {
         titleEl.textContent = title;
@@ -129,13 +149,31 @@
         return fallback;
       }
 
-      async function exchangeTicketInReturnPage() {
+      function fetchFailureHint(err) {
+        var s = String(err || '');
+        if (
+          s.indexOf('Failed to fetch') >= 0 ||
+          s.indexOf('NetworkError') >= 0 ||
+          s.indexOf('Load failed') >= 0
+        ) {
+          return (
+            ' Connessione bloccata dal browser: da HTTPS serve mini-server raggiungibile via HTTPS ' +
+            '(mixed content). Verifica GARMIN_SERVER_URL_REMOTE e PUBLIC_SERVER_URL sul Pi.'
+          );
+        }
+        return '';
+      }
+
+      async function exchangeTicketWithState(state, gxOrigin) {
+        gxOrigin = normalizeGxApi(gxOrigin);
         console.log(
           '[GarminOAuthReturn]',
-          'exchangeTicketInReturnPage ticket=', ticket ? '(len ' + ticket.length + ')' : '(mancante)',
-          'error=', error || '(nessuno)',
-          'uid=', uid ? '(ok)' : '(mancante)',
-          'baseUrl=', baseUrl || '(mancante)'
+          'exchangeTicketWithState ticketLen=',
+          ticket ? ticket.length : 0,
+          'stateLen=',
+          state.length,
+          'gxOrigin=',
+          gxOrigin ? '(ok)' : '(mancante)'
         );
         if (error) {
           clearOAuthContext();
@@ -144,9 +182,8 @@
           closeOrReturn(900);
           return;
         }
-
         if (!ticket) {
-          console.warn('[GarminOAuthReturn]', 'Nessun ticket in query: Garmin non ha rediretto al service oppure param diverso');
+          console.warn('[GarminOAuthReturn]', 'Nessun ticket dopo redirect Garmin');
           clearOAuthContext();
           storeResult(false, 'Ticket Garmin mancante nella pagina di ritorno.');
           setStatus(
@@ -156,14 +193,12 @@
           );
           return;
         }
-
-        if (!uid || !baseUrl) {
-          console.error('[GarminOAuthReturn]', 'Contesto mancante: uid o baseUrl assenti (sessionStorage nel popup?)');
+        if (!state || gxOrigin.indexOf('https://') !== 0) {
           clearOAuthContext();
-          storeResult(false, 'Contesto OAuth Garmin mancante su iOS.');
+          storeResult(false, 'Contesto OAuth Garmin incompleto (state / gx_api).');
           setStatus(
-            'Contesto Garmin mancante',
-            'Non ho trovato le informazioni necessarie per salvare il token.',
+            'Configurazione OAuth incompleta',
+            'Aggiorna app e garmin-sync-server (PUBLIC_SERVER_URL).',
             true
           );
           return;
@@ -176,28 +211,135 @@
         );
 
         var headers = { 'Content-Type': 'application/json' };
-        if (authHeader) {
-          headers['Authorization'] = authHeader;
-        }
+        if (authHeader) headers['Authorization'] = authHeader;
 
-        var exchangeUrl = baseUrl + '/garmin/connect3/exchange-ticket';
+        var exchangeUrl =
+          gxOrigin + '/garmin/connect3/exchange-ticket-with-state';
         try {
-          console.log('[GarminOAuthReturn]', 'POST', exchangeUrl, 'ticket_or_url len=', window.location.href.length);
+          console.log('[GarminOAuthReturn]', 'POST', exchangeUrl);
           var response = await fetch(exchangeUrl, {
             method: 'POST',
             headers: headers,
+            mode: 'cors',
+            credentials: 'omit',
             body: JSON.stringify({
-              uid: uid,
-              ticket_or_url: window.location.href
-            })
+              state: state,
+              ticket_or_url: window.location.href,
+            }),
           });
-
           var raw = await response.text();
           console.log(
             '[GarminOAuthReturn]',
-            'exchange response status=', response.status,
-            'bodyLen=', raw ? raw.length : 0
+            'exchange-with-state status=',
+            response.status,
+            'bodyLen=',
+            raw ? raw.length : 0
           );
+          var data = {};
+          if (raw) {
+            try {
+              data = JSON.parse(raw);
+            } catch (e) {
+              console.warn('[GarminOAuthReturn]', 'risposta non JSON', e);
+            }
+          }
+          clearOAuthContext();
+          if (response.ok && data && data.success === true) {
+            storeResult(true, 'Garmin collegato.');
+            setStatus(
+              'Garmin collegato',
+              'Token salvato correttamente. Torno all app...',
+              false
+            );
+            closeOrReturn(250);
+            return;
+          }
+          var message = serverMessage(
+            data,
+            'Exchange Garmin non riuscito (HTTP ' + response.status + ').'
+          );
+          storeResult(false, message);
+          setStatus('Collegamento Garmin non riuscito', message, true);
+          closeOrReturn(1200);
+        } catch (e) {
+          console.error('[GarminOAuthReturn]', 'exchange-with-state errore', e);
+          clearOAuthContext();
+          var hint = fetchFailureHint(e);
+          storeResult(false, 'Errore di rete durante il salvataggio del token Garmin.' + hint);
+          setStatus(
+            'Errore di rete',
+            'Non sono riuscito a raggiungere il mini-server Garmin.' + hint,
+            true
+          );
+        }
+      }
+
+      async function exchangeTicketLegacyUidBaseUrl() {
+        console.log(
+          '[GarminOAuthReturn]',
+          'exchangeTicketLegacy ticket=',
+          ticket ? '(len ' + ticket.length + ')' : '(mancante)',
+          'uid=',
+          uid ? '(ok)' : '(mancante)',
+          'baseUrl=',
+          baseUrl || '(mancante)'
+        );
+        if (error) {
+          clearOAuthContext();
+          storeResult(false, 'Garmin: ' + error);
+          setStatus('Autenticazione Garmin non riuscita', error, true);
+          closeOrReturn(900);
+          return;
+        }
+
+        if (!ticket) {
+          console.warn('[GarminOAuthReturn]', 'Nessun ticket in query');
+          clearOAuthContext();
+          storeResult(false, 'Ticket Garmin mancante nella pagina di ritorno.');
+          setStatus(
+            'Ticket Garmin mancante',
+            'Non ho ricevuto il token da Garmin. Torna all app e riprova.',
+            true
+          );
+          return;
+        }
+
+        if (!uid || !baseUrl) {
+          console.error('[GarminOAuthReturn]', 'Legacy: uid o baseUrl assenti');
+          clearOAuthContext();
+          storeResult(false, 'Contesto OAuth Garmin mancante.');
+          setStatus(
+            'Contesto Garmin mancante',
+            'Non ho trovato uid/base URL nel redirect. Aggiorna l app.',
+            true
+          );
+          return;
+        }
+
+        setStatus(
+          'Salvataggio token Garmin...',
+          'Ho intercettato il ticket. Sto completando il collegamento.',
+          false
+        );
+
+        var headers = { 'Content-Type': 'application/json' };
+        if (authHeader) headers['Authorization'] = authHeader;
+
+        var exchangeUrl = normalizeGxApi(baseUrl) + '/garmin/connect3/exchange-ticket';
+        try {
+          console.log('[GarminOAuthReturn]', 'POST legacy', exchangeUrl);
+          var response = await fetch(exchangeUrl, {
+            method: 'POST',
+            headers: headers,
+            mode: 'cors',
+            credentials: 'omit',
+            body: JSON.stringify({
+              uid: uid,
+              ticket_or_url: window.location.href,
+            }),
+          });
+
+          var raw = await response.text();
           var data = {};
           if (raw) {
             try {
@@ -210,7 +352,6 @@
           clearOAuthContext();
 
           if (response.ok && data && data.success === true) {
-            console.log('[GarminOAuthReturn]', 'exchange OK');
             storeResult(true, 'Garmin collegato.');
             setStatus(
               'Garmin collegato',
@@ -225,39 +366,50 @@
             data,
             'Exchange ticket Garmin non riuscito (HTTP ' + response.status + ').'
           );
-          console.error('[GarminOAuthReturn]', 'exchange fallito', message);
           storeResult(false, message);
           setStatus('Collegamento Garmin non riuscito', message, true);
           closeOrReturn(1200);
         } catch (e) {
-          console.error('[GarminOAuthReturn]', 'fetch exchange errore', e);
+          console.error('[GarminOAuthReturn]', 'fetch legacy errore', e);
           clearOAuthContext();
-          storeResult(false, 'Errore di rete durante il salvataggio del token Garmin.');
+          var hint = fetchFailureHint(e);
+          storeResult(false, 'Errore di rete durante il salvataggio del token Garmin.' + hint);
           setStatus(
             'Errore di rete',
-            'Non sono riuscito a salvare il token Garmin. Torna all app e riprova.',
+            'Non sono riuscito a salvare il token Garmin.' + hint,
             true
           );
         }
       }
 
-      /* ── Rilevamento iOS (iPhone / iPad / iPod) ─────────────────────────────
-         Desktop / Android: popup + postMessage.
-         iOS PWA: popup script-opened -> exchange nella return page -> window.close().
-         Se iOS non permette la chiusura, fallback: la popup torna almeno all'URL app. */
-      var isIos = /iphone|ipad|ipod/i.test(navigator.userAgent.toLowerCase());
+      async function runInPageExchange() {
+        var gxNorm = normalizeGxApi(gxApi);
+        if (stateVal && gxNorm.indexOf('https://') === 0) {
+          console.log('[GarminOAuthReturn]', 'branch state+gx_api (OAuth web attuale)');
+          await exchangeTicketWithState(stateVal, gxNorm);
+          return;
+        }
+        console.log('[GarminOAuthReturn]', 'branch legacy uid+base_url');
+        await exchangeTicketLegacyUidBaseUrl();
+      }
+
+      /* Desktop/Android popup: postMessage all opener se disponibile */
+      var ua = navigator.userAgent.toLowerCase();
+      var isIos =
+        /iphone|ipad|ipod/.test(ua) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
       if (!isIos) {
-        /* ── Desktop / Android: popup + postMessage ─────────────────────────── */
         try {
           var opener = window.opener;
-          console.log('[GarminOAuthReturn]', 'desktop branch opener=', opener ? 'presente' : 'assente', 'closed=', opener ? opener.closed : 'n/a');
+          console.log(
+            '[GarminOAuthReturn]',
+            'desktop branch opener=',
+            opener ? 'presente' : 'assente'
+          );
           if (opener && !opener.closed) {
-            console.log('[GarminOAuthReturn]', 'postMessage verso opener origin=', window.location.origin);
             opener.postMessage(payload, window.location.origin);
             window.close();
-            /* Fallback: se window.close() non chiude (tab non aperto da script)
-               aspetta 800 ms e reindirizza full-page. */
             setTimeout(function () {
               if (!window.closed) {
                 window.location.replace(
@@ -270,9 +422,9 @@
         } catch (e) {}
       }
 
-      /* ── iOS o nessun opener: exchange diretto nella return page ──────────── */
-      console.log('[GarminOAuthReturn]', 'branch iOS o senza opener -> exchange in-page');
-      exchangeTicketInReturnPage();
+      runInPageExchange().catch(function (e) {
+        console.error('[GarminOAuthReturn]', 'runInPageExchange', e);
+      });
     })();
   </script>
 </body>
