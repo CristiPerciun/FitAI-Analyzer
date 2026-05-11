@@ -1,6 +1,14 @@
 import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 
+/// Stesso key su più [LaunchScreen] nel bootstrap (AuthGateway): lo [State]
+/// non viene distrutto quando cambia solo il parent (`Scaffold` / gate), così
+/// l’animazione intro non riparte da zero a ogni transizione → niente icona „due volte“.
+///
+/// Vale solo dove lo passi esplicitamente: `LaunchScreen(key: launchScreenPreserveStateKey)`.
+final GlobalKey<State<LaunchScreen>> launchScreenPreserveStateKey =
+    GlobalKey<State<LaunchScreen>>(debugLabel: 'launchPreserve');
+
 /// Schermata unica di avvio: logo, titolo e loader finché auth/profilo/dati Home non sono pronti.
 class LaunchScreen extends StatefulWidget {
   const LaunchScreen({super.key});
@@ -60,7 +68,8 @@ class _LaunchScreenState extends State<LaunchScreen>
     )..repeat();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _intro.forward();
+      if (!mounted || _intro.isCompleted) return;
+      _intro.forward();
     });
   }
 
@@ -125,6 +134,7 @@ class _LaunchScreenState extends State<LaunchScreen>
                           width: _logoSize,
                           height: _logoSize,
                           fit: BoxFit.cover,
+                          gaplessPlayback: true,
                           errorBuilder: (_, _, _) => Icon(
                             Icons.health_and_safety_outlined,
                             size: _logoSize * 0.55,

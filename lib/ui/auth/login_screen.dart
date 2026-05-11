@@ -54,7 +54,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final authState = ref.watch(authNotifierProvider);
 
     if (authState.isLoading) {
-      return const Scaffold(body: LaunchScreen());
+      return Scaffold(body: LaunchScreen(key: launchScreenPreserveStateKey));
     }
 
     return Scaffold(

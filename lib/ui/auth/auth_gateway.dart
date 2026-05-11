@@ -65,7 +65,7 @@ class _AuthGatewayState extends ConsumerState<AuthGateway> {
   Widget build(BuildContext context) {
     if (!_authReady) {
       _traceGatewayUi('Launch — attesa primo frame (Windows) o init');
-      return const Scaffold(body: LaunchScreen());
+      return Scaffold(body: LaunchScreen(key: launchScreenPreserveStateKey));
     }
     final authState = ref.watch(authNotifierProvider);
     final user = authState.user;
@@ -74,7 +74,7 @@ class _AuthGatewayState extends ConsumerState<AuthGateway> {
     // Evita "Login" per ~1s mentre Firebase ripristina la sessione (v. log Boot).
     if (user == null && authStream.isLoading) {
       _traceGatewayUi('Launch — attesa primo evento auth (ripristino sessione)');
-      return const Scaffold(body: LaunchScreen());
+      return Scaffold(body: LaunchScreen(key: launchScreenPreserveStateKey));
     }
 
     // Nessuna sessione Firebase: prima tentativo "Ricordami" (secure storage), sempre su LaunchScreen.
@@ -88,7 +88,7 @@ class _AuthGatewayState extends ConsumerState<AuthGateway> {
       } else {
         _traceGatewayUi('Launch — accesso salvato in corso');
       }
-      return const Scaffold(body: LaunchScreen());
+      return Scaffold(body: LaunchScreen(key: launchScreenPreserveStateKey));
     }
 
     if (user != null && user.isAnonymous) {
@@ -167,7 +167,7 @@ class _VerifyUserGateState extends ConsumerState<_VerifyUserGate> {
   Widget build(BuildContext context) {
     if (_isVerifying) {
       _traceVerifyUi('Launch — verifica token in corso');
-      return const Scaffold(body: LaunchScreen());
+      return Scaffold(body: LaunchScreen(key: launchScreenPreserveStateKey));
     }
     if (!_verified) {
       _traceVerifyUi('Login — sessione non valida');
@@ -218,12 +218,12 @@ class _LoggedInGateState extends ConsumerState<_LoggedInGate> {
 
     if (_profileKickoffPending) {
       _traceLoggedUi('Launch — attesa post-frame (prima di loadProfile, no flash Onboarding)');
-      return const Scaffold(body: LaunchScreen());
+      return Scaffold(body: LaunchScreen(key: launchScreenPreserveStateKey));
     }
 
     if (profileState.isLoading) {
       _traceLoggedUi('Launch — profilo utente in caricamento');
-      return const Scaffold(body: LaunchScreen());
+      return Scaffold(body: LaunchScreen(key: launchScreenPreserveStateKey));
     }
 
     if (uid == null || profileState.error != null) {
@@ -243,7 +243,7 @@ class _LoggedInGateState extends ConsumerState<_LoggedInGate> {
     // sostituire MainShell con Launch (altrimenti shell e Home si smontano di nuovo).
     if (homePkg.isLoading && !homePkg.hasValue) {
       _traceLoggedUi('Launch — precaricamento pacchetto Home (primo caricamento)');
-      return const Scaffold(body: LaunchScreen());
+      return Scaffold(body: LaunchScreen(key: launchScreenPreserveStateKey));
     }
 
     if (homePkg.hasError) {
