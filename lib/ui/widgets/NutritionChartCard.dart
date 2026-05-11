@@ -38,6 +38,22 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
   @override
   Widget build(BuildContext context) {
     final metrics = ref.watch(todayLongevityMetricsProvider);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    // Colori card adattativi al tema corrente.
+    final cardBg = isDark
+        ? const Color(0xFF1A1A1A)
+        : theme.colorScheme.surfaceContainerHighest;
+    final cardBorder = isDark
+        ? Colors.white.withValues(alpha: 0.05)
+        : theme.colorScheme.outline.withValues(alpha: 0.15);
+    final onCard = theme.colorScheme.onSurface;
+    final onCardMuted = theme.colorScheme.onSurfaceVariant;
+    final ringTrack = theme.colorScheme.onSurface.withValues(alpha: isDark ? 0.05 : 0.10);
+    final dotActive = theme.colorScheme.primary;
+    final dotInactive = theme.colorScheme.onSurface.withValues(alpha: isDark ? 0.24 : 0.20);
+
     // ESTRAZIONE DATI REALI DAL PROGETTO
     final calGoal = _getGoalByTitle("Calorie");
     final carbGoal = _getGoalByTitle("Carb");
@@ -55,9 +71,9 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
       margin: const EdgeInsets.symmetric(vertical: 10),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: cardBg,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: cardBorder),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -89,9 +105,23 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
                       foodCal,
                       exercise,
                       calGoal.color,
+                      onCard: onCard,
+                      onCardMuted: onCardMuted,
+                      ringTrack: ringTrack,
                     ),
-                    _buildMacrosPage(carbGoal, fatGoal, protGoal),
-                    _buildInsightsPage(),
+                    _buildMacrosPage(
+                      carbGoal,
+                      fatGoal,
+                      protGoal,
+                      onCard: onCard,
+                      onCardMuted: onCardMuted,
+                      ringTrack: ringTrack,
+                    ),
+                    _buildInsightsPage(
+                      theme: theme,
+                      onCard: onCard,
+                      onCardMuted: onCardMuted,
+                    ),
                   ],
                 ),
               ),
@@ -105,7 +135,7 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(
               3,
-              (index) => _buildDot(index == _currentPage),
+              (index) => _buildDot(index == _currentPage, dotActive, dotInactive),
             ),
           ),
         ],
@@ -113,14 +143,26 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
     );
   }
 
-  Widget _buildTodayPage(double rem, double target, double food, double ex, Color accentColor) {
+  Widget _buildTodayPage(
+    double rem,
+    double target,
+    double food,
+    double ex,
+    Color accentColor, {
+    required Color onCard,
+    required Color onCardMuted,
+    required Color ringTrack,
+  }) {
     final targetSafe = target <= 0 ? 1.0 : target;
     final foodProgress = (food / targetSafe).clamp(0.0, 1.0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text("Today", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-        Text("Remaining = Goal - Food + Exercise", style: TextStyle(color: Colors.grey[600], fontSize: 11)),
+        Text('Today', style: TextStyle(color: onCard, fontSize: 22, fontWeight: FontWeight.bold)),
+        Text(
+          'Remaining = Goal - Food + Exercise',
+          style: TextStyle(color: onCardMuted, fontSize: 11),
+        ),
         const SizedBox(height: 25),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -133,13 +175,16 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
                   size: 115,
                   strokeWidth: 9,
                   accentColor: accentColor,
-                  trackColor: Colors.white.withValues(alpha: 0.05),
+                  trackColor: ringTrack,
                 ),
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text("${rem.toInt()}", style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold)),
-                    Text("Remaining", style: TextStyle(color: Colors.grey[500], fontSize: 10)),
+                    Text(
+                      '${rem.toInt()}',
+                      style: TextStyle(color: onCard, fontSize: 26, fontWeight: FontWeight.bold),
+                    ),
+                    Text('Remaining', style: TextStyle(color: onCardMuted, fontSize: 10)),
                   ],
                 )
               ],
@@ -147,11 +192,11 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _legendItem(Icons.flag, "Base Goal", "${target.toInt()}", Colors.grey),
+                _legendItem(Icons.flag, 'Base Goal', '${target.toInt()}', onCardMuted, onCard),
                 const SizedBox(height: 12),
-                _legendItem(Icons.restaurant, "Food", "${food.toInt()}", Colors.blueAccent),
+                _legendItem(Icons.restaurant, 'Food', '${food.toInt()}', Colors.blueAccent, onCard),
                 const SizedBox(height: 12),
-                _legendItem(Icons.local_fire_department, "Exercise", "${ex.toInt()}", Colors.orangeAccent),
+                _legendItem(Icons.local_fire_department, 'Exercise', '${ex.toInt()}', Colors.orangeAccent, onCard),
               ],
             )
           ],
@@ -160,25 +205,38 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
     );
   }
 
-  Widget _buildMacrosPage(NutrientGoal carbs, NutrientGoal fats, NutrientGoal proteins) {
+  Widget _buildMacrosPage(
+    NutrientGoal carbs,
+    NutrientGoal fats,
+    NutrientGoal proteins, {
+    required Color onCard,
+    required Color onCardMuted,
+    required Color ringTrack,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text("Macros", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+        Text('Macros', style: TextStyle(color: onCard, fontSize: 22, fontWeight: FontWeight.bold)),
         const SizedBox(height: 30),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            _macroCircle(carbs, "Carbs"),
-            _macroCircle(fats, "Fats"),
-            _macroCircle(proteins, "Proteins"),
+            _macroCircle(carbs, 'Carbs', onCard: onCard, onCardMuted: onCardMuted, ringTrack: ringTrack),
+            _macroCircle(fats, 'Fats', onCard: onCard, onCardMuted: onCardMuted, ringTrack: ringTrack),
+            _macroCircle(proteins, 'Proteins', onCard: onCard, onCardMuted: onCardMuted, ringTrack: ringTrack),
           ],
         ),
       ],
     );
   }
 
-  Widget _macroCircle(NutrientGoal goal, String label) {
+  Widget _macroCircle(
+    NutrientGoal goal,
+    String label, {
+    required Color onCard,
+    required Color onCardMuted,
+    required Color ringTrack,
+  }) {
     final consumed = _valueForTodayInIsoWeek(goal.weeklyData);
     double target = goal.target;
     double left = target - consumed;
@@ -195,79 +253,93 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
               size: 65,
               strokeWidth: 6,
               accentColor: goal.color,
-              trackColor: Colors.white.withValues(alpha: 0.05),
+              trackColor: ringTrack,
             ),
-            Text("${consumed.toInt()}/${target.toInt()}", style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+            Text(
+              '${consumed.toInt()}/${target.toInt()}',
+              style: TextStyle(color: onCard, fontSize: 9, fontWeight: FontWeight.bold),
+            ),
           ],
         ),
         const SizedBox(height: 8),
-        Text(label, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500)),
-        Text("${left.toInt()}g left", style: TextStyle(color: Colors.grey[600], fontSize: 10)),
+        Text(label, style: TextStyle(color: onCard, fontSize: 12, fontWeight: FontWeight.w500)),
+        Text('${left.toInt()}g left', style: TextStyle(color: onCardMuted, fontSize: 10)),
       ],
     );
   }
 
-  Widget _legendItem(IconData icon, String label, String val, Color col) {
+  Widget _legendItem(IconData icon, String label, String val, Color iconColor, Color valColor) {
     return Row(
       children: [
-        Icon(icon, size: 16, color: col),
+        Icon(icon, size: 16, color: iconColor),
         const SizedBox(width: 8),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: TextStyle(color: Colors.grey[500], fontSize: 10)),
-            Text(val, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+            Text(label, style: TextStyle(color: iconColor.withValues(alpha: 0.8), fontSize: 10)),
+            Text(val, style: TextStyle(color: valColor, fontSize: 14, fontWeight: FontWeight.bold)),
           ],
         )
       ],
     );
   }
-Widget _buildInsightsPage() {
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      const Text("AI Insights", 
-        style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-      const SizedBox(height: 20),
-      Container(
-        padding: const EdgeInsets.all(15),
-        decoration: BoxDecoration(
-          color: Colors.blueAccent.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: Colors.blueAccent.withOpacity(0.3)),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.auto_awesome, color: Colors.blueAccent, size: 30),
-            const SizedBox(width: 15),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text("Analisi Odierna", 
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                  const SizedBox(height: 5),
-                  Text(
-                    "Stai andando forte! Hai assunto abbastanza proteine. Ricorda di bere più acqua per ottimizzare il metabolismo.",
-                    style: TextStyle(color: Colors.grey[400], fontSize: 12),
-                  ),
-                ],
+
+  Widget _buildInsightsPage({
+    required ThemeData theme,
+    required Color onCard,
+    required Color onCardMuted,
+  }) {
+    final cs = theme.colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('AI Insights', style: TextStyle(color: onCard, fontSize: 22, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 20),
+        Container(
+          padding: const EdgeInsets.all(15),
+          decoration: BoxDecoration(
+            color: cs.primaryContainer.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: cs.primary.withValues(alpha: 0.25)),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.auto_awesome, color: cs.primary, size: 30),
+              const SizedBox(width: 15),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Analisi Odierna',
+                      style: TextStyle(color: onCard, fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Stai andando forte! Hai assunto abbastanza proteine. Ricorda di bere più acqua per ottimizzare il metabolismo.',
+                      style: TextStyle(color: onCardMuted, fontSize: 12),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
-      const SizedBox(height: 15),
-      // Un piccolo indicatore extra (es: Acqua o Fibre)
-      _legendItem(Icons.water_drop, "Hydration", "1.5 / 2.5 L", Colors.cyan),
-    ],
-  );
-}
-  Widget _buildDot(bool active) {
+        const SizedBox(height: 15),
+        _legendItem(Icons.water_drop, 'Hydration', '1.5 / 2.5 L', Colors.cyan, onCard),
+      ],
+    );
+  }
+
+  Widget _buildDot(bool active, Color activeColor, Color inactiveColor) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 4),
-      height: 8, width: 8,
-      decoration: BoxDecoration(color: active ? Colors.blue : Colors.white24, shape: BoxShape.circle),
+      height: 8,
+      width: 8,
+      decoration: BoxDecoration(
+        color: active ? activeColor : inactiveColor,
+        shape: BoxShape.circle,
+      ),
     );
   }
 }

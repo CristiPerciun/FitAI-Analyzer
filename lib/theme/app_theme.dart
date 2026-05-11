@@ -6,14 +6,20 @@ abstract final class AppColors {
   AppColors._();
 
   static const Color backgroundLight = Color(0xFFF5F3F0);
+  /// Usato solo nel tema scuro per card/superfici elevate.
   static const Color cardGrey = Color(0xFF999DA0);
+  /// Superficie container per il tema chiaro: warm light-gray, distinguibile dallo sfondo.
+  static const Color surfaceContainerLight = Color(0xFFE8E5E1);
   static const Color primary = Color(0xFF2C2C2C);
   static const Color stravaOrange = Color(0xFFFC4C02);
   static const Color garminBlue = Color(0xFF007CC2);
   static const Color activityBurnBar = Color(0xFFDAAE63);
   static const Color error = Color(0xFFB00020);
   static const Color textDark = Color(0xFF2C2C2C);
+  /// Testo muted per il tema scuro.
   static const Color textMuted = Color(0xFF6B7280);
+  /// Testo muted per il tema chiaro: più scuro per superare il rapporto 4.5:1 su superfici chiare.
+  static const Color textMutedLight = Color(0xFF4B5563);
   static const Color hintMedium = Color(0xFF9CA3AF);
   static const Color greenSave = Color.fromARGB(255, 24, 254, 44);
   static const Color white = Colors.white;
@@ -27,8 +33,10 @@ final _lightColorScheme = ColorScheme.light(
   onPrimary: AppColors.white,
   surface: AppColors.backgroundLight,
   onSurface: AppColors.textDark,
-  surfaceContainerHighest: AppColors.cardGrey,
-  onSurfaceVariant: AppColors.textMuted,
+  // Superfici container chiare: warm gray distinguibile dallo sfondo senza essere troppo dark.
+  surfaceContainerHighest: AppColors.surfaceContainerLight,
+  // Testo secondario più scuro per garantire contrasto ≥ 4.5:1 su superfici chiare.
+  onSurfaceVariant: AppColors.textMutedLight,
   error: AppColors.error,
   onError: AppColors.white,
 );
@@ -46,7 +54,8 @@ final appLightTheme = ThemeData(
     scrolledUnderElevation: 0,
   ),
   cardTheme: CardThemeData(
-    color: AppColors.cardGrey,
+    // Card bianche in modalità chiara: testo scuro su bianco → contrasto ottimale.
+    color: AppColors.white,
     elevation: 0,
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
   ),

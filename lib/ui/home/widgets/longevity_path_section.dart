@@ -1,5 +1,4 @@
 import 'package:fitai_analyzer/models/baseline_profile_model.dart';
-import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
@@ -226,9 +225,7 @@ class LongevityPathSection extends StatelessWidget {
                         ? 'Tocca per generare il piano di longevità'
                         : 'Sincronizza Strava e registra pasti per vedere il trend annuale.',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: onGenerateTap != null
-                          ? AppColors.hintMedium
-                          : theme.colorScheme.onSurfaceVariant,
+                      color: theme.colorScheme.onSurfaceVariant,
                       fontStyle: onGenerateTap != null ? FontStyle.italic : null,
                     ),
                     textAlign: TextAlign.center,

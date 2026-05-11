@@ -108,7 +108,7 @@ class GarminDailyStats extends ConsumerWidget {
               Text(
                 'Trascina per aggiornare i dati Garmin',
                 style: theme.textTheme.labelSmall?.copyWith(
-                  color: AppColors.hintMedium,
+                  color: theme.colorScheme.onSurfaceVariant,
                   fontStyle: FontStyle.italic,
                 ),
               ),

@@ -230,7 +230,11 @@ class ImpostazioniScreen extends ConsumerWidget {
                       subtitle: snap.hasGeminiKey
                           ? 'Sincronizzata tra i dispositivi (stesso account)'
                           : 'Chiave non impostata · attiva per inserirla',
-                      value: snap.backend == AiBackend.gemini,
+                      // Switch ON solo se backend selezionato E chiave presente:
+                      // così un utente senza chiave vede lo switch OFF e il tap
+                      // apre il dialog per inserirla (turnOn=true), anche se il
+                      // backend di default è Gemini.
+                      value: snap.backend == AiBackend.gemini && snap.hasGeminiKey,
                       activeColor: _iosSwitchOn,
                       onChanged: (v) => unawaited(
                         _onGeminiBackendSwitch(context, ref, v),
@@ -247,7 +251,7 @@ class ImpostazioniScreen extends ConsumerWidget {
                       subtitle: snap.hasDeepSeekKey
                           ? 'Sincronizzata tra i dispositivi (stesso account)'
                           : 'Chiave non impostata · attiva per inserirla',
-                      value: snap.backend == AiBackend.deepseek,
+                      value: snap.backend == AiBackend.deepseek && snap.hasDeepSeekKey,
                       activeColor: _iosSwitchOn,
                       onChanged: (v) => unawaited(
                         _onDeepSeekBackendSwitch(context, ref, v),
@@ -264,7 +268,7 @@ class ImpostazioniScreen extends ConsumerWidget {
                       subtitle: snap.hasOpenRouterKey
                           ? 'Sincronizzata tra i dispositivi (stesso account)'
                           : 'Chiave non impostata · attiva per inserirla',
-                      value: snap.backend == AiBackend.openrouter,
+                      value: snap.backend == AiBackend.openrouter && snap.hasOpenRouterKey,
                       activeColor: _iosSwitchOn,
                       onChanged: (v) => unawaited(
                         _onOpenRouterBackendSwitch(context, ref, v),

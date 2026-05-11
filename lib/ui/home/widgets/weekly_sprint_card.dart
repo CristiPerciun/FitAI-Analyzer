@@ -1,4 +1,3 @@
-import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 
 /// Card orizzontale "Weekly Sprint": obiettivo settimanale (7 giorni) generato dall'AI.
@@ -99,7 +98,7 @@ class WeeklySprintCard extends StatelessWidget {
                       Text(
                         'Tocca per generare obiettivo settimanale',
                         style: theme.textTheme.labelSmall?.copyWith(
-                          color: AppColors.hintMedium,
+                          color: theme.colorScheme.onSurfaceVariant,
                           fontStyle: FontStyle.italic,
                         ),
                       ),
