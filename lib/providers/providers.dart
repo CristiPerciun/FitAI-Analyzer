@@ -219,7 +219,7 @@ Future<void> loadLongevityPlan(WidgetRef ref) async {
   final engine = ref.read(longevityEngineProvider);
   final ctx = await engine.buildUnifiedDailyContext(uid);
   final prompt = engine.buildUnifiedPromptFromContext(ctx);
-  await savePromptToFile(prompt);
+  await savePromptToFile(prompt, promptName: 'main');
 
   final response =
       await ref.read(unifiedAiServiceProvider).generateFromPrompt(prompt);

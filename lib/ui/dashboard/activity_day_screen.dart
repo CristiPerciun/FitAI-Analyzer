@@ -1,7 +1,6 @@
 import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
 import 'package:fitai_analyzer/ui/dashboard/activity_detail_screen.dart';
 import 'package:fitai_analyzer/ui/widgets/compact_activity_card.dart';
-import 'package:fitai_analyzer/utils/date_utils.dart' show formatDateForDisplay;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

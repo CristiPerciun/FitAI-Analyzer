@@ -50,6 +50,10 @@ app.*.map.json
 **/*firebase-adminsdk*.json
 **/*-firebase-adminsdk-*.json
 
+# Prompt debug dumps (generati a runtime da prompt_storage_io.dart, solo desktop/dev)
+lib/utils/prompt/*.txt
+lib/utils/prompt/**/*.txt
+
 # Android Studio will place build artifacts here
 /android/app/debug
 /android/app/profile

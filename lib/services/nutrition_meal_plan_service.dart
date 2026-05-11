@@ -3,6 +3,7 @@ import 'package:fitai_analyzer/models/nutrition_meal_plan_ai.dart';
 import 'package:fitai_analyzer/models/user_profile.dart';
 import 'package:fitai_analyzer/services/ai_prompt_service.dart';
 import 'package:fitai_analyzer/services/unified_ai_service.dart';
+import 'package:fitai_analyzer/utils/prompt_storage.dart';
 
 /// Piano alimentare AI (pagina Alimentazione): generazione JSON + salvataggio Firestore.
 /// Path: `users/{uid}/ai_current/meal`.
@@ -47,6 +48,11 @@ class NutritionMealPlanService {
     }
 
     final prompt = _aiPrompt.buildNutritionMealPlanPrompt(profile);
+    await savePromptToFile(
+      prompt,
+      promptName: 'alimentazione',
+      folderName: 'alimentazione',
+    );
     final map = await _ai.generateNutritionMealPlanJson(prompt);
     if (map.containsKey('error')) {
       throw StateError(map['error']?.toString() ?? 'Risposta IA non valida');

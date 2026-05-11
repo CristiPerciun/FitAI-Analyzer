@@ -23,6 +23,7 @@ class PillarGrid extends StatelessWidget {
     this.isLoading = false,
     this.pillarContents,
     this.onGenerateTap,
+    this.onPillarContentTap,
   });
 
   /// True se Gemini sta caricando gli obiettivi.
@@ -31,8 +32,13 @@ class PillarGrid extends StatelessWidget {
   /// Contenuti per ogni pilastro (da risposta Gemini). Null = vuoto.
   final Map<LongevityPillar, String>? pillarContents;
 
-  /// Callback quando l'utente chiede di generare obiettivi.
+  /// Callback quando l'utente chiede di generare obiettivi (card vuota).
   final VoidCallback? onGenerateTap;
+
+  /// Callback per-pilastro quando la card è già piena di contenuto.
+  /// Es: Alimentazione → apre "Aggiungi pasto" (foto/galleria/manuale).
+  /// Se un pilastro non è in mappa, il tap a contenuto popolato è inattivo.
+  final Map<LongevityPillar, VoidCallback>? onPillarContentTap;
 
   @override
   Widget build(BuildContext context) {
@@ -49,6 +55,7 @@ class PillarGrid extends StatelessWidget {
           content: pillarContents?[p],
           isLoading: isLoading,
           onTap: onGenerateTap,
+          onContentTap: onPillarContentTap?[p],
         );
       }).toList(),
     );
@@ -61,12 +68,14 @@ class _PillarCard extends StatelessWidget {
     this.content,
     required this.isLoading,
     this.onTap,
+    this.onContentTap,
   });
 
   final LongevityPillar pillar;
   final String? content;
   final bool isLoading;
   final VoidCallback? onTap;
+  final VoidCallback? onContentTap;
 
   @override
   Widget build(BuildContext context) {
@@ -77,7 +86,7 @@ class _PillarCard extends StatelessWidget {
       color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
-        onTap: hasContent ? null : onTap,
+        onTap: hasContent ? onContentTap : onTap,
         borderRadius: BorderRadius.circular(16),
         child: Container(
           padding: const EdgeInsets.all(16),
@@ -124,6 +133,15 @@ class _PillarCard extends StatelessWidget {
                       ],
                     ),
                   ),
+                  if (hasContent && onContentTap != null)
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: pillar.color.withValues(alpha: 0.18),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.add, color: pillar.color, size: 18),
+                    ),
                 ],
               ),
               const Spacer(),

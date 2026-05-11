@@ -1,9 +1,6 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitai_analyzer/models/meal_model.dart';
-//import 'package:fitai_analyzer/models/user_profile.dart' show NutritionGoal;
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/nutrition_chart_provider.dart';
@@ -12,6 +9,7 @@ import 'package:fitai_analyzer/providers/pending_meal_analysis_provider.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/providers/user_profile_notifier.dart';
 import 'package:fitai_analyzer/ui/alimentazione/alimentazione_objectives_tab.dart';
+import 'package:fitai_analyzer/ui/alimentazione/meal_capture_flow.dart';
 import 'package:fitai_analyzer/ui/onboarding/nutrition_goal_screen.dart';
 import 'package:fitai_analyzer/utils/date_utils.dart' show dateFilterAll, formatDateForDisplay;
 import 'package:fitai_analyzer/services/nutrition_service.dart';
@@ -19,23 +17,10 @@ import 'package:fitai_analyzer/theme/app_card_theme.dart';
 import 'package:fitai_analyzer/ui/widgets/date_filter_chips.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/utils/meal_constants.dart';
-import 'package:fitai_analyzer/ui/widgets/ai_backend_key_gate.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:fitai_analyzer/ui/widgets/NutritionChartCard.dart';
 import 'package:fitai_analyzer/ui/widgets/weekly_macro_stacked_bar_chart.dart';
-import 'package:fitai_analyzer/ui/alimentazione/nutrition_meal_analysis_screen.dart';
-//import 'package:fitai_analyzer/utils/activity_utils.dart';
-import 'package:fitai_analyzer/ui/home/widgets/manual_entry_dialog.dart';
-
-/// Dopo salvataggio/eliminazione pasto: aggiorna subito grafici e pacchetto Home (calorie oggi).
-void _refreshNutritionAfterMealChange(WidgetRef ref) {
-  ref.invalidate(nutritionChartDataProvider);
-  ref.invalidate(nutritionDiaryWeekChartDataProvider);
-  ref.invalidate(longevityHomePackageProvider);
-}
 
 double? _macroNum(Map<String, dynamic>? m, List<String> keys) {
   if (m == null) return null;
@@ -48,49 +33,6 @@ double? _macroNum(Map<String, dynamic>? m, List<String> keys) {
     if (parsed != null) return parsed;
   }
   return null;
-}
-
-String _mimeTypeForPickedImage(XFile file) {
-  final m = file.mimeType;
-  if (m != null && m.isNotEmpty) return m;
-  final p = file.path.toLowerCase();
-  if (p.endsWith('.png')) return 'image/png';
-  return 'image/jpeg';
-}
-
-String get _galleryButtonLabel {
-  if (kIsWeb) return 'Scegli dall\'archivio';
-  switch (defaultTargetPlatform) {
-    case TargetPlatform.iOS:
-      return 'Scegli dalle foto';
-    case TargetPlatform.android:
-      return 'Scegli dalla galleria';
-    case TargetPlatform.windows:
-    case TargetPlatform.macOS:
-    case TargetPlatform.linux:
-      return 'Scegli dal PC';
-    default:
-      return 'Scegli immagine';
-  }
-}
-
-/// Fotocamera: app nativa iOS/Android. Su web/PWA `image_picker` usa
-/// `<input capture>`: il browser chiede l’accesso alla fotocamera dove supportato
-/// (tipicamente Chrome/Safari su telefono; su desktop spesso resta il selettore file).
-bool get _isCameraSupported =>
-    kIsWeb ||
-    defaultTargetPlatform == TargetPlatform.iOS ||
-    defaultTargetPlatform == TargetPlatform.android;
-
-String _nutritionAdviceString(dynamic v) {
-  if (v == null) return '';
-  if (v is String) return v;
-  return v.toString();
-}
-
-List<dynamic> _nutritionFoodsList(dynamic v) {
-  if (v is List) return List<dynamic>.from(v);
-  return [];
 }
 
 class AlimentazioneScreen extends ConsumerStatefulWidget {
@@ -116,155 +58,6 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
     super.dispose();
   }
 
-  Future<String?> _ensureNutritionUid(BuildContext context, WidgetRef ref) async {
-    var uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) {
-      try {
-        await ref.read(authNotifierProvider.notifier).signInAnonymously();
-        uid = FirebaseAuth.instance.currentUser?.uid;
-      } catch (e) {
-        if (context.mounted) {
-          showErrorDialog(context, 'Impossibile autenticarsi. Riprova. ($e)');
-        }
-        return null;
-      }
-      if (uid == null && context.mounted) {
-        showErrorDialog(context, 'Utente non autenticato.');
-        return null;
-      }
-    }
-    return uid;
-  }
-
-  Future<void> _onAnalisiPiatto(
-    BuildContext context,
-    WidgetRef ref, {
-    String? mealLabel,
-    String? dateStr,
-    ImageSource imageSource = ImageSource.camera,
-  }) async {
-    // ⚠️ Web/PWA (iOS Chrome/Safari, Android Chrome): i browser (e WebKit/Blink
-    // su mobile) bloccano silenziosamente <input>.click() se viene chiamato dopo
-    // qualsiasi `await`. Il file-picker / camera input DEVE essere avviato come
-    // PRIMA operazione sincronà, prima di qualsiasi gap asincrono, altrimenti il
-    // "user gesture token" scade e il tasto non fa nulla senza errori visibili.
-    // Soluzione: avviamo `pickerFuture` qui (nessun await prima), poi facciamo la
-    // validazione mentre l'utente sceglie/scatta la foto, poi aspettiamo il risultato.
-    final source = _isCameraSupported ? imageSource : ImageSource.gallery;
-    final pickerFuture = ImagePicker().pickImage(source: source, imageQuality: 85);
-
-    final uid = await _ensureNutritionUid(context, ref);
-    if (uid == null) return;
-
-    if (!await ensureActiveAiBackendHasKey(context, ref)) {
-      return;
-    }
-    if (!context.mounted) return;
-
-    final xFile = await pickerFuture;
-    if (xFile == null || !context.mounted) return;
-
-    final bytes = await xFile.readAsBytes();
-    final mimeType = _mimeTypeForPickedImage(xFile);
-
-    if (!context.mounted) return;
-
-    final dateKey = dateStr ?? DateTime.now().toIso8601String().split('T')[0];
-    final typeLabel = (mealLabel != null && mealLabel.isNotEmpty)
-        ? MealConstants.toMealType(mealLabel)
-        : 'Pranzo';
-    final labelKey = (mealLabel != null && mealLabel.isNotEmpty) ? mealLabel : 'pranzo';
-
-    final pendingId = ref.read(pendingMealAnalysisProvider.notifier).startAnalysis(
-          dateStr: dateKey,
-          mealTypeLabel: typeLabel,
-          mealLabelKey: labelKey,
-          imageBytes: Uint8List.fromList(bytes),
-          mimeType: mimeType,
-        );
-
-    try {
-      final ai = ref.read(unifiedAiServiceProvider);
-      final result = await ai.analyzeNutritionFromImage(
-        Uint8List.fromList(bytes),
-        mimeType: mimeType,
-      );
-
-      if (result.containsKey('error')) {
-        ref.read(pendingMealAnalysisProvider.notifier).finishWithError(
-              pendingId,
-              result['error']?.toString() ?? 'Errore',
-            );
-        return;
-      }
-
-      await ref.read(nutritionServiceProvider).saveToFirestore(
-            uid,
-            result,
-            mealLabel: mealLabel,
-            date: dateStr != null ? DateTime.parse(dateStr) : null,
-            mealPhotoBytes: Uint8List.fromList(bytes),
-          );
-
-      ref.read(pendingMealAnalysisProvider.notifier).remove(pendingId);
-      _refreshNutritionAfterMealChange(ref);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Analisi salvata')),
-        );
-      }
-    } catch (e) {
-      ref.read(pendingMealAnalysisProvider.notifier).finishWithError(pendingId, e.toString());
-    }
-  }
-
-  Future<void> _retryPendingAnalysis(
-    BuildContext context,
-    WidgetRef ref,
-    PendingMealAnalysis pending,
-  ) async {
-    final uid = await _ensureNutritionUid(context, ref);
-    if (uid == null || !context.mounted) return;
-    if (!await ensureActiveAiBackendHasKey(context, ref)) return;
-    if (!context.mounted) return;
-
-    ref.read(pendingMealAnalysisProvider.notifier).setRetrying(pending.id);
-
-    try {
-      final ai = ref.read(unifiedAiServiceProvider);
-      final result = await ai.analyzeNutritionFromImage(
-        pending.imageBytes,
-        mimeType: pending.mimeType,
-      );
-
-      if (result.containsKey('error')) {
-        ref.read(pendingMealAnalysisProvider.notifier).finishWithError(
-              pending.id,
-              result['error']?.toString() ?? 'Errore',
-            );
-        return;
-      }
-
-      await ref.read(nutritionServiceProvider).saveToFirestore(
-            uid,
-            result,
-            mealLabel: pending.mealLabelKey,
-            date: DateTime.parse(pending.dateStr),
-            mealPhotoBytes: pending.imageBytes,
-          );
-
-      ref.read(pendingMealAnalysisProvider.notifier).remove(pending.id);
-      _refreshNutritionAfterMealChange(ref);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Analisi salvata')),
-        );
-      }
-    } catch (e) {
-      ref.read(pendingMealAnalysisProvider.notifier).finishWithError(pending.id, e.toString());
-    }
-  }
-
   Map<String, dynamic> _mealModelToGeminiEditMap(MealModel meal) {
     final portion = meal.portionGrams;
     return {
@@ -288,7 +81,7 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
     MealModel meal,
     String dateStr,
   ) async {
-    final uid = await _ensureNutritionUid(context, ref);
+    final uid = await ensureNutritionUid(context, ref);
     if (uid == null || !context.mounted) return;
 
     var effectiveMealId = meal.firestoreDocumentId?.trim();
@@ -311,185 +104,30 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
 
     final mealDocId = effectiveMealId;
 
-    final advice = _nutritionAdviceString(meal.rawAiAnalysis);
-    final foods = meal.ingredients.map((name) => <String, dynamic>{'name': name}).toList();
+    if (!context.mounted) return;
 
     ref.read(nutritionMealEditProvider.notifier).beginFrom(_mealModelToGeminiEditMap(meal));
 
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (ctx) => NutritionMealAnalysisScreen(
-          advice: advice,
-          foods: foods,
-          onSave: (modifiedNut) async {
-            try {
-              await ref.read(nutritionServiceProvider).saveToFirestore(
-                    uid,
-                    modifiedNut,
-                    mealLabel: meal.mealType.isNotEmpty ? meal.mealType.toLowerCase() : null,
-                    date: DateTime.parse(dateStr),
-                    existingMealId: mealDocId,
-                  );
-              _refreshNutritionAfterMealChange(ref);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Pasto aggiornato')),
-                );
-              }
-            } catch (e) {
-              if (context.mounted) showErrorDialog(context, e.toString());
-            }
-          },
-          onDelete: () async {
-            try {
-              await ref.read(nutritionServiceProvider).deleteMeal(uid, dateStr, mealDocId);
-              _refreshNutritionAfterMealChange(ref);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Pasto eliminato')),
-                );
-              }
-            } catch (e) {
-              if (context.mounted) showErrorDialog(context, e.toString());
-            }
-          },
-        ),
-      ),
-    ).then((_) {
-      ref.read(nutritionMealEditProvider.notifier).clear();
-    });
-  }
-
-  void _showNutritionDialog(
-    BuildContext context,
-    WidgetRef ref,
-    Map<String, dynamic> nut, {
-    required String uid,
-    String? mealLabel,
-    String? dateStr,
-  }) {
-    final advice = _nutritionAdviceString(nut['advice']);
-    final foods = _nutritionFoodsList(nut['foods']);
-
-    ref.read(nutritionMealEditProvider.notifier).beginFrom(nut);
-
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (ctx) => NutritionMealAnalysisScreen(
-          advice: advice,
-          foods: foods,
-          onSave: (modifiedNut) async {
-            try {
-              await ref.read(nutritionServiceProvider).saveToFirestore(
-                    uid,
-                    modifiedNut,
-                    mealLabel: mealLabel,
-                    date: dateStr != null ? DateTime.parse(dateStr) : null,
-                  );
-              _refreshNutritionAfterMealChange(ref);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Analisi salvata')),
-                );
-              }
-            } catch (e) {
-              if (context.mounted) showErrorDialog(context, e.toString());
-            }
-          },
-        ),
-      ),
-    ).then((_) {
-      ref.read(nutritionMealEditProvider.notifier).clear();
-    });
-  }
-
-  void _showAggiungiPastoSheet(
-    BuildContext context,
-    WidgetRef ref,
-    String mealLabel,
-    String dateStr,
-  ) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) {
-        final theme = Theme.of(ctx);
-        final colorScheme = theme.colorScheme;
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Aggiungi $mealLabel',
-                  style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 24),
-                if (_isCameraSupported)
-                  FilledButton.icon(
-                    onPressed: () {
-                      // Su web/PWA: avvia _onAnalisiPiatto (che chiama pickImage
-                      // come prima op.) PRIMA di Navigator.pop(), così il browser
-                      // riceve input.click() ancora dentro il gesto utente.
-                      _onAnalisiPiatto(context, ref, mealLabel: mealLabel, dateStr: dateStr, imageSource: ImageSource.camera);
-                      Navigator.of(ctx).pop();
-                    },
-                    icon: const Icon(Icons.camera_alt),
-                    label: const Text('Scatta foto'),
-                  ),
-                if (_isCameraSupported) const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: () {
-                    _onAnalisiPiatto(context, ref, mealLabel: mealLabel, dateStr: dateStr, imageSource: ImageSource.gallery);
-                    Navigator.of(ctx).pop();
-                  },
-                  icon: const Icon(Icons.photo_library),
-                  label: Text(_galleryButtonLabel),
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    Navigator.of(ctx).pop();
-
-                    if (!context.mounted) return;
-                    if (!await ensureActiveAiBackendHasKey(context, ref)) {
-                      return;
-                    }
-                    if (!context.mounted) return;
-
-                    final uid = await _ensureNutritionUid(context, ref);
-                    if (uid == null || !context.mounted) return;
-
-                    final result = await showDialog<Map<String, dynamic>>(
-                      context: context,
-                      builder: (_) => const ManualEntryDialog(),
-                    );
-
-                    if (result == null || !context.mounted) return;
-                    if (result.containsKey('error')) {
-                      showErrorDialog(context, result['error']?.toString() ?? 'Errore');
-                      return;
-                    }
-
-                    _showNutritionDialog(
-                      context,
-                      ref,
-                      result,
-                      uid: uid,
-                      mealLabel: mealLabel,
-                      dateStr: dateStr,
-                    );
-                  },
-                  icon: Icon(Icons.edit, color: colorScheme.primary),
-                  label: Text('Manualmente', style: TextStyle(color: colorScheme.primary)),
-                ),
-              ],
-            ),
-          ),
-        );
+    showNutritionMealEditScreen(
+      context,
+      ref,
+      _mealModelToGeminiEditMap(meal),
+      uid: uid,
+      mealLabel: meal.mealType.isNotEmpty ? meal.mealType.toLowerCase() : null,
+      dateStr: dateStr,
+      existingMealId: mealDocId,
+      onDelete: () async {
+        try {
+          await ref.read(nutritionServiceProvider).deleteMeal(uid, dateStr, mealDocId);
+          refreshNutritionAfterMealChange(ref);
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Pasto eliminato')),
+            );
+          }
+        } catch (e) {
+          if (context.mounted) showErrorDialog(context, e.toString());
+        }
       },
     );
   }
@@ -748,45 +386,20 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
         _MealCardForDate(
           dateStr: dateStr,
           label: MealConstants.mealTypes[i],
-          onTap: () => _showAggiungiPastoSheet(context, ref, MealConstants.mealLabels[i], dateStr),
+          onTap: () => showAddMealSheet(
+            context,
+            ref,
+            mealLabel: MealConstants.mealLabels[i],
+            dateStr: dateStr,
+          ),
           onMealEdit: (meal) => _showMealEditFromModel(context, ref, meal, dateStr),
-          onRetryPending: (p) => _retryPendingAnalysis(context, ref, p),
+          onRetryPending: (p) => retryPendingMealAnalysis(context, ref, p),
           onDismissPending: (id) => ref.read(pendingMealAnalysisProvider.notifier).remove(id),
         ),
         _MealAiObjectivesCard(pastoKey: MealConstants.mealLabels[i]),
       ],
     ];
   }
-
-/*  // ====================== SEZIONE GRAFICO IN BASSO ======================
-  Widget _buildWeeklyChartsSection(
-    BuildContext context,
-    WidgetRef ref,
-    NutritionGoal? nutritionGoal,
-    Map<String, dynamic>? aiMacroGiornalieri,
-  ) {
-    final cs = Theme.of(context).colorScheme;
-    final profile = ref.watch(userProfileNotifierProvider).profile;
-    final chartAsync = ref.watch(nutritionChartDataProvider);
-
-    final kcalTarget = _macroNum(aiMacroGiornalieri, ['kcal', 'calories']) ??
-        nutritionGoal?.calorieTarget ??
-        2000.0;
-
-    final proteinTarget = _macroNum(aiMacroGiornalieri, ['proteine_g', 'protein_g']) ??
-        (nutritionGoal != null && profile != null && profile.weightKg > 0
-            ? nutritionGoal.proteinGPerKg * profile.weightKg
-            : 150.0);
-
-    final fatTarget = _macroNum(aiMacroGiornalieri, ['grassi_g', 'fat_g']) ??
-        (nutritionGoal != null &&
-                nutritionGoal.calorieTarget > 0 &&
-                nutritionGoal.fatPercentage > 0
-            ? (nutritionGoal.calorieTarget * nutritionGoal.fatPercentage / 100) / 9.0
-            : 70.0);
-
-  }*/
-
 }
 
 // ====================== WIDGETS AUSILIARI ======================
@@ -1150,10 +763,13 @@ class _MealAiObjectivesCard extends ConsumerWidget {
     final plan = ref.watch(nutritionMealPlanAiStreamProvider).valueOrNull;
     if (plan == null || !plan.hasAnyObjective) return const SizedBox.shrink();
 
+    // Per gli "spuntini" non c'è un blocco di obiettivi dedicato nel piano AI
+    // (il piano copre colazione/pranzo/cena). Manteniamo la card vuota.
     final List<String> items = switch (pastoKey) {
       'colazione' => plan.obiettiviColazione,
+      'pranzo' => plan.obiettiviPranzo,
       'cena' => plan.obiettiviCena,
-      _ => plan.obiettiviPranzo,
+      _ => const <String>[],
     };
 
     if (items.isEmpty) return const SizedBox.shrink();

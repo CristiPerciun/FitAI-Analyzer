@@ -4,6 +4,7 @@ import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart'
     show GarminSyncState, garminSyncNotifierProvider;
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/utils/boot_log.dart';
+import 'package:fitai_analyzer/ui/alimentazione/meal_capture_flow.dart';
 import 'package:fitai_analyzer/ui/home/widgets/garmin_daily_stats.dart';
 import 'package:fitai_analyzer/ui/home/widgets/longevity_header.dart';
 import 'package:fitai_analyzer/ui/home/widgets/longevity_path_section.dart';
@@ -135,9 +136,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             const SizedBox(height: 12),
                             PillarGrid(
                               isLoading: isLoadingPlan,
-                              pillarContents:
-                                  dailyGoals.isEmpty ? null : dailyGoals,
+                              pillarContents: dailyGoals.isEmpty ? null : dailyGoals,
                               onGenerateTap: () => _onGeneratePlan(context),
+                              onPillarContentTap: {
+                                LongevityPillar.alimentazione: () =>
+                                    _onAddMealFromHome(context),
+                              },
                             ),
                             const SizedBox(height: 16),
                             const GarminDailyStats(),
@@ -243,6 +247,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Future<void> _onRefreshGarmin(String? uid) async {
     await refreshGarminSync(ref, uid, trigger: 'home_pull_to_refresh');
+  }
+
+  /// Tap su tile Alimentazione quando il piano AI è già stato generato.
+  /// Apre lo stesso bottom sheet "Aggiungi pasto" della pagina Alimentazione,
+  /// scegliendo il pasto in base all'ora (colazione/pranzo/cena/spuntino).
+  Future<void> _onAddMealFromHome(BuildContext context) async {
+    await showAddMealSheet(context, ref);
   }
 }
 

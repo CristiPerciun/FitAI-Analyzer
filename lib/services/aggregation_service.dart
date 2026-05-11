@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,25 +6,13 @@ import '../models/daily_log_model.dart';
 import '../models/rolling_10days_model.dart';
 import '../models/user_profile.dart';
 import 'nutrition_calculator_service.dart';
-import 'gemini_api_key_service.dart';
-import 'gemini_service.dart';
 
 final aggregationServiceProvider = Provider<AggregationService>((ref) {
-  return AggregationService(
-    geminiService: ref.read(geminiServiceProvider),
-    geminiApiKeyService: ref.read(geminiApiKeyServiceProvider),
-  );
+  return AggregationService();
 });
 
 class AggregationService {
-  AggregationService({
-    required GeminiService geminiService,
-    required GeminiApiKeyService geminiApiKeyService,
-  })  : _geminiService = geminiService,
-        _geminiApiKeyService = geminiApiKeyService;
-
-  final GeminiService _geminiService;
-  final GeminiApiKeyService _geminiApiKeyService;
+  AggregationService();
 
   static const int _baselineUpdateIntervalDays = 10;
 

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/meal_model.dart';
 import '../models/user_profile.dart';
 import '../utils/platform_firestore_fix.dart';
+import '../utils/prompt_storage.dart';
 import 'ai_prompt_service.dart';
 import 'unified_ai_service.dart';
 
@@ -335,6 +336,11 @@ class NutritionService {
     }
 
     final prompt = _aiPromptService.buildNutritionPrompt(profile);
+    await savePromptToFile(
+      prompt,
+      promptName: 'alimentazione',
+      folderName: 'alimentazione',
+    );
     final plan = await _unifiedAi.generateFromPrompt(prompt);
 
     final now = DateTime.now();
