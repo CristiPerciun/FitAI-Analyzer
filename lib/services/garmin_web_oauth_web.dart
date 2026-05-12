@@ -138,6 +138,55 @@ Uri garminWebOAuthPreparePageUri() {
   );
 }
 
+/// Base dell'app Flutter web (directory URL corrente, slash finale) — `app_return_base` per POST prepare.
+Uri garminWebAppReturnBaseUri() {
+  final loc = Uri.parse(html.window.location.href);
+  final base = loc.replace(query: '', fragment: '');
+  final dir = base.resolve('.');
+  var p = dir.path;
+  if (!p.endsWith('/')) p = '$p/';
+  return Uri(
+    scheme: dir.scheme,
+    host: dir.host,
+    port: dir.hasPort ? dir.port : null,
+    path: p,
+  );
+}
+
+/// Dopo redirect dal Pi (`?garmin_oauth=ok` o `garmin_oauth_err=`) pulisce la barra indirizzi.
+Map<String, String>? garminWebConsumeServerCasOAuthQuery() {
+  try {
+    final loc = Uri.parse(html.window.location.href);
+    final ok = loc.queryParameters['garmin_oauth'];
+    final err = loc.queryParameters['garmin_oauth_err'];
+    if (ok != 'ok' && (err == null || err.isEmpty)) {
+      return null;
+    }
+    final newParams = Map<String, String>.from(loc.queryParameters)
+      ..remove('garmin_oauth')
+      ..remove('garmin_oauth_err');
+    final clean = Uri(
+      scheme: loc.scheme,
+      host: loc.host,
+      port: loc.hasPort ? loc.port : null,
+      path: loc.path,
+      queryParameters: newParams.isEmpty ? null : newParams,
+      fragment: loc.fragment.isEmpty ? null : loc.fragment,
+    );
+    garminWebReplaceCleanUrl(clean);
+    if (ok == 'ok') {
+      return <String, String>{'status': 'ok'};
+    }
+    return {
+      'status': 'error',
+      'message': err ?? 'Errore Garmin OAuth.',
+    };
+  } on Object catch (e) {
+    _oauthWebLog('garminWebConsumeServerCasOAuthQuery: $e');
+    return null;
+  }
+}
+
 /// Navigazione **sincrona** (stesso turno del gesture) verso la pagina ponte; lì si fa `prepare` e poi il redirect a Garmin.
 ///
 /// `uid` e `apiBase` viaggiano anche come query string così la pagina ponte funziona

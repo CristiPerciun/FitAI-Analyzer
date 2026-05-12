@@ -109,9 +109,8 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
   /// Riprende l'OAuth Garmin su web.
   ///
-  /// Flusso principale: full-page verso Garmin → rientro con `?ticket=` → exchange.
-  /// Resta il ramo `consumeGarminWebOAuthSessionResult` per eventuali redirect legacy
-  /// verso `garmin_oauth_return.html`.
+  /// Ordine: 1) query dopo CAS sul Pi (`?garmin_oauth=` / `garmin_oauth_err`); 2) esito in
+  /// `sessionStorage` da `garmin_oauth_return.html`; 3) `?ticket=` sulla stessa origine (legacy).
   ///
   /// Safety net: se per qualsiasi motivo l'URL contiene ancora `?ticket=`,
   /// tentiamo comunque lo scambio e poi puliamo l'URL.
@@ -134,6 +133,35 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
     final garmin = ref.read(garminServiceProvider);
     try {
+      final casQuery = garmin.consumeGarminWebServerCasRedirectQuery();
+      if (casQuery != null) {
+        if (casQuery['success'] == true) {
+          ref.invalidate(garminConnectedProvider);
+          ref.invalidate(activitiesStreamProvider);
+          ref.invalidate(dailyHealthStreamProvider);
+          unawaited(
+            ref
+                .read(garminSyncNotifierProvider.notifier)
+                .syncNow(uid: uid, trigger: 'settings_garmin_connect_web'),
+          );
+          scaffoldMessengerKey.currentState?.showSnackBar(
+            const SnackBar(content: Text('✅ Garmin collegato.')),
+          );
+        } else {
+          final msg = casQuery['message']?.toString().trim() ?? '';
+          if (msg.isNotEmpty) {
+            scaffoldMessengerKey.currentState?.showSnackBar(
+              SnackBar(
+                content: Text('Garmin: $msg'),
+                backgroundColor: AppColors.error,
+                duration: const Duration(seconds: 10),
+              ),
+            );
+          }
+        }
+        return;
+      }
+
       final sessionResult = garmin.consumeGarminWebOAuthSessionResult();
       if (sessionResult != null) {
         if (sessionResult['success'] == true) {

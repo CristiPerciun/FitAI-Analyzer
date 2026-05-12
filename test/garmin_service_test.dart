@@ -186,6 +186,10 @@ void main() {
           expect(request.url.path, '/garmin/connect3/web-sso/prepare');
           final body = jsonDecode(request.body) as Map<String, dynamic>;
           expect(body['uid'], 'u5');
+          expect(
+            body['app_return_base'],
+            'https://app.example/test-base/',
+          );
           return http.Response(
             jsonEncode({
               'success': true,
@@ -200,7 +204,10 @@ void main() {
           httpClient: mock,
           serverUrlOverride: 'https://example.test',
         );
-        final result = await svc.connect3PrepareWebSso(uid: 'u5');
+        final result = await svc.connect3PrepareWebSso(
+          uid: 'u5',
+          appReturnBase: 'https://app.example/test-base/',
+        );
 
         expect(result['success'], true);
         expect(result['state'], 'tok-prepare-test');

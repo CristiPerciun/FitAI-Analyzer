@@ -59,8 +59,7 @@
         return s;
       }
 
-      /** URL corto per `service=` Garmin: solo `state`. `gx_api` è in sessionStorage (stessa origine dopo il ritorno da Garmin). */
-      function garminOAuthReturnPageHref(state) {
+      function appOAuthReturnBaseHref() {
         var u = new URL(window.location.href);
         u.hash = '';
         u.search = '';
@@ -68,8 +67,17 @@
         var i = path.lastIndexOf('/');
         var dir = i >= 0 ? path.substring(0, i + 1) : '/';
         if (!dir.endsWith('/')) dir += '/';
-        var base = u.origin + dir + 'garmin_oauth_return.html';
-        return base + '?state=' + encodeURIComponent(state);
+        return u.origin + dir;
+      }
+
+      /** URL assoluto sul Pi per `service=` CAS: Garmin reindirizza qui con ?ticket= dopo il login. */
+      function garminCasServiceCallbackHref(apiRoot, state) {
+        var root = normalizeGxApi(apiRoot);
+        return (
+          root +
+          '/garmin/connect3/web-sso/cas-callback?state=' +
+          encodeURIComponent(state)
+        );
       }
 
       function buildGarminSsoSigninUrl(returnPageUrl) {
@@ -139,7 +147,10 @@
         headers: headers,
         mode: 'cors',
         credentials: 'omit',
-        body: JSON.stringify({ uid: uid }),
+        body: JSON.stringify({
+          uid: uid,
+          app_return_base: appOAuthReturnBaseHref(),
+        }),
       })
         .then(function (response) {
           return response.text().then(function (text) {
@@ -186,7 +197,7 @@
           sessionStorage.setItem('garmin_oauth_sso_state', state);
           sessionStorage.setItem('garmin_oauth_sso_gx_api', gxApi);
 
-          var returnHref = garminOAuthReturnPageHref(state);
+          var returnHref = garminCasServiceCallbackHref(gxApi, state);
           var ssoUrl = buildGarminSsoSigninUrl(returnHref);
           console.log('[GarminOAuthPrepare]', 'redirect Garmin');
           var isIOS =

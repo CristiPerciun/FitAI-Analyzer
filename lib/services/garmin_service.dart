@@ -386,6 +386,23 @@ class GarminService {
   static const String _garminWebSessionResultKey = 'garmin_oauth_result';
   static const String _garminWebSessionMessageKey = 'garmin_oauth_message';
 
+  /// Dopo il CAS sul Pi: redirect a `/?garmin_oauth=ok` o `garmin_oauth_err=…`.
+  Map<String, dynamic>? consumeGarminWebServerCasRedirectQuery() {
+    if (!kIsWeb) return null;
+    final raw = garmin_web.garminWebConsumeServerCasOAuthQuery();
+    if (raw == null) return null;
+    if (raw['status'] == 'ok') {
+      return {'success': true, 'message': ''};
+    }
+    if (raw['status'] == 'error') {
+      return {
+        'success': false,
+        'message': raw['message'] ?? 'Errore Garmin OAuth.',
+      };
+    }
+    return null;
+  }
+
   Map<String, dynamic>? consumeGarminWebOAuthSessionResult() {
     if (!kIsWeb) return null;
     final status = garmin_web.garminWebSessionGet(_garminWebSessionResultKey);
@@ -558,13 +575,17 @@ class GarminService {
 
   /// Navigazione **full-page** verso Garmin CAS dopo `connect3PrepareWebSso` (state server-side).
   ///
-  /// Ritorna `web_redirect: true` prima di `location.assign`: l'esito è su
-  /// `garmin_oauth_return.html` → `sessionStorage` e/o URL su `/` con ticket (gestito da
-  /// [completeGarminWebOAuthIfPresent] / [consumeGarminWebOAuthSessionResult]).
+  /// Ritorna `web_redirect: true` prima di `location.assign`: dopo il login Garmin il browser
+  /// passa dal Pi (`/garmin/connect3/web-sso/cas-callback`) e torna all'app con `?garmin_oauth=…`.
+  /// Restano [completeGarminWebOAuthIfPresent] (ticket su stesso host) e
+  /// [consumeGarminWebOAuthSessionResult] (`garmin_oauth_return.html` legacy).
   Future<Map<String, dynamic>> _garminSsoWebFullPageWithPrepare({
     required String uid,
   }) async {
-    final prep = await connect3PrepareWebSso(uid: uid);
+    final prep = await connect3PrepareWebSso(
+      uid: uid,
+      appReturnBase: garmin_web.garminWebAppReturnBaseUri().toString(),
+    );
     if (prep['success'] != true) {
       final rawMsg = prep['message']?.toString().trim() ?? '';
       final msg = rawMsg.isNotEmpty
@@ -589,10 +610,9 @@ class GarminService {
     garmin_web.garminWebSessionSet('garmin_oauth_sso_state', state);
     garmin_web.garminWebSessionSet('garmin_oauth_sso_gx_api', gxApi);
 
-    final returnPage = garmin_web.garminWebOAuthReturnPageUri().replace(
-      queryParameters: <String, String>{'state': state},
-    );
-    final callbackUrl = returnPage.toString();
+    final callbackUrl = Uri.parse(
+      '$gxApi/garmin/connect3/web-sso/cas-callback?state=${Uri.encodeQueryComponent(state)}',
+    ).toString();
     final ssoUrl = buildGarminPopupSsoLoginUrl(callbackUrl);
 
     if (authHeader.isNotEmpty) {
@@ -759,10 +779,18 @@ class GarminService {
   }
 
   /// Registra una sessione OAuth web (state server-side) prima del redirect Garmin CAS.
-  Future<Map<String, dynamic>> connect3PrepareWebSso({required String uid}) async {
+  Future<Map<String, dynamic>> connect3PrepareWebSso({
+    required String uid,
+    String? appReturnBase,
+  }) async {
+    final body = <String, dynamic>{'uid': uid};
+    final arb = appReturnBase?.trim();
+    if (arb != null && arb.isNotEmpty) {
+      body['app_return_base'] = arb;
+    }
     return _connect2Post(
       path: '/garmin/connect3/web-sso/prepare',
-      body: {'uid': uid},
+      body: body,
       logLabel: 'garmin/connect3/web-sso/prepare',
     );
   }

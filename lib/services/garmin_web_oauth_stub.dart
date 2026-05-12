@@ -11,6 +11,12 @@ Uri garminWebOAuthStartPageUri() =>
 Uri garminWebOAuthPreparePageUri() =>
     Uri.parse('https://localhost/garmin_oauth_prepare.html');
 
+/// Directory dell'app web (origine + path base), slash finale — inviata al server come `app_return_base`.
+Uri garminWebAppReturnBaseUri() => Uri.parse('https://localhost/');
+
+/// Dopo redirect dal Pi: `?garmin_oauth=ok` o `garmin_oauth_err=` → consuma e pulisce la query.
+Map<String, String>? garminWebConsumeServerCasOAuthQuery() => null;
+
 void garminWebNavigateToGarminOAuthPreparePage({
   String? uid,
   String? apiBase,
