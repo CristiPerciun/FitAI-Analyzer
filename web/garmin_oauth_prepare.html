@@ -4,6 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Garmin OAuth</title>
+  <script>
+    (function () {
+      var d = 'https://myrasberrysyncgar.duckdns.org';
+      if (
+        typeof window.__FITAI_GARMIN_PUBLIC_API__ !== 'string' ||
+        !window.__FITAI_GARMIN_PUBLIC_API__.trim()
+      ) {
+        window.__FITAI_GARMIN_PUBLIC_API__ = d;
+      }
+    })();
+  </script>
   <style>
     body {
       font-family: system-ui, sans-serif;
@@ -159,7 +170,19 @@
           var returnHref = garminOAuthReturnPageHref(state);
           var ssoUrl = buildGarminSsoSigninUrl(returnHref);
           console.log('[GarminOAuthPrepare]', 'redirect Garmin');
-          window.location.replace(ssoUrl);
+          var isIOS =
+            /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
+            (navigator.platform === 'MacIntel' &&
+              (navigator.maxTouchPoints || 0) > 1);
+          if (isIOS) {
+            try {
+              window.top.location.replace(ssoUrl);
+            } catch (eTop) {
+              window.location.replace(ssoUrl);
+            }
+          } else {
+            window.location.replace(ssoUrl);
+          }
         })
         .catch(function (e) {
           console.error('[GarminOAuthPrepare]', e);

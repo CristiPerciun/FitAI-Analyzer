@@ -4,6 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Garmin Auth</title>
+  <script>
+    (function () {
+      var d = 'https://myrasberrysyncgar.duckdns.org';
+      if (
+        typeof window.__FITAI_GARMIN_PUBLIC_API__ !== 'string' ||
+        !window.__FITAI_GARMIN_PUBLIC_API__.trim()
+      ) {
+        window.__FITAI_GARMIN_PUBLIC_API__ = d;
+      }
+    })();
+  </script>
   <style>
     body {
       font-family: system-ui, sans-serif;
@@ -55,7 +66,13 @@
     <a id="backLink" class="button" href="/" style="display:none;">Torna all'app</a>
   </div>
   <script>
-    (function () {
+    (async function () {
+      function trimGxBase(raw) {
+        if (!raw || typeof raw !== 'string') return '';
+        var s = raw.trim();
+        while (s.endsWith('/')) s = s.slice(0, -1);
+        return s;
+      }
       console.log(
         '[GarminOAuthReturn]',
         'entry href=', window.location.href,
@@ -76,6 +93,34 @@
         var sSt = sessionStorage.getItem('garmin_oauth_sso_state') || '';
         if (sSt === stateVal) {
           gxApi = (sessionStorage.getItem('garmin_oauth_sso_gx_api') || '').trim();
+        }
+      }
+      var fitaiProbe = (
+        typeof window.__FITAI_GARMIN_PUBLIC_API__ === 'string'
+          ? window.__FITAI_GARMIN_PUBLIC_API__
+          : ''
+      ).trim();
+      if (
+        !gxApi &&
+        stateVal &&
+        fitaiProbe &&
+        (fitaiProbe.indexOf('http://') === 0 || fitaiProbe.indexOf('https://') === 0)
+      ) {
+        try {
+          var ctxB = trimGxBase(fitaiProbe);
+          var ctxU =
+            ctxB +
+            '/garmin/connect3/web-sso/pending-context?state=' +
+            encodeURIComponent(stateVal);
+          console.log('[GarminOAuthReturn]', 'GET', ctxU);
+          var ctxR = await fetch(ctxU, { mode: 'cors', credentials: 'omit' });
+          if (ctxR.ok) {
+            var ctxJ = await ctxR.json();
+            gxApi = (ctxJ.public_origin || '').trim();
+            console.log('[GarminOAuthReturn]', 'public_origin da server', gxApi ? '(ok)' : '(vuoto)');
+          }
+        } catch (eCtx) {
+          console.warn('[GarminOAuthReturn]', 'pending-context fallito', eCtx);
         }
       }
       var uid =
@@ -459,7 +504,9 @@
       runInPageExchange().catch(function (e) {
         console.error('[GarminOAuthReturn]', 'runInPageExchange', e);
       });
-    })();
+    })().catch(function (e) {
+      console.error('[GarminOAuthReturn]', e);
+    });
   </script>
 </body>
 </html>
