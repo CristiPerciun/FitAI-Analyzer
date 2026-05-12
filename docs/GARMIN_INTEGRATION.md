@@ -40,7 +40,7 @@ Se proteggi l’API con un reverse proxy (Bearer), imposta opzionalmente **`GARM
 
 ---
 
-## 1. Architettura
+## 1. Architettura 
 
 ```
 [Garmin Connect] → [garmin-sync-server (es. Raspberry Pi)] → [Firestore]
@@ -58,7 +58,7 @@ Il login Garmin (CAS) invia il browser all’URL passato come `service=`. In pra
 Il flusso supportato dall’app usa quindi un **`service` sul garmin-sync-server** (HTTPS pubblico, stesso host delle API):  
 `GET /garmin/connect3/web-sso/cas-callback?state=…` → scambio token lato server → **302** verso la web app con `?garmin_oauth=ok` o `garmin_oauth_err=…`.
 
-Sul Pi, in aggiunta a `PUBLIC_SERVER_URL`, configura **`FITAI_WEB_APP_ORIGIN_ALLOWLIST`** con il prefisso della tua app (es. `https://tuo-id.github.io/FitAI-Analyzer/`) e, se serve, **`FITAI_WEB_APP_DEFAULT_RETURN_BASE`**. Vedi `.env.example` nel repo garmin-sync-server. Dopo il deploy del server, **verifica** aprendo un signin Garmin con `service=https://<tuo-server>/garmin/connect3/web-sso/cas-callback?state=test`: se dopo il login il browser **non** esce da `sso.garmin.com`, anche il dominio del Pi potrebbe non essere accettato da Garmin e occorrerà un’altra strategia (es. programma sviluppatori Garmin).
+Sul Pi, in aggiunta a `PUBLIC_SERVER_URL`, configura **`FITAI_WEB_APP_ORIGIN_ALLOWLIST`** con il prefisso della tua app (es. `https://cristiperciun.github.io/FitAI-Analyzer/`). Opzionali: **`FITAI_WEB_APP_DEFAULT_RETURN_BASE`**, **`FITAI_WEB_APP_PUBLIC_EXAMPLE`** (testo guida negli errori). Vedi `.env.example` nel repo garmin-sync-server. Dopo il deploy del server, **verifica** aprendo un signin Garmin con `service=https://<tuo-server>/garmin/connect3/web-sso/cas-callback?state=test`: se dopo il login il browser **non** esce da `sso.garmin.com`, anche il dominio del Pi potrebbe non essere accettato da Garmin e occorrerà un’altra strategia (es. programma sviluppatori Garmin).
 
 ---
 

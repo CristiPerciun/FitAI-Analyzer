@@ -14,6 +14,15 @@
         window.__FITAI_GARMIN_PUBLIC_API__ = d;
       }
     })();
+    (function () {
+      var app = 'https://cristiperciun.github.io/FitAI-Analyzer/';
+      if (
+        typeof window.__FITAI_WEB_APP_PUBLIC_BASE__ !== 'string' ||
+        !window.__FITAI_WEB_APP_PUBLIC_BASE__.trim()
+      ) {
+        window.__FITAI_WEB_APP_PUBLIC_BASE__ = app;
+      }
+    })();
   </script>
   <style>
     body {
