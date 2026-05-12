@@ -29,9 +29,20 @@ bool _navigatorStandaloneApplePwa() {
 /// non raggiungono la PWA e l'utente resta sulla pagina Garmin. Il flusso **full-page** con
 /// `prepare` (`state` + `gx_api` nel callback) evita l'opener e completa l'exchange in
 /// `garmin_oauth_return.html` nella stessa scheda.
+///
+/// Anche su **localhost** (Flutter `web-server` / PWA in dev) la popup è spesso inaffidabile;
+/// lo stesso vale per alcune **PWA desktop** se `display-mode: standalone` non viene rilevato.
 bool garminWebPreferGarminSsoFullPage() {
   try {
     if (_navigatorStandaloneApplePwa()) return true;
+
+    final host = html.window.location.hostname?.toLowerCase() ?? '';
+    if (host == 'localhost' ||
+        host == '127.0.0.1' ||
+        host == '[::1]' ||
+        host.endsWith('.localhost')) {
+      return true;
+    }
 
     final ua = html.window.navigator.userAgent.toLowerCase();
     if (ua.contains('iphone') || ua.contains('ipod') || ua.contains('ipad')) {
@@ -45,6 +56,11 @@ bool garminWebPreferGarminSsoFullPage() {
     }
 
     if (html.window.matchMedia('(display-mode: standalone)').matches) {
+      return true;
+    }
+    if (html.window
+        .matchMedia('(display-mode: window-controls-overlay)')
+        .matches) {
       return true;
     }
   } on Object {

@@ -536,7 +536,7 @@ class GarminService {
 
     if (garmin_web.garminWebPreferGarminSsoFullPage()) {
       _garminOAuthWebLog(
-        'Web SSO: piattaforma iOS / PWA standalone → navigazione full-page + prepare (no popup)',
+        'Web SSO: full-page + prepare (no popup): iOS / PWA / localhost / loopback',
       );
       return _garminSsoWebFullPageWithPrepare(uid: uid);
     }
