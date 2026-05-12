@@ -500,17 +500,41 @@ class GarminService {
         .toString();
   }
 
+  /// Scrive in `sessionStorage` i dati per `web/garmin_oauth_prepare.html`.
+  ///
+  /// Il dialog Garmin chiama questo all’apertura (con `await`): al tap la navigazione
+  /// verso la pagina ponte è **sincrona** e rispetta le gesture policy di WebKit (iOS).
+  Future<void> primeGarminWebSsoBridge({required String uid}) async {
+    if (!kIsWeb) return;
+    final u = uid.trim();
+    if (u.isEmpty) {
+      throw ArgumentError.value(uid, 'uid', 'uid non valido');
+    }
+    final base = await _resolveBaseUrl();
+    final normalized = normalizeGarminServerBaseUrl(base);
+    garmin_web.garminWebSessionSet('garmin_oauth_bridge_uid', u);
+    garmin_web.garminWebSessionSet('garmin_oauth_bridge_api_base', normalized);
+    final auth = _jsonHeaders['Authorization']?.trim();
+    if (auth != null && auth.isNotEmpty) {
+      garmin_web.garminWebSessionSet('garmin_oauth_bridge_authorization', auth);
+    } else {
+      garmin_web.garminWebSessionRemove('garmin_oauth_bridge_authorization');
+    }
+    _garminOAuthWebLog(
+      'primeGarminWebSsoBridge: api_base=$normalized bearer=${auth != null && auth.isNotEmpty}',
+    );
+  }
+
   /// SSO Garmin su web (tutte le desktop/mobile, inclusa iOS Safari / PWA).
   ///
   /// **Desktop / Android — popup**: seconda finestra verso Garmin; l'opener riceve
   /// `ticket_or_url` (postMessage / `localStorage`) e chiama `connect3ExchangeTicket`.
   ///
-  /// **iPhone, iPad, PWA standalone — full-page**: niente popup (WebKit partiziona lo
-  /// storage fra PWA e scheda «popup»; spesso il redirect CAS torna ma l'app non riceve
-  /// il ticket). Si usa `prepare` + `state`/`gx_api` sul callback: `garmin_oauth_return.html`
-  /// scambia il ticket nella **stessa** scheda e poi torna a `/`.
-  ///
-  /// **Fallback**: se la popup non restituisce un esito, stesso flusso full-page + `prepare`.
+  /// **iPhone, iPad, PWA standalone, localhost — full-page**: niente popup; il dialog
+  /// chiama [primeGarminWebSsoBridge] all’apertura e al tap naviga in modo **sincrono** a
+  /// `garmin_oauth_prepare.html` (evita WebKit che perde il gesture dopo `await prepare`).
+  /// **Fallback** qui: se la popup non restituisce un esito, navigazione full-page + `prepare`
+  /// da Dart ([_garminSsoWebFullPageWithPrepare]).
   ///
   /// Nota: da hosting **HTTPS** non è possibile chiamare un mini-server solo **HTTP**
   /// (mixed content): `_resolveBaseUrl()` forza l'URL remoto HTTPS se necessario.
@@ -532,13 +556,6 @@ class GarminService {
         'success': false,
         'message': 'URL corrente non disponibile (Garmin web).',
       };
-    }
-
-    if (garmin_web.garminWebPreferGarminSsoFullPage()) {
-      _garminOAuthWebLog(
-        'Web SSO: full-page + prepare (no popup): iOS / PWA / localhost / loopback',
-      );
-      return _garminSsoWebFullPageWithPrepare(uid: uid);
     }
 
     final simpleCallbackUrl = garmin_web.garminWebOAuthReturnPageUri().toString();

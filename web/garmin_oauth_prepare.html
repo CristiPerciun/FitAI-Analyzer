@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Garmin OAuth</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #f5f5f5;
+      color: #1f2937;
+    }
+    .card {
+      width: min(92vw, 420px);
+      text-align: center;
+      padding: 24px 20px;
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.10);
+    }
+    h1 {
+      font-size: 1.1rem;
+      margin: 0 0 8px;
+    }
+    p {
+      color: #4b5563;
+      margin: 0;
+      line-height: 1.45;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Preparazione login Garmin</h1>
+    <p id="detail">Connessione al server…</p>
+  </div>
+  <script>
+    (function () {
+      function normalizeGxApi(raw) {
+        if (!raw || typeof raw !== 'string') return '';
+        var s = raw.trim();
+        while (s.endsWith('/')) s = s.slice(0, -1);
+        return s;
+      }
+
+      function garminOAuthReturnPageHref(state, gxApi) {
+        var u = new URL(window.location.href);
+        u.hash = '';
+        u.search = '';
+        var path = u.pathname;
+        var i = path.lastIndexOf('/');
+        var dir = i >= 0 ? path.substring(0, i + 1) : '/';
+        if (!dir.endsWith('/')) dir += '/';
+        var base = u.origin + dir + 'garmin_oauth_return.html';
+        return (
+          base +
+          '?state=' +
+          encodeURIComponent(state) +
+          '&gx_api=' +
+          encodeURIComponent(gxApi)
+        );
+      }
+
+      function buildGarminSsoSigninUrl(returnPageUrl) {
+        var u = new URL('https://sso.garmin.com/sso/signin');
+        u.searchParams.set('service', returnPageUrl);
+        u.searchParams.set('source', returnPageUrl);
+        u.searchParams.set('redirectAfterAccountLoginUrl', returnPageUrl);
+        u.searchParams.set('redirectAfterAccountCreationUrl', returnPageUrl);
+        return u.toString();
+      }
+
+      function serverMessage(data, fallback) {
+        if (!data || typeof data !== 'object') return fallback;
+        var d = data.detail;
+        if (typeof d === 'string' && d) return d;
+        if (Array.isArray(d) && d.length) return d.map(String).join('; ');
+        var m = data.message;
+        if (typeof m === 'string' && m) return m;
+        return fallback;
+      }
+
+      var detailEl = document.getElementById('detail');
+      var uid = sessionStorage.getItem('garmin_oauth_bridge_uid') || '';
+      var apiBase = normalizeGxApi(
+        sessionStorage.getItem('garmin_oauth_bridge_api_base') || ''
+      );
+      var auth = sessionStorage.getItem('garmin_oauth_bridge_authorization') || '';
+
+      function fail(msg) {
+        detailEl.textContent = msg;
+      }
+
+      if (!uid || !apiBase || apiBase.indexOf('http') !== 0) {
+        fail(
+          'Sessione OAuth non pronta. Chiudi questa scheda e riprova da Impostazioni nell’app.'
+        );
+        return;
+      }
+
+      var prepareUrl = apiBase + '/garmin/connect3/web-sso/prepare';
+      var headers = { 'Content-Type': 'application/json' };
+      if (auth) headers['Authorization'] = auth;
+
+      console.log('[GarminOAuthPrepare]', 'POST', prepareUrl);
+
+      fetch(prepareUrl, {
+        method: 'POST',
+        headers: headers,
+        mode: 'cors',
+        credentials: 'omit',
+        body: JSON.stringify({ uid: uid }),
+      })
+        .then(function (response) {
+          return response.text().then(function (text) {
+            return { response: response, text: text || '' };
+          });
+        })
+        .then(function (x) {
+          var data = {};
+          if (x.text) {
+            try {
+              data = JSON.parse(x.text);
+            } catch (e) {
+              console.warn('[GarminOAuthPrepare]', 'JSON non valido', e);
+            }
+          }
+          if (!x.response.ok || !data.success) {
+            fail(
+              serverMessage(
+                data,
+                'Prepare fallito (HTTP ' + x.response.status + ').'
+              )
+            );
+            return;
+          }
+          var state = String(data.state || '').trim();
+          var gxApi = normalizeGxApi(data.public_origin || '');
+          if (
+            !state ||
+            (gxApi.indexOf('https://') !== 0 && gxApi.indexOf('http://') !== 0)
+          ) {
+            fail(
+              'Risposta prepare incompleta. Imposta PUBLIC_SERVER_URL sul server e riavvia.'
+            );
+            return;
+          }
+          if (auth) sessionStorage.setItem('garmin_oauth_auth', auth);
+          else sessionStorage.removeItem('garmin_oauth_auth');
+          sessionStorage.removeItem('garmin_oauth_uid');
+          sessionStorage.removeItem('garmin_oauth_base_url');
+          sessionStorage.removeItem('garmin_oauth_bridge_uid');
+          sessionStorage.removeItem('garmin_oauth_bridge_api_base');
+          sessionStorage.removeItem('garmin_oauth_bridge_authorization');
+
+          var returnHref = garminOAuthReturnPageHref(state, gxApi);
+          var ssoUrl = buildGarminSsoSigninUrl(returnHref);
+          console.log('[GarminOAuthPrepare]', 'redirect Garmin');
+          window.location.replace(ssoUrl);
+        })
+        .catch(function (e) {
+          console.error('[GarminOAuthPrepare]', e);
+          fail(
+            'Errore di rete verso il server Garmin. Verifica connessione e GARMIN_SERVER_URL.'
+          );
+        });
+    })();
+  </script>
+</body>
+</html>

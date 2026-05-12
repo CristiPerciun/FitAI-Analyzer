@@ -123,6 +123,28 @@ Uri garminWebOAuthStartPageUri() {
   );
 }
 
+/// URL assoluto di `web/garmin_oauth_prepare.html` (ponte prepare → Garmin, tap WebKit-safe).
+Uri garminWebOAuthPreparePageUri() {
+  final loc = Uri.parse(html.window.location.href);
+  final base = loc.replace(query: '', fragment: '');
+  final dir = base.resolve('.');
+  var p = dir.path;
+  if (!p.endsWith('/')) p = '$p/';
+  return Uri(
+    scheme: dir.scheme,
+    host: dir.host,
+    port: dir.hasPort ? dir.port : null,
+    path: '${p}garmin_oauth_prepare.html',
+  );
+}
+
+/// Navigazione **sincrona** (stesso turno del gesture) verso la pagina ponte; lì si fa `prepare` e poi il redirect a Garmin.
+void garminWebNavigateToGarminOAuthPreparePage() {
+  final u = garminWebOAuthPreparePageUri().toString();
+  _oauthWebLog('garminWebNavigateToGarminOAuthPreparePage: $u');
+  html.window.location.assign(u);
+}
+
 /// Apre Garmin SSO in un popup e attende l'esito via `postMessage`.
 ///
 /// La pagina `garmin_oauth_return.html` invia

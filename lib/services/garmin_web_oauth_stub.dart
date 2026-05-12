@@ -8,6 +8,13 @@ Uri garminWebOAuthReturnPageUri() =>
 Uri garminWebOAuthStartPageUri() =>
     Uri.parse('https://localhost/garmin_oauth_start.html');
 
+Uri garminWebOAuthPreparePageUri() =>
+    Uri.parse('https://localhost/garmin_oauth_prepare.html');
+
+void garminWebNavigateToGarminOAuthPreparePage() {
+  throw UnsupportedError('Garmin web OAuth: solo su piattaforma web');
+}
+
 Future<Map<String, dynamic>?> garminWebOAuthViaPopup(
   String ssoUrl, {
   Duration timeout = const Duration(minutes: 5),
