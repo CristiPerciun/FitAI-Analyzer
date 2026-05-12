@@ -58,6 +58,8 @@ Il login Garmin (CAS) invia il browser all’URL passato come `service=`. In pra
 Il flusso supportato dall’app usa quindi un **`service` sul garmin-sync-server** (HTTPS pubblico, stesso host delle API):  
 `GET /garmin/connect3/web-sso/cas-callback?state=…` → scambio token lato server → **302** verso la web app con `?garmin_oauth=ok` o `garmin_oauth_err=…`.
 
+**Importante:** `FITAI_WEB_APP_ORIGIN_ALLOWLIST` (e le altre `FITAI_WEB_*`) devono stare nel **`.env` sul Raspberry** che legge **systemd** (es. `EnvironmentFile=.../garmin-sync-server/.env` nel servizio `garmin-sync`), **non** nel `.env` del progetto Flutter sul PC. Dopo ogni modifica: `sudo systemctl restart garmin-sync` (o nome del servizio). Per verifica: nei log all’avvio compare `FITAI_WEB_APP_ORIGIN_ALLOWLIST ok` oppure `assente` (v. `journalctl -u garmin-sync -b --no-pager`).
+
 Sul Pi, in aggiunta a `PUBLIC_SERVER_URL`, configura **`FITAI_WEB_APP_ORIGIN_ALLOWLIST`** con il prefisso della tua app (es. `https://cristiperciun.github.io/FitAI-Analyzer/`). Opzionali: **`FITAI_WEB_APP_DEFAULT_RETURN_BASE`**, **`FITAI_WEB_APP_PUBLIC_EXAMPLE`** (testo guida negli errori). Vedi `.env.example` nel repo garmin-sync-server. Dopo il deploy del server, **verifica** aprendo un signin Garmin con `service=https://<tuo-server>/garmin/connect3/web-sso/cas-callback?state=test`: se dopo il login il browser **non** esce da `sso.garmin.com`, anche il dominio del Pi potrebbe non essere accettato da Garmin e occorrerà un’altra strategia (es. programma sviluppatori Garmin).
 
 ---
