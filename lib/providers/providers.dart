@@ -35,11 +35,12 @@ final authServiceProvider = Provider<AuthService>((ref) => AuthService());
 /// Stato backend IA (Gemini / DeepSeek / OpenRouter) per Impostazioni e gating.
 final aiBackendSettingsProvider =
     FutureProvider.autoDispose<AiBackendSettingsSnapshot>((ref) async {
+  final uid = ref.watch(authNotifierProvider).user?.uid;
   final prefs = ref.watch(aiBackendPreferenceServiceProvider);
   final gemini = ref.watch(geminiApiKeyServiceProvider);
   return AiBackendSettingsSnapshot(
     backend: await prefs.getBackend(),
-    hasGeminiKey: await gemini.hasValidKey(),
+    hasGeminiKey: await gemini.hasValidKey(uid: uid),
     hasDeepSeekKey: await prefs.hasValidDeepSeekKey(),
     hasOpenRouterKey: await prefs.hasValidOpenRouterKey(),
   );
@@ -214,7 +215,7 @@ Future<void> loadLongevityPlan(WidgetRef ref) async {
 
   final prefs = ref.read(aiBackendPreferenceServiceProvider);
   final geminiKeys = ref.read(geminiApiKeyServiceProvider);
-  if (!await prefs.isActiveBackendConfigured(geminiKeys)) return;
+  if (!await prefs.isActiveBackendConfigured(geminiKeys, uid: uid)) return;
 
   final engine = ref.read(longevityEngineProvider);
   final ctx = await engine.buildUnifiedDailyContext(uid);

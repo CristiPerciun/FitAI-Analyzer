@@ -34,6 +34,14 @@ class UserAiSettingsSyncService {
         .doc('ai_keys');
   }
 
+  /// `true` se su Firestore è salvata una chiave Gemini (sincro multi-dispositivo).
+  Future<bool> hasGeminiKeyInCloud(String uid) async {
+    final snap = await _doc(uid).get();
+    if (!snap.exists) return false;
+    final g = snap.data()?['gemini_api_key']?.toString().trim() ?? '';
+    return g.isNotEmpty && !g.startsWith('INSERISCI');
+  }
+
   /// Scarica da cloud e scrive in Secure Storage (solo campi non vuoti in cloud).
   Future<void> pullFromCloud(String uid) async {
     final snap = await _doc(uid).get();
@@ -42,7 +50,7 @@ class UserAiSettingsSyncService {
 
     final gemini = d['gemini_api_key']?.toString().trim() ?? '';
     if (gemini.isNotEmpty && !gemini.startsWith('INSERISCI')) {
-      await _gemini.saveKey(gemini);
+      await _gemini.saveKey(gemini, uid: uid);
     }
 
     final deepseek = d['deepseek_api_key']?.toString().trim() ?? '';
@@ -78,7 +86,7 @@ class UserAiSettingsSyncService {
   Future<void> saveGeminiKeyLocalAndCloud(String uid, String key) async {
     final trimmed = key.trim();
     if (trimmed.isEmpty) return;
-    await _gemini.saveKey(trimmed);
+    await _gemini.saveKey(trimmed, uid: uid);
     await _merge(uid, {'gemini_api_key': trimmed});
   }
 

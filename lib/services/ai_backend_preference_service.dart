@@ -96,15 +96,16 @@ class AiBackendPreferenceService {
     return k.isNotEmpty && !k.startsWith('INSERISCI');
   }
 
-  /// Il backend selezionato ha una chiave API configurata.
+  /// Il backend selezionato ha una chiave API configurata per l’utente [uid].
   Future<bool> isActiveBackendConfigured(
-    GeminiApiKeyService gemini,
-  ) async {
+    GeminiApiKeyService gemini, {
+    required String? uid,
+  }) async {
     final b = await getBackend();
     return switch (b) {
       AiBackend.deepseek => await hasValidDeepSeekKey(),
       AiBackend.openrouter => await hasValidOpenRouterKey(),
-      AiBackend.gemini => await gemini.hasValidKey(),
+      AiBackend.gemini => await gemini.hasValidKey(uid: uid),
     };
   }
 }

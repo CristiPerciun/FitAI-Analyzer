@@ -98,9 +98,9 @@ Future<bool?> showGarminConnectDialog(
               children: [
                 Text(
                   kIsWeb
-                      ? 'Si aprirà una finestra con il login Garmin; questa app resta aperta '
-                            'sotto (importante su iPhone). Dopo l’accesso la finestra si chiude '
-                            'e il collegamento si completa automaticamente.'
+                      ? 'Si apre una seconda finestra con il login Garmin; questa schermata resta sotto. '
+                            'Su iPhone la finestra può comunque apparire a tutto schermo (limite di Safari): '
+                            'dopo l’accesso torni qui automaticamente se il collegamento va a buon fine.'
                       : "Si aprirà il browser con la pagina di login Garmin. "
                             'Accedi con le tue credenziali Garmin Connect e '
                             "la connessione avverrà automaticamente.",

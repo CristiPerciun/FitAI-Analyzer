@@ -28,12 +28,13 @@ Future<AiBackend?> _pickFallbackAiBackend({
   required AiBackend exclude,
   required AiBackendPreferenceService prefs,
   required GeminiApiKeyService gemini,
+  required String? uid,
 }) async {
   for (final b in AiBackend.values) {
     if (b == exclude) continue;
     switch (b) {
       case AiBackend.gemini:
-        if (await gemini.hasValidKey()) return b;
+        if (await gemini.hasValidKey(uid: uid)) return b;
       case AiBackend.deepseek:
         if (await prefs.hasValidDeepSeekKey()) return b;
       case AiBackend.openrouter:
@@ -522,14 +523,35 @@ class ImpostazioniScreen extends ConsumerWidget {
   ) async {
     final prefs = ref.read(aiBackendPreferenceServiceProvider);
     final geminiKeys = ref.read(geminiApiKeyServiceProvider);
+    final sync = ref.read(userAiSettingsSyncServiceProvider);
+    final uid = ref.read(authNotifierProvider).user?.uid;
 
     if (turnOn) {
-      if (!await geminiKeys.hasValidKey()) {
+      if (!await geminiKeys.hasValidKey(uid: uid)) {
         if (!context.mounted) return;
         final saved = await showGeminiApiKeyDialog(context, ref);
-        if (!saved || !await geminiKeys.hasValidKey()) {
+        if (!saved || !await geminiKeys.hasValidKey(uid: uid)) {
           ref.invalidate(aiBackendSettingsProvider);
           return;
+        }
+      } else if (uid != null &&
+          !await sync.hasGeminiKeyInCloud(uid)) {
+        // `hasValidKey()` include la chiave in `.env`: in quel caso Firestore può
+        // restare vuoto e l'utente non vede mai il dialog. Se la chiave è solo in
+        // `.env`, chiediamola esplicitamente (non carichiamo automaticamente `.env`
+        // su Firebase). Se è già in Secure Storage, la inviamo in cloud.
+        final secureKey = await geminiKeys.readSecureStorageKeyOrEmpty(uid: uid);
+        if (secureKey.isNotEmpty) {
+          await sync.saveGeminiKeyLocalAndCloud(uid, secureKey);
+          ref.invalidate(aiBackendSettingsProvider);
+          invalidateAiRouting(ref);
+        } else {
+          if (!context.mounted) return;
+          final saved = await showGeminiApiKeyDialog(context, ref);
+          if (!saved || !await geminiKeys.hasValidKey(uid: uid)) {
+            ref.invalidate(aiBackendSettingsProvider);
+            return;
+          }
         }
       }
       await _applyAiBackend(ref, AiBackend.gemini);
@@ -540,6 +562,7 @@ class ImpostazioniScreen extends ConsumerWidget {
       exclude: AiBackend.gemini,
       prefs: prefs,
       gemini: geminiKeys,
+      uid: uid,
     );
     if (next == null) {
       _showAiBackendFallbackSnack();
@@ -555,6 +578,7 @@ class ImpostazioniScreen extends ConsumerWidget {
   ) async {
     final prefs = ref.read(aiBackendPreferenceServiceProvider);
     final geminiKeys = ref.read(geminiApiKeyServiceProvider);
+    final uid = ref.read(authNotifierProvider).user?.uid;
 
     if (turnOn) {
       if (!await prefs.hasValidDeepSeekKey()) {
@@ -573,6 +597,7 @@ class ImpostazioniScreen extends ConsumerWidget {
       exclude: AiBackend.deepseek,
       prefs: prefs,
       gemini: geminiKeys,
+      uid: uid,
     );
     if (next == null) {
       _showAiBackendFallbackSnack();
@@ -588,6 +613,7 @@ class ImpostazioniScreen extends ConsumerWidget {
   ) async {
     final prefs = ref.read(aiBackendPreferenceServiceProvider);
     final geminiKeys = ref.read(geminiApiKeyServiceProvider);
+    final uid = ref.read(authNotifierProvider).user?.uid;
 
     if (turnOn) {
       if (!await prefs.hasValidOpenRouterKey()) {
@@ -606,6 +632,7 @@ class ImpostazioniScreen extends ConsumerWidget {
       exclude: AiBackend.openrouter,
       prefs: prefs,
       gemini: geminiKeys,
+      uid: uid,
     );
     if (next == null) {
       _showAiBackendFallbackSnack();

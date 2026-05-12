@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 
@@ -9,21 +10,27 @@ import 'nutrition_ai_json_parser.dart';
 
 final geminiServiceProvider = Provider<GeminiService>((ref) {
   final apiKeyService = ref.watch(geminiApiKeyServiceProvider);
-  return GeminiService(apiKeyService: apiKeyService);
+  return GeminiService(ref: ref, apiKeyService: apiKeyService);
 });
 
 class GeminiService {
-  GeminiService({required GeminiApiKeyService apiKeyService})
-      : _apiKeyService = apiKeyService;
+  GeminiService({
+    required Ref ref,
+    required GeminiApiKeyService apiKeyService,
+  })  : _ref = ref,
+        _apiKeyService = apiKeyService;
 
+  final Ref _ref;
   final GeminiApiKeyService _apiKeyService;
 
   GenerativeModel? _model;
   GenerativeModel? _modelNutrition;
   String? _lastKey;
 
+  String? get _uid => _ref.read(authNotifierProvider).user?.uid;
+
   Future<GenerativeModel> _getModel() async {
-    final key = await _apiKeyService.getKey();
+    final key = await _apiKeyService.getKey(uid: _uid);
     _checkApiKey(key);
     if (_model == null || _lastKey != key) {
       _lastKey = key;
@@ -33,7 +40,7 @@ class GeminiService {
   }
 
   Future<GenerativeModel> _getModelNutrition() async {
-    final key = await _apiKeyService.getKey();
+    final key = await _apiKeyService.getKey(uid: _uid);
     _checkApiKey(key);
     if (_modelNutrition == null || _lastKey != key) {
       _lastKey = key;

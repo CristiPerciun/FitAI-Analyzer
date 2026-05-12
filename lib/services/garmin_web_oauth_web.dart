@@ -9,6 +9,24 @@ void _oauthWebLog(String message) {
   developer.log(message, name: 'GarminOAuthWeb');
 }
 
+/// Chiave condivisa tra `garmin_oauth_return.html` (popup) e finestra principale (PWA).
+/// Su iOS `postMessage` verso l’opener è talvolta inaffidabile; il polling su localStorage no.
+const String _kGarminOAuthPopupStorageKey = 'garmin_oauth_popup_result_v1';
+
+String _garminOAuthPopupWindowFeatures() {
+  final ua = html.window.navigator.userAgent.toLowerCase();
+  final isIos =
+      ua.contains('iphone') ||
+      ua.contains('ipad') ||
+      ua.contains('ipod') ||
+      (ua.contains('macintosh') && ua.contains('mobile'));
+  if (isIos) {
+    // Safari iOS ignora quasi sempre width/height; `popup=yes` è l’unico hint utile.
+    return 'popup=yes,scrollbars=yes';
+  }
+  return 'popup=yes,width=440,height=720,scrollbars=yes,resizable=yes,toolbar=no';
+}
+
 Uri? garminWebCurrentUri() {
   try {
     final href = html.window.location.href;
@@ -63,22 +81,65 @@ Future<Map<String, dynamic>?> garminWebOAuthViaPopup(
   Duration timeout = const Duration(minutes: 5),
 }) async {
   final completer = Completer<Map<String, dynamic>?>();
-  html.EventListener? listener;
-  Timer? pollTimer;
+  html.EventListener? messageListener;
+  Timer? closedPollTimer;
+  Timer? storagePollTimer;
+  var consecutivePopupClosed = 0;
 
   _oauthWebLog('garminWebOAuthViaPopup: inizio timeout=${timeout.inMinutes}m');
   _oauthWebLog('garminWebOAuthViaPopup: ssoUrl=$ssoUrl');
 
-  void cleanup() {
-    if (listener != null) {
-      html.window.removeEventListener('message', listener!);
-      listener = null;
+  void clearStalePopupResult() {
+    try {
+      html.window.localStorage.remove(_kGarminOAuthPopupStorageKey);
+    } on Object {
+      // Private mode / storage bloccato
     }
-    pollTimer?.cancel();
-    pollTimer = null;
   }
 
-  listener = (html.Event event) {
+  void cleanup() {
+    if (messageListener != null) {
+      html.window.removeEventListener('message', messageListener!);
+      messageListener = null;
+    }
+    closedPollTimer?.cancel();
+    closedPollTimer = null;
+    storagePollTimer?.cancel();
+    storagePollTimer = null;
+  }
+
+  void finishFromPayload(Map<String, dynamic> data, String via) {
+    if (completer.isCompleted) return;
+    if (data['type'] != 'garmin_oauth_result') return;
+    _oauthWebLog(
+      'garminWebOAuthViaPopup: esito via $via keys=${data.keys.join(",")}',
+    );
+    cleanup();
+    clearStalePopupResult();
+    final err = (data['error'] as String?)?.trim();
+    if (err != null && err.isNotEmpty) {
+      completer.complete({'error': err});
+      return;
+    }
+    final ticketOrUrl = (data['ticket_or_url'] as String?)?.trim();
+    if (ticketOrUrl != null && ticketOrUrl.isNotEmpty) {
+      completer.complete({'ticket_or_url': ticketOrUrl});
+      return;
+    }
+    final ticket = (data['ticket'] as String?) ?? '';
+    if (ticket.isNotEmpty) {
+      final synthetic = garminWebOAuthReturnPageUri().replace(
+        queryParameters: {'ticket': ticket},
+      );
+      completer.complete({'ticket_or_url': synthetic.toString()});
+      return;
+    }
+    completer.complete(null);
+  }
+
+  clearStalePopupResult();
+
+  messageListener = (html.Event event) {
     if (event is! html.MessageEvent) return;
     final me = event;
     if (completer.isCompleted) return;
@@ -99,31 +160,7 @@ Future<Map<String, dynamic>?> garminWebOAuthViaPopup(
       } else {
         return;
       }
-      if (data['type'] != 'garmin_oauth_result') return;
-      _oauthWebLog(
-        'garminWebOAuthViaPopup: postMessage origin=${me.origin} '
-        'keys=${data.keys.join(",")}',
-      );
-      cleanup();
-      final err = (data['error'] as String?)?.trim();
-      if (err != null && err.isNotEmpty) {
-        completer.complete({'error': err});
-        return;
-      }
-      final ticketOrUrl = (data['ticket_or_url'] as String?)?.trim();
-      if (ticketOrUrl != null && ticketOrUrl.isNotEmpty) {
-        completer.complete({'ticket_or_url': ticketOrUrl});
-        return;
-      }
-      final ticket = (data['ticket'] as String?) ?? '';
-      if (ticket.isNotEmpty) {
-        final synthetic = garminWebOAuthReturnPageUri().replace(
-          queryParameters: {'ticket': ticket},
-        );
-        completer.complete({'ticket_or_url': synthetic.toString()});
-        return;
-      }
-      completer.complete(null);
+      finishFromPayload(data, 'postMessage');
     } on Object catch (e) {
       final preview = me.data?.toString() ?? '';
       final short =
@@ -135,14 +172,17 @@ Future<Map<String, dynamic>?> garminWebOAuthViaPopup(
     }
   };
 
-  html.window.addEventListener('message', listener!);
+  html.window.addEventListener('message', messageListener!);
+
+  final features = _garminOAuthPopupWindowFeatures();
+  _oauthWebLog('garminWebOAuthViaPopup: window features=$features');
 
   // ignore: unnecessary_cast
   final popup =
       html.window.open(
             ssoUrl,
             'garmin_oauth',
-            'width=560,height=720,scrollbars=yes,toolbar=no,menubar=no,location=no',
+            features,
           )
           as html.WindowBase?;
 
@@ -151,13 +191,41 @@ Future<Map<String, dynamic>?> garminWebOAuthViaPopup(
     cleanup();
     return null;
   }
-  _oauthWebLog('garminWebOAuthViaPopup: popup aperta, in ascolto postMessage');
+  _oauthWebLog(
+    'garminWebOAuthViaPopup: popup aperta (postMessage + poll localStorage)',
+  );
 
-  pollTimer = Timer.periodic(const Duration(milliseconds: 750), (timer) {
-    if (!completer.isCompleted && (popup.closed == true)) {
-      _oauthWebLog('garminWebOAuthViaPopup: popup chiusa dall utente');
-      cleanup();
-      completer.complete(null);
+  storagePollTimer = Timer.periodic(const Duration(milliseconds: 320), (_) {
+    if (completer.isCompleted) return;
+    String? raw;
+    try {
+      raw = html.window.localStorage[_kGarminOAuthPopupStorageKey];
+    } on Object {
+      return;
+    }
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final data = jsonDecode(raw) as Map<String, dynamic>;
+      finishFromPayload(data, 'localStorage');
+    } on Object catch (e) {
+      _oauthWebLog('garminWebOAuthViaPopup: parse localStorage fallito: $e');
+    }
+  });
+
+  closedPollTimer = Timer.periodic(const Duration(milliseconds: 400), (_) {
+    if (completer.isCompleted) return;
+    if (popup.closed == true) {
+      consecutivePopupClosed++;
+      // Durante i redirect Garmin `closed` può essere flaky; richiedi più letture consecutive.
+      if (consecutivePopupClosed >= 8) {
+        _oauthWebLog(
+          'garminWebOAuthViaPopup: popup risulta chiusa (debounce), stop',
+        );
+        cleanup();
+        completer.complete(null);
+      }
+    } else {
+      consecutivePopupClosed = 0;
     }
   });
 
@@ -167,12 +235,14 @@ Future<Map<String, dynamic>?> garminWebOAuthViaPopup(
       onTimeout: () {
         _oauthWebLog('garminWebOAuthViaPopup: timeout dopo ${timeout.inMinutes}m');
         cleanup();
+        clearStalePopupResult();
         return null;
       },
     );
   } catch (e) {
     _oauthWebLog('garminWebOAuthViaPopup: eccezione $e');
     cleanup();
+    clearStalePopupResult();
     return null;
   }
 }
@@ -184,7 +254,7 @@ bool garminWebOpenPopup(String url) {
       html.window.open(
             url,
             'garmin_oauth',
-            'width=560,height=720,scrollbars=yes,toolbar=no,menubar=no,location=no',
+            _garminOAuthPopupWindowFeatures(),
           )
           as html.WindowBase?;
   final ok = popup != null;

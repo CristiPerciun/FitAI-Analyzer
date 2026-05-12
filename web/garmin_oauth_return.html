@@ -396,12 +396,23 @@
         await exchangeTicketLegacyUidBaseUrl();
       }
 
-      /* Popup (anche iPhone / PWA): la finestra principale resta sull'app; opener riceve il ticket. */
+      /* Popup (anche iPhone / PWA): finestra principale = app; opener riceve esito. */
       try {
         var opener = window.opener;
         if (opener && !opener.closed) {
-          console.log('[GarminOAuthReturn]', 'opener presente -> postMessage (popup SSO)');
-          opener.postMessage(buildOAuthPayload(), window.location.origin);
+          console.log('[GarminOAuthReturn]', 'opener presente -> localStorage + postMessage');
+          /* Deve coincidere con _kGarminOAuthPopupStorageKey in garmin_web_oauth_web.dart */
+          var POPUP_KEY = 'garmin_oauth_popup_result_v1';
+          try {
+            localStorage.setItem(POPUP_KEY, buildOAuthPayload());
+          } catch (eSt) {
+            console.warn('[GarminOAuthReturn]', 'localStorage fallito (fallback solo postMessage)', eSt);
+          }
+          try {
+            opener.postMessage(buildOAuthPayload(), window.location.origin);
+          } catch (ePm) {
+            console.warn('[GarminOAuthReturn]', 'postMessage fallito', ePm);
+          }
           try {
             window.close();
           } catch (eClose) {}

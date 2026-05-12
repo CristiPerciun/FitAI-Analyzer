@@ -1,6 +1,5 @@
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
-import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/services/user_ai_settings_sync_service.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:flutter/material.dart';
@@ -10,7 +9,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// Usato su iOS quando .env non è disponibile (chiave solo in locale).
 Future<bool> showGeminiApiKeyDialog(BuildContext context, WidgetRef ref) async {
   final controller = TextEditingController();
-  final apiKeyService = ref.read(geminiApiKeyServiceProvider);
 
   final result = await showDialog<bool>(
     context: context,
@@ -56,13 +54,13 @@ Future<bool> showGeminiApiKeyDialog(BuildContext context, WidgetRef ref) async {
             final key = controller.text.trim();
             if (key.isEmpty) return;
             final uid = ref.read(authNotifierProvider).user?.uid;
-            if (uid != null) {
-              await ref
-                  .read(userAiSettingsSyncServiceProvider)
-                  .saveGeminiKeyLocalAndCloud(uid, key);
-            } else {
-              await apiKeyService.saveKey(key);
+            if (uid == null) {
+              if (ctx.mounted) Navigator.of(ctx).pop(false);
+              return;
             }
+            await ref
+                .read(userAiSettingsSyncServiceProvider)
+                .saveGeminiKeyLocalAndCloud(uid, key);
             invalidateAiRouting(ref);
             if (ctx.mounted) Navigator.of(ctx).pop(true);
           },

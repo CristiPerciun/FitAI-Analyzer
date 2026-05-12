@@ -6,6 +6,7 @@ import 'package:fitai_analyzer/services/credential_storage_service.dart';
 import 'package:fitai_analyzer/utils/platform_firestore_fix.dart';
 import 'package:fitai_analyzer/providers/strava_sync_status_notifier.dart';
 import 'package:fitai_analyzer/services/aggregation_service.dart';
+import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/services/garmin_service.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
 import 'package:fitai_analyzer/services/user_ai_settings_sync_service.dart';
@@ -81,6 +82,8 @@ class AuthNotifier extends Notifier<AuthState> {
   Future<void> _pullAiSettingsFromCloud(String uid) async {
     try {
       await ref.read(userAiSettingsSyncServiceProvider).pullFromCloud(uid);
+      // Elimina lo slot condiviso delle versioni vecchie così non resta leggibile dopo il cambio account.
+      await ref.read(geminiApiKeyServiceProvider).deleteLegacySharedKeyIfAny();
       ref.invalidate(aiBackendSettingsProvider);
       invalidateAiRouting(ref);
     } catch (_) {}

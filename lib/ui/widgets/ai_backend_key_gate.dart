@@ -1,3 +1,4 @@
+import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/services/ai_backend_preference_service.dart'
     show AiBackend, aiBackendPreferenceServiceProvider;
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
@@ -14,7 +15,8 @@ Future<bool> ensureActiveAiBackendHasKey(
 ) async {
   final prefs = ref.read(aiBackendPreferenceServiceProvider);
   final gemini = ref.read(geminiApiKeyServiceProvider);
-  if (await prefs.isActiveBackendConfigured(gemini)) return true;
+  final uid = ref.read(authNotifierProvider).user?.uid;
+  if (await prefs.isActiveBackendConfigured(gemini, uid: uid)) return true;
 
   final b = await prefs.getBackend();
   if (!context.mounted) return false;
@@ -27,5 +29,5 @@ Future<bool> ensureActiveAiBackendHasKey(
     return ok && await prefs.hasValidOpenRouterKey();
   }
   final saved = await showGeminiApiKeyDialog(context, ref);
-  return saved && await gemini.hasValidKey();
+  return saved && await gemini.hasValidKey(uid: uid);
 }
