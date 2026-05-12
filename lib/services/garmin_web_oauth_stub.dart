@@ -13,6 +13,9 @@ Future<Map<String, dynamic>?> garminWebOAuthViaPopup(
   Duration timeout = const Duration(minutes: 5),
 }) async => null;
 
+/// Su web reale vedi `garmin_web_oauth_web.dart` (iOS / PWA standalone → SSO full-page).
+bool garminWebPreferGarminSsoFullPage() => false;
+
 bool garminWebOpenPopup(String url) => false;
 
 void garminWebAssignLocation(String url) {

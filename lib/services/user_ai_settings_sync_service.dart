@@ -39,7 +39,9 @@ class UserAiSettingsSyncService {
     final snap = await _doc(uid).get();
     if (!snap.exists) return false;
     final g = snap.data()?['gemini_api_key']?.toString().trim() ?? '';
-    return g.isNotEmpty && !g.startsWith('INSERISCI');
+    return g.isNotEmpty &&
+        !g.startsWith('INSERISCI') &&
+        GeminiApiKeyService.isPlausibleGeminiApiKey(g);
   }
 
   /// Scarica da cloud e scrive in Secure Storage (solo campi non vuoti in cloud).
@@ -50,7 +52,17 @@ class UserAiSettingsSyncService {
 
     final gemini = d['gemini_api_key']?.toString().trim() ?? '';
     if (gemini.isNotEmpty && !gemini.startsWith('INSERISCI')) {
-      await _gemini.saveKey(gemini, uid: uid);
+      if (GeminiApiKeyService.isPlausibleGeminiApiKey(gemini)) {
+        await _gemini.saveKey(gemini, uid: uid);
+      } else {
+        await _doc(uid).set(
+          {
+            'gemini_api_key': FieldValue.delete(),
+            'updated_at': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+      }
     }
 
     final deepseek = d['deepseek_api_key']?.toString().trim() ?? '';
@@ -85,7 +97,9 @@ class UserAiSettingsSyncService {
 
   Future<void> saveGeminiKeyLocalAndCloud(String uid, String key) async {
     final trimmed = key.trim();
-    if (trimmed.isEmpty) return;
+    if (trimmed.isEmpty || !GeminiApiKeyService.isPlausibleGeminiApiKey(trimmed)) {
+      return;
+    }
     await _gemini.saveKey(trimmed, uid: uid);
     await _merge(uid, {'gemini_api_key': trimmed});
   }

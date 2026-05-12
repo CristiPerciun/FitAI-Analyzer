@@ -500,16 +500,17 @@ class GarminService {
         .toString();
   }
 
-  /// SSO Garmin su web (tutte le piattaforme, inclusa iOS Safari / PWA standalone).
+  /// SSO Garmin su web (tutte le desktop/mobile, inclusa iOS Safari / PWA).
   ///
-  /// **Strategia principale — popup**: si apre Garmin in una **seconda finestra** dalla
-  /// gesture dell'utente; la finestra della **PWA resta aperta** sotto. Dopo il login,
-  /// `garmin_oauth_return.html` fa `postMessage` all'opener con `ticket_or_url` e questa
-  /// app completa lo exchange via `connect3ExchangeTicket`. Su iPhone questo evita di
-  /// «perdere» la PWA perché non si fa `location.assign` verso Garmin sulla finestra principale.
+  /// **Desktop / Android — popup**: seconda finestra verso Garmin; l'opener riceve
+  /// `ticket_or_url` (postMessage / `localStorage`) e chiama `connect3ExchangeTicket`.
   ///
-  /// **Fallback**: se la popup è bloccata o chiusa senza esito, navigazione full-page verso
-  /// SSO con sessione server (`prepare` + `state` + `gx_api`) come prima.
+  /// **iPhone, iPad, PWA standalone — full-page**: niente popup (WebKit partiziona lo
+  /// storage fra PWA e scheda «popup»; spesso il redirect CAS torna ma l'app non riceve
+  /// il ticket). Si usa `prepare` + `state`/`gx_api` sul callback: `garmin_oauth_return.html`
+  /// scambia il ticket nella **stessa** scheda e poi torna a `/`.
+  ///
+  /// **Fallback**: se la popup non restituisce un esito, stesso flusso full-page + `prepare`.
   ///
   /// Nota: da hosting **HTTPS** non è possibile chiamare un mini-server solo **HTTP**
   /// (mixed content): `_resolveBaseUrl()` forza l'URL remoto HTTPS se necessario.
@@ -533,11 +534,18 @@ class GarminService {
       };
     }
 
+    if (garmin_web.garminWebPreferGarminSsoFullPage()) {
+      _garminOAuthWebLog(
+        'Web SSO: piattaforma iOS / PWA standalone → navigazione full-page + prepare (no popup)',
+      );
+      return _garminSsoWebFullPageWithPrepare(uid: uid);
+    }
+
     final simpleCallbackUrl = garmin_web.garminWebOAuthReturnPageUri().toString();
     final ssoPopupUrl = buildGarminPopupSsoLoginUrl(simpleCallbackUrl);
 
     _garminOAuthWebLog(
-      'Web SSO: apertura popup (la PWA resta in primo piano sotto la finestra SSO)',
+      'Web SSO: apertura popup (la finestra principale resta aperta sotto)',
     );
     final popupOutcome = await garmin_web.garminWebOAuthViaPopup(ssoPopupUrl);
     if (popupOutcome != null) {
@@ -555,16 +563,26 @@ class GarminService {
     }
 
     _garminOAuthWebLog(
-      'Web SSO: popup senza esito -> fallback navigazione full-page + prepare',
+      'Web SSO: popup senza esito -> navigazione full-page + prepare',
     );
+    return _garminSsoWebFullPageWithPrepare(uid: uid);
+  }
 
+  /// Navigazione **full-page** verso Garmin CAS dopo `connect3PrepareWebSso` (state server-side).
+  ///
+  /// Ritorna `web_redirect: true` prima di `location.assign`: l'esito è su
+  /// `garmin_oauth_return.html` → `sessionStorage` e/o URL su `/` con ticket (gestito da
+  /// [completeGarminWebOAuthIfPresent] / [consumeGarminWebOAuthSessionResult]).
+  Future<Map<String, dynamic>> _garminSsoWebFullPageWithPrepare({
+    required String uid,
+  }) async {
     final prep = await connect3PrepareWebSso(uid: uid);
     if (prep['success'] != true) {
       final rawMsg = prep['message']?.toString().trim() ?? '';
       final msg = rawMsg.isNotEmpty
           ? rawMsg
           : 'Impossibile avviare OAuth Garmin (prepare fallito). Aggiorna garmin-sync-server e PUBLIC_SERVER_URL.';
-      _garminOAuthWebLog('connectViaGarminSsoWeb: prepare failed message=$msg');
+      _garminOAuthWebLog('_garminSsoWebFullPageWithPrepare: prepare failed message=$msg');
       return {'success': false, 'message': msg};
     }
 
@@ -594,7 +612,7 @@ class GarminService {
     garmin_web.garminWebSessionRemove('garmin_oauth_uid');
     garmin_web.garminWebSessionRemove('garmin_oauth_base_url');
 
-    _garminHttpVerbose('Web SSO full-page fallback: navigazione → $ssoUrl');
+    _garminHttpVerbose('Web SSO full-page: navigazione → $ssoUrl');
     _garminOAuthWebLog('full-page callback(service)=$callbackUrl');
     _garminOAuthWebLog('ssoUrl=$ssoUrl');
     garmin_web.garminWebAssignLocation(ssoUrl);

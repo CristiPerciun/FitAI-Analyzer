@@ -396,10 +396,17 @@
         await exchangeTicketLegacyUidBaseUrl();
       }
 
-      /* Popup (anche iPhone / PWA): finestra principale = app; opener riceve esito. */
+      /* Popup (desktop): finestra principale = app; opener riceve esito.
+         Se c'è `state`+`gx_api`, completa SEMPRE l'exchange in questa pagina (stesso tab
+         affidabile; evita storage partizionato PWA↔popup su iOS). */
       try {
         var opener = window.opener;
-        if (opener && !opener.closed) {
+        var gxNormGate = normalizeGxApi(gxApi);
+        var hasServerOAuth =
+          stateVal &&
+          gxNormGate.length > 0 &&
+          gxNormGate.indexOf('https://') === 0;
+        if (opener && !opener.closed && !hasServerOAuth) {
           console.log('[GarminOAuthReturn]', 'opener presente -> localStorage + postMessage');
           /* Deve coincidere con _kGarminOAuthPopupStorageKey in garmin_web_oauth_web.dart */
           var POPUP_KEY = 'garmin_oauth_popup_result_v1';

@@ -18,11 +18,24 @@ class GeminiApiKeyService {
   /// Slot condiviso usato dalle versioni precedenti (una sola chiave per dispositivo).
   static const _legacySharedKey = 'GEMINI_API_KEY';
 
+  /// Heuristica: le chiavi Google usate dall’SDK Gemini iniziano con `AIza` (mai `sk-or-`,
+  /// `sk-` DeepSeek/OpenRouter ecc.). Serve a evitare che una chiave errata nel Keychain
+  /// blocchi `.env` o venga caricata su Firebase come `gemini_api_key`.
+  static bool isPlausibleGeminiApiKey(String key) {
+    final t = key.trim();
+    if (t.isEmpty || t.startsWith('INSERISCI')) return false;
+    return t.startsWith('AIza');
+  }
+
   final _storage = const FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
 
   static String _scopedStorageKey(String uid) => 'GEMINI_API_KEY_UID::$uid';
+
+  Future<void> _deleteScopedKey(String uid) async {
+    await _storage.delete(key: _scopedStorageKey(uid));
+  }
 
   /// Rimuove lo slot legacy condiviso (chiamata dopo login/sync o dopo aver scritto per UID).
   Future<void> deleteLegacySharedKeyIfAny() async {
@@ -36,16 +49,19 @@ class GeminiApiKeyService {
       if (stored != null &&
           stored.isNotEmpty &&
           !stored.startsWith('INSERISCI')) {
-        return stored;
+        if (isPlausibleGeminiApiKey(stored)) return stored;
+        await _deleteScopedKey(uid);
       }
     }
-    return dotenv.get('GEMINI_API_KEY', fallback: '');
+    final env = dotenv.get('GEMINI_API_KEY', fallback: '').trim();
+    if (isPlausibleGeminiApiKey(env)) return env;
+    return '';
   }
 
   /// Salva la chiave nello slot dedicato all’utente e invalida lo slot legacy condiviso.
   Future<void> saveKey(String key, {required String uid}) async {
     final trimmed = key.trim();
-    if (trimmed.isEmpty) return;
+    if (trimmed.isEmpty || !isPlausibleGeminiApiKey(trimmed)) return;
     await _storage.write(key: _scopedStorageKey(uid), value: trimmed);
     await deleteLegacySharedKeyIfAny();
   }
@@ -62,7 +78,8 @@ class GeminiApiKeyService {
     if (stored != null &&
         stored.isNotEmpty &&
         !stored.startsWith('INSERISCI')) {
-      return stored;
+      if (isPlausibleGeminiApiKey(stored)) return stored;
+      await _deleteScopedKey(uid);
     }
     return '';
   }

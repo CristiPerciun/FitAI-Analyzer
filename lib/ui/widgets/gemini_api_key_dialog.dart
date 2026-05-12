@@ -1,5 +1,6 @@
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
+import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/services/user_ai_settings_sync_service.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:flutter/material.dart';
@@ -53,6 +54,17 @@ Future<bool> showGeminiApiKeyDialog(BuildContext context, WidgetRef ref) async {
           onPressed: () async {
             final key = controller.text.trim();
             if (key.isEmpty) return;
+            if (!GeminiApiKeyService.isPlausibleGeminiApiKey(key)) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Formato non valido per una chiave Gemini (deve iniziare con AIza…). '
+                    'OpenRouter e altre chiavi vanno salvate nel rispettivo backend.',
+                  ),
+                ),
+              );
+              return;
+            }
             final uid = ref.read(authNotifierProvider).user?.uid;
             if (uid == null) {
               if (ctx.mounted) Navigator.of(ctx).pop(false);

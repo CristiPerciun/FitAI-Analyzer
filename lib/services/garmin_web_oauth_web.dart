@@ -13,6 +13,46 @@ void _oauthWebLog(String message) {
 /// Su iOS `postMessage` verso l’opener è talvolta inaffidabile; il polling su localStorage no.
 const String _kGarminOAuthPopupStorageKey = 'garmin_oauth_popup_result_v1';
 
+bool _navigatorStandaloneApplePwa() {
+  try {
+    // Proprietà WebKit non esposta su `Navigator` in dart:html.
+    final dynamic nav = html.window.navigator;
+    final Object? st = nav.standalone;
+    return st == true;
+  } on Object {
+    return false;
+  }
+}
+
+/// Su iPhone/iPad (e PWA installata) `window.open` + SSO Garmin spesso finisce in un contesto
+/// con **storage partizionato** rispetto alla finestra principale: `postMessage` e `localStorage`
+/// non raggiungono la PWA e l'utente resta sulla pagina Garmin. Il flusso **full-page** con
+/// `prepare` (`state` + `gx_api` nel callback) evita l'opener e completa l'exchange in
+/// `garmin_oauth_return.html` nella stessa scheda.
+bool garminWebPreferGarminSsoFullPage() {
+  try {
+    if (_navigatorStandaloneApplePwa()) return true;
+
+    final ua = html.window.navigator.userAgent.toLowerCase();
+    if (ua.contains('iphone') || ua.contains('ipod') || ua.contains('ipad')) {
+      return true;
+    }
+
+    final platform = html.window.navigator.platform?.toLowerCase() ?? '';
+    final touch = html.window.navigator.maxTouchPoints ?? 0;
+    if (platform.contains('mac') && touch > 1) {
+      return true;
+    }
+
+    if (html.window.matchMedia('(display-mode: standalone)').matches) {
+      return true;
+    }
+  } on Object {
+    return false;
+  }
+  return false;
+}
+
 String _garminOAuthPopupWindowFeatures() {
   final ua = html.window.navigator.userAgent.toLowerCase();
   final isIos =
