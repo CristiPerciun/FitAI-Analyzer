@@ -68,7 +68,16 @@
       var ticket = params.get('ticket') || '';
       var error = params.get('error') || '';
       var stateVal = (params.get('state') || '').trim();
+      if (!stateVal && ticket) {
+        stateVal = (sessionStorage.getItem('garmin_oauth_sso_state') || '').trim();
+      }
       var gxApi = (params.get('gx_api') || '').trim();
+      if (!gxApi && stateVal) {
+        var sSt = sessionStorage.getItem('garmin_oauth_sso_state') || '';
+        if (sSt === stateVal) {
+          gxApi = (sessionStorage.getItem('garmin_oauth_sso_gx_api') || '').trim();
+        }
+      }
       var uid =
         params.get('uid') ||
         fragmentParams.get('uid') ||
@@ -84,7 +93,11 @@
         sessionStorage.getItem('garmin_oauth_auth') ||
         '';
       var isIosPopup = fragmentParams.get('ios_popup') === '1';
-      var appUrl = window.location.origin + '/';
+      var appPath = window.location.pathname;
+      var appSlash = appPath.lastIndexOf('/');
+      var appBaseDir =
+        appSlash >= 0 ? appPath.substring(0, appSlash + 1) : '/';
+      var appUrl = window.location.origin + appBaseDir;
       function buildOAuthPayload() {
         return JSON.stringify({
           type: 'garmin_oauth_result',
@@ -115,6 +128,8 @@
         sessionStorage.removeItem('garmin_oauth_uid');
         sessionStorage.removeItem('garmin_oauth_base_url');
         sessionStorage.removeItem('garmin_oauth_auth');
+        sessionStorage.removeItem('garmin_oauth_sso_state');
+        sessionStorage.removeItem('garmin_oauth_sso_gx_api');
       }
 
       function storeResult(success, message) {
@@ -196,7 +211,11 @@
           );
           return;
         }
-        if (!state || gxOrigin.indexOf('https://') !== 0) {
+        if (
+          !state ||
+          (gxOrigin.indexOf('https://') !== 0 &&
+            gxOrigin.indexOf('http://') !== 0)
+        ) {
           clearOAuthContext();
           storeResult(false, 'Contesto OAuth Garmin incompleto (state / gx_api).');
           setStatus(
@@ -387,7 +406,10 @@
 
       async function runInPageExchange() {
         var gxNorm = normalizeGxApi(gxApi);
-        if (stateVal && gxNorm.indexOf('https://') === 0) {
+        var gxOk =
+          gxNorm.length > 0 &&
+          (gxNorm.indexOf('https://') === 0 || gxNorm.indexOf('http://') === 0);
+        if (stateVal && gxOk) {
           console.log('[GarminOAuthReturn]', 'branch state+gx_api (OAuth web attuale)');
           await exchangeTicketWithState(stateVal, gxNorm);
           return;
@@ -405,7 +427,8 @@
         var hasServerOAuth =
           stateVal &&
           gxNormGate.length > 0 &&
-          gxNormGate.indexOf('https://') === 0;
+          (gxNormGate.indexOf('https://') === 0 ||
+            gxNormGate.indexOf('http://') === 0);
         if (opener && !opener.closed && !hasServerOAuth) {
           console.log('[GarminOAuthReturn]', 'opener presente -> localStorage + postMessage');
           /* Deve coincidere con _kGarminOAuthPopupStorageKey in garmin_web_oauth_web.dart */
@@ -425,9 +448,7 @@
           } catch (eClose) {}
           setTimeout(function () {
             if (!window.closed) {
-              window.location.replace(
-                window.location.origin + '/' + window.location.search
-              );
+              window.location.replace(appUrl);
             }
           }, 800);
           return;

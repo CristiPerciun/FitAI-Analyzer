@@ -615,8 +615,11 @@ class GarminService {
     final gxApi = normalizeGarminServerBaseUrl(originRaw);
     final authHeader = _jsonHeaders['Authorization']?.trim() ?? '';
 
+    garmin_web.garminWebSessionSet('garmin_oauth_sso_state', state);
+    garmin_web.garminWebSessionSet('garmin_oauth_sso_gx_api', gxApi);
+
     final returnPage = garmin_web.garminWebOAuthReturnPageUri().replace(
-      queryParameters: <String, String>{'state': state, 'gx_api': gxApi},
+      queryParameters: <String, String>{'state': state},
     );
     final callbackUrl = returnPage.toString();
     final ssoUrl = buildGarminPopupSsoLoginUrl(callbackUrl);

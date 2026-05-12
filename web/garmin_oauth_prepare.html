@@ -48,7 +48,8 @@
         return s;
       }
 
-      function garminOAuthReturnPageHref(state, gxApi) {
+      /** URL corto per `service=` Garmin: solo `state`. `gx_api` è in sessionStorage (stessa origine dopo il ritorno da Garmin). */
+      function garminOAuthReturnPageHref(state) {
         var u = new URL(window.location.href);
         u.hash = '';
         u.search = '';
@@ -57,13 +58,7 @@
         var dir = i >= 0 ? path.substring(0, i + 1) : '/';
         if (!dir.endsWith('/')) dir += '/';
         var base = u.origin + dir + 'garmin_oauth_return.html';
-        return (
-          base +
-          '?state=' +
-          encodeURIComponent(state) +
-          '&gx_api=' +
-          encodeURIComponent(gxApi)
-        );
+        return base + '?state=' + encodeURIComponent(state);
       }
 
       function buildGarminSsoSigninUrl(returnPageUrl) {
@@ -158,7 +153,10 @@
           sessionStorage.removeItem('garmin_oauth_bridge_api_base');
           sessionStorage.removeItem('garmin_oauth_bridge_authorization');
 
-          var returnHref = garminOAuthReturnPageHref(state, gxApi);
+          sessionStorage.setItem('garmin_oauth_sso_state', state);
+          sessionStorage.setItem('garmin_oauth_sso_gx_api', gxApi);
+
+          var returnHref = garminOAuthReturnPageHref(state);
           var ssoUrl = buildGarminSsoSigninUrl(returnHref);
           console.log('[GarminOAuthPrepare]', 'redirect Garmin');
           window.location.replace(ssoUrl);
