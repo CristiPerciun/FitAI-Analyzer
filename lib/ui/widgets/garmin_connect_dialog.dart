@@ -41,8 +41,9 @@ class _GarminConnectDialogBodyState
   bool _bridgeReady = false;
   String? _bridgeError;
 
-  bool get _useWebKitBridge =>
-      kIsWeb && garmin_web.garminWebPreferGarminSsoFullPage();
+  /// Su web usiamo SEMPRE il ponte `garmin_oauth_prepare.html`:
+  /// è l'unico modo affidabile su iPhone/PWA e ci evita il doppio flusso popup → full-page.
+  bool get _useWebKitBridge => kIsWeb;
 
   @override
   void initState() {
@@ -83,7 +84,13 @@ class _GarminConnectDialogBodyState
       if (!_bridgeReady || _bridgeError != null) return;
       _submitting[0] = true;
       if (mounted) setState(() {});
-      garmin_web.garminWebNavigateToGarminOAuthPreparePage();
+      final apiBase = ref
+          .read(garminServiceProvider)
+          .lastResolvedServerBaseUrlForWebBridge;
+      garmin_web.garminWebNavigateToGarminOAuthPreparePage(
+        uid: widget.uid,
+        apiBase: apiBase,
+      );
       if (mounted) Navigator.of(context).pop(null);
       return;
     }

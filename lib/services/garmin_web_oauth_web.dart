@@ -139,8 +139,24 @@ Uri garminWebOAuthPreparePageUri() {
 }
 
 /// Navigazione **sincrona** (stesso turno del gesture) verso la pagina ponte; lì si fa `prepare` e poi il redirect a Garmin.
-void garminWebNavigateToGarminOAuthPreparePage() {
-  final u = garminWebOAuthPreparePageUri().toString();
+///
+/// `uid` e `apiBase` viaggiano anche come query string così la pagina ponte funziona
+/// anche se `sessionStorage` su iOS PWA o WebKit risulta vuoto al primo caricamento.
+void garminWebNavigateToGarminOAuthPreparePage({
+  String? uid,
+  String? apiBase,
+}) {
+  final base = garminWebOAuthPreparePageUri();
+  final params = <String, String>{};
+  if (uid != null && uid.trim().isNotEmpty) {
+    params['uid'] = uid.trim();
+  }
+  if (apiBase != null && apiBase.trim().isNotEmpty) {
+    params['api_base'] = apiBase.trim();
+  }
+  final u = params.isEmpty
+      ? base.toString()
+      : base.replace(queryParameters: params).toString();
   _oauthWebLog('garminWebNavigateToGarminOAuthPreparePage: $u');
   html.window.location.assign(u);
 }

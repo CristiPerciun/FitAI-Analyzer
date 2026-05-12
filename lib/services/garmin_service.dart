@@ -500,6 +500,14 @@ class GarminService {
         .toString();
   }
 
+  /// Ultimo URL base del Pi risolto (LAN o REMOTE), già normalizzato; `null` se mai risolto.
+  /// Usato dal dialog Garmin per passare l'`api_base` come query string al ponte `garmin_oauth_prepare.html`.
+  String? get lastResolvedServerBaseUrlForWebBridge {
+    final c = _cachedBaseUrl;
+    if (c == null || c.isEmpty) return null;
+    return normalizeGarminServerBaseUrl(c);
+  }
+
   /// Scrive in `sessionStorage` i dati per `web/garmin_oauth_prepare.html`.
   ///
   /// Il dialog Garmin chiama questo all’apertura (con `await`): al tap la navigazione
@@ -525,16 +533,12 @@ class GarminService {
     );
   }
 
-  /// SSO Garmin su web (tutte le desktop/mobile, inclusa iOS Safari / PWA).
+  /// SSO Garmin su web (tutte le piattaforme: desktop, Android, iPhone, iPad, PWA).
   ///
-  /// **Desktop / Android — popup**: seconda finestra verso Garmin; l'opener riceve
-  /// `ticket_or_url` (postMessage / `localStorage`) e chiama `connect3ExchangeTicket`.
-  ///
-  /// **iPhone, iPad, PWA standalone, localhost — full-page**: niente popup; il dialog
-  /// chiama [primeGarminWebSsoBridge] all’apertura e al tap naviga in modo **sincrono** a
-  /// `garmin_oauth_prepare.html` (evita WebKit che perde il gesture dopo `await prepare`).
-  /// **Fallback** qui: se la popup non restituisce un esito, navigazione full-page + `prepare`
-  /// da Dart ([_garminSsoWebFullPageWithPrepare]).
+  /// **Mai più popup**: su iOS / WebKit il popup perdeva `postMessage` e `localStorage`
+  /// per partizionamento; su desktop poteva apparire prima la popup e poi cadere nel
+  /// fallback full-page, generando il "doppio flusso" segnalato dall'utente.
+  /// Si usa **sempre** `prepare` + navigazione full-page (`_garminSsoWebFullPageWithPrepare`).
   ///
   /// Nota: da hosting **HTTPS** non è possibile chiamare un mini-server solo **HTTP**
   /// (mixed content): `_resolveBaseUrl()` forza l'URL remoto HTTPS se necessario.
@@ -549,39 +553,6 @@ class GarminService {
       'connectViaGarminSsoWeb: uid=$uid bearer=${_jsonHeaders['Authorization']?.trim().isNotEmpty == true}',
     );
     _garminOAuthWebLog('connectViaGarminSsoWeb: window.href=$currentHref');
-
-    final loc = garmin_web.garminWebCurrentUri();
-    if (loc == null) {
-      return {
-        'success': false,
-        'message': 'URL corrente non disponibile (Garmin web).',
-      };
-    }
-
-    final simpleCallbackUrl = garmin_web.garminWebOAuthReturnPageUri().toString();
-    final ssoPopupUrl = buildGarminPopupSsoLoginUrl(simpleCallbackUrl);
-
-    _garminOAuthWebLog(
-      'Web SSO: apertura popup (la finestra principale resta aperta sotto)',
-    );
-    final popupOutcome = await garmin_web.garminWebOAuthViaPopup(ssoPopupUrl);
-    if (popupOutcome != null) {
-      final oauthErr = popupOutcome['error']?.toString().trim();
-      if (oauthErr != null && oauthErr.isNotEmpty) {
-        return {'success': false, 'message': 'Garmin: $oauthErr'};
-      }
-      final tor = popupOutcome['ticket_or_url']?.toString().trim();
-      if (tor != null && tor.isNotEmpty) {
-        _garminOAuthWebLog(
-          'Web SSO popup: exchange ticket_or_url len=${tor.length}',
-        );
-        return connect3ExchangeTicket(uid: uid, ticketOrUrl: tor);
-      }
-    }
-
-    _garminOAuthWebLog(
-      'Web SSO: popup senza esito -> navigazione full-page + prepare',
-    );
     return _garminSsoWebFullPageWithPrepare(uid: uid);
   }
 

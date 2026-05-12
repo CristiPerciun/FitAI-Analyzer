@@ -11,7 +11,10 @@ Uri garminWebOAuthStartPageUri() =>
 Uri garminWebOAuthPreparePageUri() =>
     Uri.parse('https://localhost/garmin_oauth_prepare.html');
 
-void garminWebNavigateToGarminOAuthPreparePage() {
+void garminWebNavigateToGarminOAuthPreparePage({
+  String? uid,
+  String? apiBase,
+}) {
   throw UnsupportedError('Garmin web OAuth: solo su piattaforma web');
 }
 
