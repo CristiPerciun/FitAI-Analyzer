@@ -63,6 +63,23 @@
     window.__FITAI_GARMIN_PUBLIC_API__ = 'https://myrasberrysyncgar.duckdns.org';
   </script>
   <script>
+    // GitHub Pages + Flutter PWA: un vecchio service worker può servire un bundle
+    // stale (`main.dart.js`) anche dopo il deploy, causando doppi flussi OAuth.
+    // L'app non ha bisogno dell'offline cache: rimuoviamo SW e cache web.
+    (function () {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          regs.forEach(function (r) { r.unregister(); });
+        }).catch(function () {});
+      }
+      if (window.caches && caches.keys) {
+        caches.keys().then(function (keys) {
+          keys.forEach(function (k) { caches.delete(k); });
+        }).catch(function () {});
+      }
+    })();
+  </script>
+  <script>
     (function () {
       var darkBg = '#1C1C1E';
       var lightBg = '#F5F3F0';

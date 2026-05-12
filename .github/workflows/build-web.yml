@@ -38,7 +38,7 @@ jobs:
 
       # Project Pages: https://<owner>.github.io/<repo>/
       - name: Build web release
-        run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
+        run: flutter build web --release --base-href "/${{ github.event.repository.name }}/" --pwa-strategy=none
 
       - name: Upload artefatto (download manuale)
         uses: actions/upload-artifact@v4
