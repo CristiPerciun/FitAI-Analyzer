@@ -25,10 +25,13 @@ FitnessData _$FitnessDataFromJson(Map<String, dynamic> json) => FitnessData(
   elapsedMinutes: (json['elapsedMinutes'] as num?)?.toDouble(),
   hasGarmin: json['hasGarmin'] as bool? ?? false,
   hasStrava: json['hasStrava'] as bool? ?? false,
+  hasMiFitness: json['hasMiFitness'] as bool? ?? false,
   garminActivityId: json['garminActivityId'] as String?,
   stravaActivityId: json['stravaActivityId'] as String?,
+  miFitnessTrackId: json['miFitnessTrackId'] as String?,
   garminRaw: json['garmin_raw'] as Map<String, dynamic>?,
   stravaRaw: json['strava_raw'] as Map<String, dynamic>?,
+  miFitnessRaw: json['mi_fitness_raw'] as Map<String, dynamic>?,
 );
 
 Map<String, dynamic> _$FitnessDataToJson(FitnessData instance) =>
@@ -51,8 +54,11 @@ Map<String, dynamic> _$FitnessDataToJson(FitnessData instance) =>
       'elapsedMinutes': instance.elapsedMinutes,
       'hasGarmin': instance.hasGarmin,
       'hasStrava': instance.hasStrava,
+      'hasMiFitness': instance.hasMiFitness,
       'garminActivityId': instance.garminActivityId,
       'stravaActivityId': instance.stravaActivityId,
+      'miFitnessTrackId': instance.miFitnessTrackId,
       'garmin_raw': instance.garminRaw,
       'strava_raw': instance.stravaRaw,
+      'mi_fitness_raw': instance.miFitnessRaw,
     };

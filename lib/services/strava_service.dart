@@ -93,10 +93,17 @@ class StravaActivity {
 
   /// Da FitnessData (Firestore) per visualizzazione lista
   factory StravaActivity.fromFitnessData(FitnessData d) {
-    final raw = d.stravaRaw ?? d.raw ?? {};
-    final idStr =
-        d.stravaActivityId ??
-        (d.id.startsWith('strava_') ? d.id.replaceFirst('strava_', '') : '');
+    final raw = d.stravaRaw ?? d.miFitnessRaw ?? d.raw ?? {};
+    var idStr = d.stravaActivityId ?? '';
+    if (idStr.isEmpty && d.miFitnessTrackId != null && d.miFitnessTrackId!.isNotEmpty) {
+      idStr = d.miFitnessTrackId!;
+    }
+    if (idStr.isEmpty && d.id.startsWith('strava_')) {
+      idStr = d.id.replaceFirst('strava_', '');
+    }
+    if (idStr.isEmpty && d.id.startsWith('mi_fitness_')) {
+      idStr = d.id.replaceFirst('mi_fitness_', '');
+    }
     return StravaActivity(
       id: int.tryParse(idStr) ?? 0,
       name: d.stravaActivityName ?? 'Attività',

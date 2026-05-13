@@ -27,6 +27,22 @@ class CompactActivityCard extends StatelessWidget {
 
     final cardTheme = Theme.of(context).extension<AppCardTheme>()!;
 
+    Color accentFor(FitnessData a) {
+      if (a.source == 'garmin') return AppColors.garminBlue;
+      if (a.source == 'mi_fitness') return AppColors.miFitnessOrange;
+      if (a.source == 'dual') {
+        if (a.hasGarmin) return AppColors.garminBlue;
+        if (a.hasStrava) return AppColors.stravaOrange;
+        if (a.hasMiFitness) return AppColors.miFitnessOrange;
+      }
+      if (a.hasMiFitness && !a.hasStrava && !a.hasGarmin) {
+        return AppColors.miFitnessOrange;
+      }
+      return AppColors.stravaOrange;
+    }
+
+    final accentColor = accentFor(activity);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: cardTheme.gradientDecoration,
@@ -41,9 +57,6 @@ class CompactActivityCard extends StatelessWidget {
             children: [
               Builder(
                 builder: (context) {
-                  final isGarmin = activity.source == 'garmin';
-                  final accentColor =
-                      isGarmin ? AppColors.garminBlue : AppColors.stravaOrange;
                   return Container(
                     width: 48,
                     height: 48,

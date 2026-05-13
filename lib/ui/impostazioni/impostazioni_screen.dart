@@ -20,6 +20,7 @@ import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/openrouter_api_key_dialog.dart';
 import 'package:fitai_analyzer/ui/profile/profile_hub_screen.dart';
 import 'package:fitai_analyzer/ui/widgets/garmin_connect_dialog.dart';
+import 'package:fitai_analyzer/ui/widgets/mi_fitness_connect_dialog.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -78,6 +79,7 @@ class ImpostazioniScreen extends ConsumerWidget {
     final aiBackendAsync = ref.watch(aiBackendSettingsProvider);
     final stravaAsync = ref.watch(stravaConnectedProvider);
     final garminAsync = ref.watch(garminConnectedProvider);
+    final miFitnessAsync = ref.watch(miFitnessConnectedProvider);
     final syncStatus = ref.watch(stravaSyncStatusProvider);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -99,6 +101,7 @@ class ImpostazioniScreen extends ConsumerWidget {
         authState.isLoading && authState.currentService == 'strava';
     final isStravaConnected = stravaAsync.valueOrNull ?? false;
     final isGarminConnected = garminAsync.valueOrNull ?? false;
+    final isMiFitnessConnected = miFitnessAsync.valueOrNull ?? false;
 
     return Scaffold(
       backgroundColor: screenBg,
@@ -179,6 +182,28 @@ class ImpostazioniScreen extends ConsumerWidget {
                 onChanged: (v) =>
                     unawaited(_onGarminSwitchChanged(context, ref, v)),
               ),
+              _IosRowDivider(indent: _IosGroup.rowLabelInset),
+              _IosSwitchRow(
+                leading: Container(
+                  width: 29,
+                  height: 29,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF6900).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: const Icon(
+                    Icons.fitness_center,
+                    color: Color(0xFFFF6900),
+                    size: 20,
+                  ),
+                ),
+                title: 'Mi Fitness (beta)',
+                value: isMiFitnessConnected,
+                activeColor: _iosSwitchOn,
+                onChanged: (v) =>
+                    unawaited(_onMiFitnessSwitchChanged(context, ref, v)),
+              ),
             ],
           ),
           if (isStravaLoading && (syncStatus.message?.isNotEmpty ?? false))
@@ -196,7 +221,8 @@ class ImpostazioniScreen extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.only(left: 4, top: 8, right: 4),
               child: Text(
-                'Attiva Strava o Garmin per sincronizzare attività e dati. '
+                'Attiva Strava, Garmin o Mi Fitness per sincronizzare attività e dati. '
+                'Mi Fitness usa servizi non ufficiali (beta): può interrompersi. '
                 'La prima sincronizzazione parte automaticamente dopo il collegamento.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: footerColor,
@@ -404,6 +430,111 @@ class ImpostazioniScreen extends ConsumerWidget {
     );
     if (ok == true && context.mounted) {
       await _performGarminDisconnect(context, ref, uid);
+    }
+  }
+
+  Future<void> _onMiFitnessSwitchChanged(
+    BuildContext context,
+    WidgetRef ref,
+    bool turnOn,
+  ) async {
+    final uid = ref.read(authNotifierProvider).user?.uid;
+    if (uid == null) {
+      if (context.mounted) {
+        showErrorDialog(context, 'Utente non autenticato.');
+      }
+      return;
+    }
+
+    if (turnOn) {
+      final already =
+          ref.read(miFitnessConnectedProvider).valueOrNull ?? false;
+      if (already) return;
+
+      final result = await showMiFitnessConnectDialog(context, ref, uid: uid);
+      if (result == true && context.mounted) {
+        ref.invalidate(miFitnessConnectedProvider);
+        ref.invalidate(activitiesStreamProvider);
+        scaffoldMessengerKey.currentState?.showSnackBar(
+          const SnackBar(content: Text('✅ Mi Fitness collegato!')),
+        );
+        await _runMiFitnessPostLoginSync(context, ref, uid);
+      }
+      return;
+    }
+
+    final connected =
+        ref.read(miFitnessConnectedProvider).valueOrNull ?? false;
+    if (!connected) return;
+
+    final ok = await _showCupertinoConfirm(
+      context,
+      title: 'Disconnetti Mi Fitness?',
+      message:
+          'I token Xiaomi sul server verranno rimossi per questo account.',
+      confirmLabel: 'Disconnetti',
+      isDestructive: true,
+    );
+    if (ok == true && context.mounted) {
+      await _performMiFitnessDisconnect(context, ref, uid);
+    }
+  }
+
+  Future<void> _performMiFitnessDisconnect(
+    BuildContext context,
+    WidgetRef ref,
+    String uid,
+  ) async {
+    final result =
+        await ref.read(garminServiceProvider).disconnectMiFitness(uid: uid);
+    if (context.mounted) {
+      ref.invalidate(miFitnessConnectedProvider);
+      ref.invalidate(activitiesStreamProvider);
+      ref.invalidate(activitiesByDateProvider);
+      ref.invalidate(longevityHomePackageProvider);
+      scaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text(
+            result['success'] == true
+                ? '✅ Mi Fitness scollegato.'
+                : '❌ ${result['message']}',
+          ),
+          backgroundColor: result['success'] == true
+              ? null
+              : Theme.of(context).colorScheme.error,
+        ),
+      );
+    }
+  }
+
+  Future<void> _runMiFitnessPostLoginSync(
+    BuildContext context,
+    WidgetRef ref,
+    String uid,
+  ) async {
+    final ok = await ref
+        .read(garminSyncNotifierProvider.notifier)
+        .syncNow(uid: uid, trigger: 'settings_mi_fitness_post_login');
+    ref.invalidate(activitiesStreamProvider);
+    ref.invalidate(activitiesByDateProvider);
+    if (!context.mounted) return;
+    final messenger = scaffoldMessengerKey.currentState;
+    if (ok) {
+      messenger?.showSnackBar(
+        const SnackBar(
+          content: Text('Mi Fitness: sincronizzazione avviata.'),
+        ),
+      );
+    } else {
+      final err = ref.read(garminSyncNotifierProvider).error ??
+          'Sincronizzazione non riuscita.';
+      messenger?.showSnackBar(
+        SnackBar(
+          content: Text('Mi Fitness: $err'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+          duration: const Duration(seconds: 8),
+        ),
+      );
     }
   }
 

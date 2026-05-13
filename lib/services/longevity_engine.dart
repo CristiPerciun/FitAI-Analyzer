@@ -653,8 +653,28 @@ class LongevityEngine {
           final distKm =
               (a['distanceKm'] as num?)?.toDouble() ??
               (((a['distance'] as num?)?.toDouble() ?? 0) / 1000);
+          final elapsedMin =
+              (a['elapsedMinutes'] as num?)?.toDouble() ??
+              (a['activeMinutes'] as num?)?.toDouble();
+          final avgHr = (a['avgHeartrate'] as num?)?.toDouble();
+          final kcalAct = (a['calories'] as num?)?.toDouble();
+          final src = a['source']?.toString().trim();
+          final parts = <String>[];
+          if (distKm > 0) parts.add('${distKm.toStringAsFixed(1)} km');
+          if (elapsedMin != null && elapsedMin > 0) {
+            parts.add('${elapsedMin.round()} min');
+          }
+          if (avgHr != null && avgHr > 0) {
+            parts.add('FC media ${avgHr.round()}');
+          }
+          if (kcalAct != null && kcalAct > 0) {
+            parts.add('${kcalAct.round()} kcal');
+          }
+          if (src != null && src.isNotEmpty) {
+            parts.add('fonte: $src');
+          }
           sb.writeln(
-            '  - $type: ${distKm > 0 ? "${distKm.toStringAsFixed(1)} km" : ""}',
+            parts.isEmpty ? '  - $type' : '  - $type: ${parts.join(' | ')}',
           );
         }
       }

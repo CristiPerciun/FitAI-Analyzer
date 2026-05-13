@@ -13,6 +13,8 @@ abstract final class AppColors {
   static const Color primary = Color(0xFF2C2C2C);
   static const Color stravaOrange = Color(0xFFFC4C02);
   static const Color garminBlue = Color(0xFF007CC2);
+  /// Xiaomi / Mi Fitness (integrazione non ufficiale).
+  static const Color miFitnessOrange = Color(0xFFFF6900);
   static const Color activityBurnBar = Color(0xFFDAAE63);
   static const Color error = Color(0xFFB00020);
   static const Color textDark = Color(0xFF2C2C2C);

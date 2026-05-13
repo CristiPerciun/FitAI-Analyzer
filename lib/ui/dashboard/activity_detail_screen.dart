@@ -1,8 +1,10 @@
 import 'package:fitai_analyzer/models/fitness_data.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
+import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:fitai_analyzer/ui/widgets/activity_heart_rate_chart_card.dart';
 import 'package:fitai_analyzer/ui/widgets/garmin_activity_detail_card.dart';
 import 'package:fitai_analyzer/ui/widgets/strava_activity_card.dart';
+import 'package:fitai_analyzer/utils/activity_utils.dart';
 import 'package:fitai_analyzer/utils/activity_hr_series.dart';
 import 'package:fitai_analyzer/utils/garmin_activity_chart_parsers.dart';
 import 'package:flutter/material.dart';
@@ -37,12 +39,8 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
   }
 
   Future<void> _loadStravaDetailIfNeeded() async {
-    final base = StravaActivity.fromFitnessData(widget.activity);
     final detailId = widget.activity.detailActivityId;
-    final hasStravaDetail = widget.activity.containsStravaData &&
-        detailId != null &&
-        base.id > 0;
-    if (!hasStravaDetail) return;
+    if (detailId == null || detailId <= 0) return;
 
     setState(() => _isLoadingStrava = true);
     try {
@@ -65,10 +63,7 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
       return;
     }
     final detailId = widget.activity.detailActivityId;
-    final tryStrava = widget.activity.containsStravaData &&
-        detailId != null &&
-        detailId > 0;
-    if (!tryStrava) return;
+    if (detailId == null || detailId <= 0) return;
 
     if (mounted) setState(() => _isLoadingHr = true);
     try {
@@ -99,17 +94,21 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
         activity.source == 'dual' ||
         activity.hasGarmin ||
         activity.garminRaw != null;
+    final detailId = activity.detailActivityId;
+    final showStravaSection = detailId != null && detailId > 0;
     final fallbackStrava = StravaActivity.fromFitnessData(activity);
     final stravaCardData = _stravaDetailed ?? fallbackStrava;
-    final hasStravaData = activity.containsStravaData || fallbackStrava.id > 0;
     final laps = _stravaDetailed?.laps ?? const [];
+    final showMiSummary = activity.containsMiFitnessData &&
+        !showStravaSection &&
+        !hasGarminData;
 
     return Scaffold(
       appBar: AppBar(title: Text(title)),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
-          if (hasStravaData) ...[
+          if (showStravaSection) ...[
             Text('Dettaglio Strava', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             StravaActivityCard(activity: stravaCardData),
@@ -140,6 +139,13 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
               sourceLabel: _hrSourceLabel,
             ),
           ],
+          if (showMiSummary) ...[
+            if (showStravaSection ||
+                _isLoadingHr ||
+                (_hrPoints != null && _hrPoints!.length >= 2))
+              const SizedBox(height: 16),
+            _MiFitnessSummaryCard(activity: activity),
+          ],
           if (hasGarminData) ...[
             const SizedBox(height: 16),
             Text('Dettaglio Garmin', style: Theme.of(context).textTheme.titleMedium),
@@ -151,6 +157,81 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
             _LapsChartCard(laps: laps),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _MiFitnessSummaryCard extends StatelessWidget {
+  const _MiFitnessSummaryCard({required this.activity});
+
+  final FitnessData activity;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final typeKey = activity.stravaActivityType;
+    final label = ActivityUtils.formatActivityType(typeKey);
+    final dist = activity.distanceKm;
+    final min = activity.stravaElapsedMinutes.round();
+    final avgHr = activity.stravaAvgHeartrate;
+    final maxHr = activity.stravaMaxHeartrate;
+    final kcal = activity.calories;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.fitness_center,
+                  color: AppColors.miFitnessOrange,
+                  size: 22,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Riepilogo allenamento (Mi Fitness)',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              label,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (min > 0)
+              Text('Durata: $min min', style: theme.textTheme.bodyMedium),
+            if (dist != null && dist > 0)
+              Text(
+                'Distanza: ${dist.toStringAsFixed(2)} km',
+                style: theme.textTheme.bodyMedium,
+              ),
+            if (avgHr != null && avgHr > 0)
+              Text(
+                'FC media: ${avgHr.round()} bpm',
+                style: theme.textTheme.bodyMedium,
+              ),
+            if (maxHr != null && maxHr > 0)
+              Text(
+                'FC max: ${maxHr.round()} bpm',
+                style: theme.textTheme.bodyMedium,
+              ),
+            if (kcal != null && kcal > 0)
+              Text(
+                'Calorie: ${kcal.round()} kcal',
+                style: theme.textTheme.bodyMedium,
+              ),
+          ],
+        ),
       ),
     );
   }

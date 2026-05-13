@@ -173,6 +173,18 @@ String get garminServerUrl {
   return _garminServerUrlLan;
 }
 
+/// `flutter run -d chrome` / web-server su **http://localhost**: probe LAN verso il Pi è permesso.
+/// Su **https** (PWA / GitHub Pages) restituisce false: li usiamo solo REMOTE per evitare mixed content.
+bool _isGarminWebLocalHttpDevHost(Uri? page) {
+  if (page == null) return false;
+  if (page.scheme.toLowerCase() != 'http') return false;
+  final h = page.host.toLowerCase();
+  return h == 'localhost' ||
+      h == '127.0.0.1' ||
+      h == '[::1]' ||
+      h.endsWith('.localhost');
+}
+
 /// Servizio per lettura dati Garmin da Firestore e connessione via server.
 /// I dati sono scritti dal garmin-sync-server Python (es. su Raspberry Pi).
 /// Collezioni: users/{uid}/activities, users/{uid}/daily_health
@@ -257,14 +269,18 @@ class GarminService {
     final lan = _garminServerUrlLan;
     final remote = _garminServerUrlRemote;
 
-    // Web: non fare probe LAN (spesso 3s di timeout fuori casa / mixed-content HTTPS→HTTP).
-    // `exchange-ticket` deve partire subito: i service ticket Garmin scadono in pochi secondi.
+    /// `flutter run`/web-server su **http://localhost**: qui ha senso il probe LAN verso il Pi in rete locale.
+    /// Su **HTTPS** (GitHub Pages) evitiamo LAN: spesso è solo HTTP (mixed content) e 3s di timeout
+    /// rovinano lo scambio ticket Garmin.
+    final webDevHttpLocalhost = kIsWeb &&
+        _isGarminWebLocalHttpDevHost(garmin_web.garminWebCurrentUri());
+
     if (kIsWeb) {
       if (_cachedBaseUrl != null) {
         final c = _cachedBaseUrl!;
-        if (c == lan) {
+        if (c == lan && !webDevHttpLocalhost) {
           _garminHttpDiag(
-            'Web: cache LAN ignorata -> REMOTE ($remote) (OAuth/ticket time-sensitive)',
+            'Web HTTPS: cache LAN ignorata -> REMOTE ($remote) (OAuth/ticket time-sensitive)',
           );
           _cachedBaseUrl = remote;
           return remote;
@@ -272,10 +288,40 @@ class GarminService {
         _garminHttpVerbose('Web: cache base URL -> $c');
         return c;
       }
+      if (webDevHttpLocalhost) {
+        _garminHttpVerbose(
+          'Web localhost HTTP: probe LAN ${_lanProbeTimeout.inSeconds}s: $lan '
+          '(se timeout -> $remote)',
+        );
+        try {
+          final sw = Stopwatch()..start();
+          final r = await _http.get(Uri.parse('$lan/')).timeout(_lanProbeTimeout);
+          _garminTraceHttpResponse(
+            label: 'resolveBaseUrl Web local LAN probe',
+            uri: Uri.parse('$lan/'),
+            method: 'GET',
+            response: r,
+            elapsedMs: sw.elapsedMilliseconds,
+          );
+          if (r.statusCode == 200) {
+            _cachedBaseUrl = lan;
+            _garminHttpVerbose(
+              'Web localhost: LAN OK (${sw.elapsedMilliseconds}ms) -> $lan',
+            );
+            return lan;
+          }
+          _garminHttpVerbose('Web localhost: LAN HTTP ${r.statusCode} -> REMOTE');
+        } on Object catch (e) {
+          _garminHttpVerbose('Web localhost: LAN non disponibile: $e -> REMOTE');
+        }
+        _cachedBaseUrl = remote;
+        _garminHttpVerbose('Web localhost: base finale -> $remote');
+        return remote;
+      }
       _cachedBaseUrl = remote;
       _garminHttpVerbose(
-        'Web: REMOTE senza probe LAN -> $remote '
-        '(per forzare un URL diverso usa GARMIN_SERVER_URL in .env)',
+        'Web HTTPS: REMOTE senza probe LAN -> $remote '
+        '(in dev locale usa http://localhost; per URL forzato usa GARMIN_SERVER_URL in .env)',
       );
       return remote;
     }
@@ -706,6 +752,101 @@ class GarminService {
     return doc.data()?['garmin_linked'] == true;
   }
 
+  Future<bool> isMiFitnessConnected(String uid) async {
+    final doc = await _firestore.collection('users').doc(uid).get();
+    return doc.data()?['mi_fitness_linked'] == true;
+  }
+
+  /// Collega Mi Fitness (credenziali una tantum sul server → solo token su Firestore).
+  Future<Map<String, dynamic>> connectMiFitness({
+    required String uid,
+    required String email,
+    required String password,
+  }) async {
+    final baseUrl = await _resolveBaseUrl();
+    final uri = Uri.parse('$baseUrl/mi-fitness/connect');
+    try {
+      final sw = Stopwatch()..start();
+      final response = await _http
+          .post(
+            uri,
+            headers: _jsonHeaders,
+            body: jsonEncode({
+              'uid': uid,
+              'email': email.trim(),
+              'password': password,
+            }),
+          )
+          .timeout(const Duration(seconds: 90));
+      _garminTraceHttpResponse(
+        label: 'mi-fitness/connect',
+        uri: uri,
+        method: 'POST',
+        response: response,
+        elapsedMs: sw.elapsedMilliseconds,
+        requestHeaders: _jsonHeaders,
+        omitBody: true,
+      );
+      final data = _tryDecodeJsonObject(response.body) ?? {};
+      if (response.statusCode == 200 && data['success'] == true) {
+        return {
+          'success': true,
+          'message': data['message']?.toString() ?? 'Mi Fitness collegato.',
+        };
+      }
+      final detail = _serverDetailOrMessage(data);
+      if (detail.isNotEmpty) {
+        return {'success': false, 'message': detail};
+      }
+      return {
+        'success': false,
+        'message': 'Mi Fitness: connessione non riuscita (${response.statusCode}).',
+      };
+    } on TimeoutException catch (e) {
+      _invalidateBaseUrlCacheOnNetworkFailure(e);
+      return {'success': false, 'message': 'Timeout durante connessione Mi Fitness.'};
+    } on Exception catch (e) {
+      _invalidateBaseUrlCacheOnNetworkFailure(e);
+      return {'success': false, 'message': 'Errore di rete: $e'};
+    }
+  }
+
+  Future<Map<String, dynamic>> disconnectMiFitness({required String uid}) async {
+    final baseUrl = await _resolveBaseUrl();
+    final uri = Uri.parse('$baseUrl/mi-fitness/disconnect');
+    try {
+      final sw = Stopwatch()..start();
+      final response = await _http
+          .post(uri, headers: _jsonHeaders, body: jsonEncode({'uid': uid}))
+          .timeout(const Duration(seconds: 30));
+      _garminTraceHttpResponse(
+        label: 'mi-fitness/disconnect',
+        uri: uri,
+        method: 'POST',
+        response: response,
+        elapsedMs: sw.elapsedMilliseconds,
+        requestHeaders: _jsonHeaders,
+      );
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200 && data['success'] == true) {
+        return {
+          'success': true,
+          'message': data['message']?.toString() ?? 'Mi Fitness scollegato.',
+        };
+      }
+      return {
+        'success': false,
+        'message': data['detail']?.toString() ?? 'Disconnessione non riuscita.',
+      };
+    } on TimeoutException catch (e) {
+      _invalidateBaseUrlCacheOnNetworkFailure(e);
+      return {'success': false, 'message': 'Server non risponde. Riprova.'};
+    } on Exception catch (e) {
+      _invalidateBaseUrlCacheOnNetworkFailure(e);
+      return {'success': false, 'message': 'Errore di rete: $e'};
+    }
+  }
+
   /// Ultimo sync completo lato server (per `POST /sync/delta`).
   Future<Timestamp?> getLastSuccessfulSync(String uid) async {
     final doc = await _firestore.collection('users').doc(uid).get();
@@ -945,7 +1086,7 @@ class GarminService {
   Future<Map<String, dynamic>> deltaSync({
     required String uid,
     Timestamp? lastSuccessfulSync,
-    List<String> sources = const ['garmin', 'strava'],
+    List<String> sources = const ['garmin', 'strava', 'mi_fitness'],
   }) async {
     final body = <String, dynamic>{'uid': uid, 'sources': sources};
     if (lastSuccessfulSync != null) {

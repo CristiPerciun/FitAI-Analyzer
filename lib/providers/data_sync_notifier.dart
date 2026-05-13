@@ -7,6 +7,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 export 'package:fitai_analyzer/utils/date_utils.dart' show formatDateForDisplay;
 
+/// Stato connessione Mi Fitness (Huami) da `users/{uid}.mi_fitness_linked`.
+final miFitnessConnectedProvider = StreamProvider.autoDispose<bool>((ref) {
+  final uid = ref.watch(authNotifierProvider).user?.uid;
+  if (uid == null) return Stream.value(false);
+  final docRef = FirebaseFirestore.instance.collection('users').doc(uid);
+  return documentSnapshotStream(
+    docRef,
+  ).map((doc) => doc.data()?['mi_fitness_linked'] == true);
+});
+
 /// Stream provider per attività unificate (`activities`) da Firestore.
 final activitiesStreamProvider = StreamProvider.autoDispose<List<FitnessData>>((
   ref,
