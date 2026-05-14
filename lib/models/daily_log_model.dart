@@ -52,6 +52,10 @@ class DailyLogModel {
   @JsonKey(name: 'goal_today_ia', defaultValue: '')
   final String goalTodayIa;
 
+  /// Completamento obiettivi pilastri Home (true/false solo se l'utente ha risposto al dialog).
+  @JsonKey(name: 'pillar_goals_completion', fromJson: _pillarGoalsFromJson, toJson: _pillarGoalsToJson)
+  final Map<String, bool> pillarGoalsCompletion;
+
   @JsonKey(fromJson: _timestampFromJson, toJson: _timestampToJson)
   final DateTime timestamp;
 
@@ -67,8 +71,35 @@ class DailyLogModel {
     this.totalBurnedKcal = 0.0,
     this.weightKg,
     this.goalTodayIa = '',
+    this.pillarGoalsCompletion = const {},
     required this.timestamp,
   });
+
+  static Map<String, bool> _pillarGoalsFromJson(dynamic value) {
+    if (value is! Map) return {};
+    final out = <String, bool>{};
+    for (final e in value.entries) {
+      final k = e.key.toString();
+      final v = e.value;
+      if (v is bool) {
+        out[k] = v;
+      } else if (v is num) {
+        out[k] = v != 0;
+      } else if (v is String) {
+        final lower = v.toLowerCase();
+        if (lower == 'true') out[k] = true;
+        if (lower == 'false') out[k] = false;
+      }
+    }
+    return out;
+  }
+
+  static Map<String, dynamic> _pillarGoalsToJson(Map<String, bool> m) =>
+      Map<String, dynamic>.from(m);
+
+  /// Uso da servizi Firestore (es. merge transazionale della mappa).
+  static Map<String, bool> coercePillarGoalsMap(dynamic value) =>
+      _pillarGoalsFromJson(value);
 
   // ==================== GETTER NUTRIZIONALI (Riparati contro i crash di tipo) ====================
 

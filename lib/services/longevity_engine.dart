@@ -494,6 +494,17 @@ class LongevityEngine {
         .toFirestoreMap();
     batch.set(base.doc('home_longevity_plan'), homeData, SetOptions(merge: true));
 
+    final dailyLogRef =
+        _firestore.collection('users').doc(uid).collection('daily_logs').doc(forDate);
+    batch.set(
+      dailyLogRef,
+      {
+        'date': forDate,
+        'pillar_goals_completion': FieldValue.delete(),
+      },
+      SetOptions(merge: true),
+    );
+
     await batch.commit();
 
     // Aggiorna diario (operazione separata: legge prima il testo esistente)

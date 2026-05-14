@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/daily_log_model.dart';
 import '../models/meal_model.dart';
 import '../models/user_profile.dart';
 import '../utils/platform_firestore_fix.dart';
@@ -506,5 +507,48 @@ class NutritionService {
               documentId: d.id.isNotEmpty ? d.id : null,
             ))
         .toList());
+  }
+
+  /// True se esiste almeno una voce in `pillar_goals_completion` per il giorno (per conferma Analisi).
+  Future<bool> hasAnyPillarGoalCompletion(String uid, String dateStr) async {
+    final snap = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('daily_logs')
+        .doc(dateStr)
+        .get();
+    final raw = snap.data()?['pillar_goals_completion'];
+    return raw is Map && raw.isNotEmpty;
+  }
+
+  /// Registra risposta utente (dialog Home) per un pilastro; merge su `pillar_goals_completion`.
+  Future<void> setPillarGoalCompletion(
+    String uid,
+    String dateStr,
+    String pillarKey,
+    bool completed,
+  ) async {
+    final firestore = FirebaseFirestore.instance;
+    final dailyRef = firestore
+        .collection('users')
+        .doc(uid)
+        .collection('daily_logs')
+        .doc(dateStr);
+    final now = DateTime.now();
+    await firestore.runTransaction((tx) async {
+      final snap = await tx.get(dailyRef);
+      final raw = snap.data()?['pillar_goals_completion'];
+      final map = DailyLogModel.coercePillarGoalsMap(raw);
+      map[pillarKey] = completed;
+      tx.set(
+        dailyRef,
+        {
+          'date': dateStr,
+          'pillar_goals_completion': map,
+          'timestamp': Timestamp.fromDate(now),
+        },
+        SetOptions(merge: true),
+      );
+    });
   }
 }

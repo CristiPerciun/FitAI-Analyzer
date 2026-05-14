@@ -32,6 +32,9 @@ DailyLogModel _$DailyLogModelFromJson(Map<String, dynamic> json) =>
       totalBurnedKcal: (json['total_burned_kcal'] as num?)?.toDouble() ?? 0.0,
       weightKg: (json['weight_kg'] as num?)?.toDouble(),
       goalTodayIa: json['goal_today_ia'] as String? ?? '',
+      pillarGoalsCompletion: json['pillar_goals_completion'] == null
+          ? const {}
+          : DailyLogModel._pillarGoalsFromJson(json['pillar_goals_completion']),
       timestamp: DailyLogModel._timestampFromJson(json['timestamp']),
     );
 
@@ -48,5 +51,8 @@ Map<String, dynamic> _$DailyLogModelToJson(DailyLogModel instance) =>
       'total_burned_kcal': instance.totalBurnedKcal,
       'weight_kg': instance.weightKg,
       'goal_today_ia': instance.goalTodayIa,
+      'pillar_goals_completion': DailyLogModel._pillarGoalsToJson(
+        instance.pillarGoalsCompletion,
+      ),
       'timestamp': DailyLogModel._timestampToJson(instance.timestamp),
     };

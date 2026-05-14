@@ -1,8 +1,10 @@
 import 'package:fitai_analyzer/models/longevity_home_package.dart';
+import 'package:fitai_analyzer/models/home_longevity_plan_day.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart'
     show GarminSyncState, garminSyncNotifierProvider;
 import 'package:fitai_analyzer/providers/providers.dart';
+import 'package:fitai_analyzer/services/nutrition_service.dart';
 import 'package:fitai_analyzer/utils/boot_log.dart';
 import 'package:fitai_analyzer/ui/alimentazione/meal_capture_flow.dart';
 import 'package:fitai_analyzer/ui/home/widgets/garmin_daily_stats.dart';
@@ -88,6 +90,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final packageAsync = ref.watch(longevityHomePackageProvider);
     final planDay = ref.watch(homeLongevityPlanForUiProvider);
     final dailyGoals = ref.watch(homeDailyGoalsMapProvider);
+    final pillarCompletion = ref.watch(homePillarCompletionMapProvider);
     final weeklySprint = planDay?.weeklySprint;
     final strategicAdvice = planDay?.strategicAdvice;
     final isLoadingPlan = ref.watch(_longevityPlanLoadingProvider);
@@ -137,11 +140,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             PillarGrid(
                               isLoading: isLoadingPlan,
                               pillarContents: dailyGoals.isEmpty ? null : dailyGoals,
+                              pillarCompletion: pillarCompletion,
                               onGenerateTap: () => _onGeneratePlan(context),
                               onPillarContentTap: {
                                 LongevityPillar.alimentazione: () =>
                                     _onAddMealFromHome(context),
                               },
+                              onPillarCompletionAnswer: (pillar, completed) =>
+                                  _onPillarCompletion(context, ref, pillar, completed),
                             ),
                             const SizedBox(height: 16),
                             const GarminDailyStats(),
@@ -234,6 +240,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
     if (!context.mounted) return;
 
+    final today = localCalendarDateKey();
+    final hasRecorded =
+        await ref.read(nutritionServiceProvider).hasAnyPillarGoalCompletion(uid, today);
+    if (hasRecorded && context.mounted) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Nuova analisi'),
+          content: const Text(
+            'Hai già registrato Sì o No su uno o più obiettivi di oggi. '
+            'Rigenerando il piano perderai queste registrazioni. Continuare?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annulla'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Continua'),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true) return;
+    }
+    if (!context.mounted) return;
+
     ref.read(_longevityPlanLoadingProvider.notifier).state = true;
 
     try {
@@ -242,6 +276,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (context.mounted) showErrorDialog(context, e.toString());
     } finally {
       ref.read(_longevityPlanLoadingProvider.notifier).state = false;
+    }
+  }
+
+  Future<void> _onPillarCompletion(
+    BuildContext context,
+    WidgetRef ref,
+    LongevityPillar pillar,
+    bool completed,
+  ) async {
+    final uid = ref.read(authNotifierProvider).user?.uid;
+    if (uid == null) return;
+    final dateStr = localCalendarDateKey();
+    try {
+      await ref.read(nutritionServiceProvider).setPillarGoalCompletion(
+            uid,
+            dateStr,
+            pillar.name,
+            completed,
+          );
+    } catch (e) {
+      if (context.mounted) {
+        showErrorDialog(context, 'Salvataggio non riuscito: $e');
+      }
     }
   }
 

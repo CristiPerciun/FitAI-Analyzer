@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fitai_analyzer/models/ai_current_allenamenti_model.dart';
+import 'package:fitai_analyzer/models/daily_log_model.dart';
 import 'package:fitai_analyzer/models/home_longevity_plan_day.dart';
 import 'package:fitai_analyzer/models/longevity_home_package.dart';
 import 'package:fitai_analyzer/models/meal_model.dart';
@@ -204,6 +205,43 @@ Map<LongevityPillar, String> _pillarMapFromPlan(HomeLongevityPlanDay? plan) {
 /// Esportato per la Home: mappa pilastri da [homeLongevityPlanForUiProvider].
 final homeDailyGoalsMapProvider = Provider<Map<LongevityPillar, String>>((ref) {
   return _pillarMapFromPlan(ref.watch(homeLongevityPlanForUiProvider));
+});
+
+/// `daily_logs/{oggi}` — stato completamento pilastri (stream).
+final todayDailyLogStreamProvider =
+    StreamProvider.autoDispose<DailyLogModel?>((ref) async* {
+  final uid = ref.watch(authNotifierProvider).user?.uid;
+  if (uid == null) {
+    yield null;
+    return;
+  }
+  final dateStr = localCalendarDateKey();
+  final docRef = FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection('daily_logs')
+      .doc(dateStr);
+  await for (final snap in documentSnapshotStream(docRef)) {
+    if (!snap.exists || snap.data() == null) {
+      yield null;
+      continue;
+    }
+    yield DailyLogModel.fromJson({
+      ...snap.data()!,
+      'date': dateStr,
+    });
+  }
+});
+
+/// Per pilastro: null non registrato, true/false da dialog Home.
+final homePillarCompletionMapProvider =
+    Provider<Map<LongevityPillar, bool?>>((ref) {
+  final log = ref.watch(todayDailyLogStreamProvider).asData?.value;
+  final m = log?.pillarGoalsCompletion ?? {};
+  return {
+    for (final p in LongevityPillar.values)
+      p: m.containsKey(p.name) ? m[p.name]! : null,
+  };
 });
 
 /// Genera e salva il piano giornaliero unificato via prompt Gemini.
