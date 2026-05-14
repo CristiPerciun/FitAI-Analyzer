@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/ai_current_allenamenti_model.dart';
 import '../models/baseline_profile_model.dart';
 import '../models/daily_log_model.dart';
-import '../models/home_longevity_plan_day.dart';
+import '../models/home_longevity_plan_day.dart' show HomeLongevityPlanDay, localCalendarDateKey;
 import '../models/longevity_home_package.dart';
 import '../models/nutrition_meal_plan_ai.dart';
 import '../models/rolling_10days_model.dart';
@@ -252,24 +252,63 @@ class LongevityEngine {
   // PROMPT UNIFICATO GIORNALIERO
   // ============================================================
 
+  /// Obiettivo allenamento salvato (`ai_current/allenamenti`) solo se [for_date] coincide.
+  Future<AiCurrentAllenamentiModel?> fetchAiCurrentAllenamentiForDate(
+    String uid,
+    String calendarDateYmd,
+  ) async {
+    final snap = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('ai_current')
+        .doc('allenamenti')
+        .get();
+    if (!snap.exists || snap.data() == null) return null;
+    final m = AiCurrentAllenamentiModel.fromFirestore(snap.data()!);
+    if (m.forDate != calendarDateYmd) return null;
+    return m;
+  }
+
+  /// Dopo un nuovo JSON AI, mantieni tipo/durata/intensità se c’è già un obiettivo valido per oggi.
+  void mergeStableAllenamentoFromPrevious({
+    required Map<String, dynamic> decoded,
+    required AiCurrentAllenamentiModel? previousForSameCalendarDay,
+    required String calendarDateYmd,
+  }) {
+    if (previousForSameCalendarDay == null ||
+        previousForSameCalendarDay.forDate != calendarDateYmd ||
+        !previousForSameCalendarDay.hasContent) {
+      return;
+    }
+    final raw = decoded['allenamento'];
+    if (raw is! Map<String, dynamic>) return;
+
+    final p = previousForSameCalendarDay;
+    if (p.tipo.trim().isNotEmpty) raw['tipo'] = p.tipo;
+    if (p.durataMins > 0) raw['durata_min'] = p.durataMins;
+    if (p.intensita.trim().isNotEmpty) raw['intensita'] = p.intensita;
+  }
+
   /// Costruisce il contesto unificato per il prompt giornaliero.
   /// Riusa [buildGeminiHomeContext] per i dati storici (profilo, 2 mesi, 7 giorni, baseline, diario)
-  /// e aggiunge [rolling_10days/current].
+  /// e aggiunge [rolling_10days/current] + obiettivo allenamento già salvato per oggi (se esiste).
   Future<UnifiedDailyContext> buildUnifiedDailyContext(String uid) async {
-    final today = DateTime.now();
-    final todayStr = today.toIso8601String().split('T')[0];
+    final nowLocal = DateTime.now();
+    final todayStr = localCalendarDateKey(nowLocal);
     final yesterdayStr =
-        today.subtract(const Duration(days: 1)).toIso8601String().split('T')[0];
+        localCalendarDateKey(nowLocal.subtract(const Duration(days: 1)));
 
     final results = await Future.wait([
       buildGeminiHomeContext(uid),
       _getRolling10Days(uid),
+      fetchAiCurrentAllenamentiForDate(uid, todayStr),
     ]);
 
     final gemCtx = results[0] as GeminiHomeContext;
     final rolling = results[1] as Rolling10DaysModel?;
+    final existingAllenamenti = results[2] as AiCurrentAllenamentiModel?;
 
-    // L'elemento 0 di detailed7Days è il giorno più recente (ieri o oggi se già presente)
+    // L'elemento 0 di detailed7Days è il giorno più recente (oggi).
     final yesterdayDetail =
         gemCtx.detailed7Days.isNotEmpty ? gemCtx.detailed7Days.first : null;
 
@@ -285,6 +324,7 @@ class LongevityEngine {
       baseline: gemCtx.baseline,
       detailed7Days: gemCtx.detailed7Days,
       weekly2Months: gemCtx.weeklySummary,
+      existingAllenamentiForToday: existingAllenamenti,
     );
   }
 
@@ -319,6 +359,14 @@ class LongevityEngine {
       '## 4. DATI DETTAGLIATI ULTIMI 7 GIORNI (attività + biometrici Garmin)',
     );
     sb.writeln(_formatDetailed7Days(ctx.detailed7Days));
+    sb.writeln();
+
+    sb.writeln('## 4B. FOCUS OBBLIGATORIO — ATTIVITÀ GIÀ REGISTRATE OGGI');
+    sb.writeln(_formatTodayPinnedActivities(ctx));
+    sb.writeln();
+
+    sb.writeln('## 4C. STABILITÀ OBIETTIVO ALLENAMENTO DELLA GIORNATA');
+    sb.writeln(_formatExistingAllenamentoBlock(ctx.existingAllenamentiForToday));
     sb.writeln();
 
     // --- Sezione 5: Rolling 10 giorni ---
@@ -370,9 +418,15 @@ class LongevityEngine {
       'Basandoti su tutto il contesto sopra, genera in UN\'UNICA risposta JSON\n'
       'gli obiettivi personalizzati per OGGI (${ctx.todayDate}):\n'
       '1. Obiettivi pasto (colazione/pranzo/cena) con macro target\n'
-      '2. Un obiettivo di allenamento concreto\n'
-      '3. 4 micro-obiettivi Home (Cuore, Forza, Alimentazione, Recupero) + sprint settimanale + consiglio\n'
-      '4. Sintesi dell\'EVOLUZIONE di oggi da appendere al diario (dati reali, NON consigli AI)\n'
+      '2. Obiettivo di allenamento: se la sezione 4B lista attività già registrate oggi, riconoscile sempre in '
+      'done_today_summary (tono positivo/breve) e proponi un focus COMPLEMENTARE (es. dopo cardio zona 2 — mobilità o forza leggera) '
+      'o recupero quando appropriato — non suggerire di ripetere la stessa sessione come se non fosse avvenuta.\n'
+      '3. Imposta progress_against_goal_0_1 tra 0 e 1 come stima ragionevole di quanto l\'obiettivo giornaliero '
+      '(durata/intensità) è già coperto dalle attività GIÀ nella sezione 4B rispetto a tipo/durata_min che stai usando.\n'
+      '4. Se la sezione 4C definisce già tipo/durata_min/intensita, RIUTILIZZA GLI STESSI VALORI e aggiorna solo '
+      'descrizione/complementari, progress_against_goal_0_1 e done_today_summary.\n'
+      '5. 4 micro-obiettivi Home (Cuore, Forza, Alimentazione, Recupero) + sprint settimanale + consiglio\n'
+      '6. Sintesi dell\'EVOLUZIONE di oggi da appendere al diario (dati reali, NON consigli AI)\n'
       'Rispondi ESCLUSIVAMENTE in JSON valido, lingua italiana:',
     );
     sb.writeln();
@@ -392,9 +446,11 @@ class LongevityEngine {
   },
   "allenamento": {
     "tipo": "es. Corsa Zone 2",
-    "descrizione": "obiettivo specifico per oggi, max 120 caratteri",
+    "descrizione": "obiettivo per oggi o complementare, max ~200 caratteri",
     "durata_min": 0,
-    "intensita": "leggera | moderata | intensa | riposo attivo"
+    "intensita": "leggera | moderata | intensa | riposo attivo",
+    "progress_against_goal_0_1": 0.0,
+    "done_today_summary": "breve messaggio motivazionale ciò che è già stato fatto oggi; stringa vuota se nulla registrato"
   },
   "home": {
     "cuore": "micro-obiettivo Zone 2/cardiovascolare, max 80 caratteri",
@@ -633,67 +689,134 @@ class LongevityEngine {
     return sb.toString();
   }
 
+  DayDetail? _detailForCalendarDate(List<DayDetail> days, String ymd) {
+    for (final d in days) {
+      if (d.date == ymd) return d;
+    }
+    return null;
+  }
+
+  void _appendActivitiesLines(
+    StringBuffer sb,
+    Iterable<Map<String, dynamic>> acts,
+  ) {
+    for (final a in acts) {
+      final type =
+          a['activityType'] ??
+          a['activityTypeKey'] ??
+          a['sport_type'] ??
+          a['type'] ??
+          '?';
+      final distKm =
+          (a['distanceKm'] as num?)?.toDouble() ??
+          (((a['distance'] as num?)?.toDouble() ?? 0) / 1000);
+      final elapsedMin =
+          (a['elapsedMinutes'] as num?)?.toDouble() ??
+          (a['activeMinutes'] as num?)?.toDouble();
+      final avgHr = (a['avgHeartrate'] as num?)?.toDouble();
+      final kcalAct = (a['calories'] as num?)?.toDouble();
+      final src = a['source']?.toString().trim();
+      final parts = <String>[];
+      if (distKm > 0) parts.add('${distKm.toStringAsFixed(1)} km');
+      if (elapsedMin != null && elapsedMin > 0) {
+        parts.add('${elapsedMin.round()} min');
+      }
+      if (avgHr != null && avgHr > 0) {
+        parts.add('FC media ${avgHr.round()}');
+      }
+      if (kcalAct != null && kcalAct > 0) {
+        parts.add('${kcalAct.round()} kcal');
+      }
+      if (src != null && src.isNotEmpty) {
+        parts.add('fonte: $src');
+      }
+      sb.writeln(
+        parts.isEmpty ? '  - $type' : '  - $type: ${parts.join(' | ')}',
+      );
+    }
+  }
+
+  void _appendDayHealthSnippet(
+    StringBuffer sb,
+    Map<String, dynamic>? health,
+  ) {
+    if (health == null) return;
+    final stats = health['stats'] as Map<String, dynamic>?;
+    final steps = stats?['totalSteps'] ?? stats?['userSteps'];
+    final bb = stats?['bodyBatteryMostRecentValue'];
+    final sleep = health['sleep'] as Map<String, dynamic>?;
+    final sleepScore = sleep?['sleepScore'] ?? sleep?['overallSleepScore'];
+    final maxMetrics = health['max_metrics'] as Map<String, dynamic>?;
+    final vo2max =
+        maxMetrics?['vo2Max'] ?? maxMetrics?['maxVo2'] ?? stats?['vo2Max'];
+    final fitnessAge = health['fitness_age'] as Map<String, dynamic>?;
+    final fitnessAgeVal = fitnessAge?['fitnessAge'] ?? fitnessAge?['age'];
+    sb.writeln(
+      'Passi: $steps | Body Battery: $bb | Sonno: $sleepScore | '
+      'VO2Max: ${vo2max ?? "—"} | Fitness Age: ${fitnessAgeVal ?? "—"}',
+    );
+  }
+
+  void _appendDayDetailBody(StringBuffer sb, DayDetail d) {
+    final acts = d.activities;
+    if (d.log != null) {
+      sb.writeln(
+        'Attività: ${acts.length} | Bruciate: ${d.log!.totalBurnedKcalForAggregation.toStringAsFixed(0)} kcal',
+      );
+      sb.writeln('Nutrizione: ${_formatNut(d.log!.nutritionForAi)}');
+    } else {
+      if (acts.isEmpty) {
+        sb.writeln(
+          'Daily_log non presente; nessuna attività Firestore per questo giorno.',
+        );
+      } else {
+        sb.writeln(
+          'Daily_log non presente; ${acts.length} attività da Garmin/Strava/Mi Fitness.',
+        );
+      }
+    }
+    _appendActivitiesLines(sb, acts);
+    _appendDayHealthSnippet(sb, d.health);
+  }
+
+  String _formatTodayPinnedActivities(UnifiedDailyContext ctx) {
+    final d = _detailForCalendarDate(ctx.detailed7Days, ctx.todayDate) ??
+        (ctx.detailed7Days.isNotEmpty ? ctx.detailed7Days.first : null);
+    if (d == null) {
+      return 'Nessun dato strutturato per ${ctx.todayDate}.';
+    }
+    final sb = StringBuffer();
+    sb.writeln(
+      'Usa SEMPRE queste righe come verità per le attività già registrate oggi '
+      '(${ctx.todayDate}). Se la lista non è vuota, riconoscile in '
+      'done_today_summary e calcola progress_against_goal_0_1 in base a durata/tipo vs obiettivo.',
+    );
+    _appendDayDetailBody(sb, d);
+    return sb.toString().trimRight();
+  }
+
+  String _formatExistingAllenamentoBlock(AiCurrentAllenamentiModel? m) {
+    if (m == null || !m.hasContent) {
+      return 'Nessun obiettivo allenamento già salvato per oggi — è la prima analisi della giornata o non c’è ancora un piano.';
+    }
+    return '''
+OBIETTIVO ALLENAMENTO GIÀ FISSATO PER OGGI (vincolante):
+- tipo: ${m.tipo}
+- durata_min: ${m.durataMins}
+- intensita: ${m.intensita}
+- descrizione attuale: ${m.descrizione}
+
+REGOLE: mantieni IDENTICI tipo, durata_min e intensita nella risposta JSON (il sistema li riallinea comunque).
+Aggiorna obbligatoriamente progress_against_goal_0_1 (0.0–1.0) e done_today_summary in base alle attività già registrate oggi.
+Se servono integrazioni, scrivile nella descrizione come aggiunta (complementare o recupero), senza contraddire l’obiettivo base.
+'''.trim();
+  }
+
   String _formatDetailed7Days(List<DayDetail> days) {
     final sb = StringBuffer();
     for (final d in days) {
       sb.writeln('--- ${d.date} ---');
-      if (d.log != null) {
-        final acts = d.activities;
-        sb.writeln(
-          'Attività: ${acts.length} | Bruciate: ${d.log!.totalBurnedKcalForAggregation.toStringAsFixed(0)} kcal',
-        );
-        sb.writeln('Nutrizione: ${_formatNut(d.log!.nutritionForAi)}');
-        for (final a in acts) {
-          final type =
-              a['activityType'] ??
-              a['activityTypeKey'] ??
-              a['sport_type'] ??
-              a['type'] ??
-              '?';
-          final distKm =
-              (a['distanceKm'] as num?)?.toDouble() ??
-              (((a['distance'] as num?)?.toDouble() ?? 0) / 1000);
-          final elapsedMin =
-              (a['elapsedMinutes'] as num?)?.toDouble() ??
-              (a['activeMinutes'] as num?)?.toDouble();
-          final avgHr = (a['avgHeartrate'] as num?)?.toDouble();
-          final kcalAct = (a['calories'] as num?)?.toDouble();
-          final src = a['source']?.toString().trim();
-          final parts = <String>[];
-          if (distKm > 0) parts.add('${distKm.toStringAsFixed(1)} km');
-          if (elapsedMin != null && elapsedMin > 0) {
-            parts.add('${elapsedMin.round()} min');
-          }
-          if (avgHr != null && avgHr > 0) {
-            parts.add('FC media ${avgHr.round()}');
-          }
-          if (kcalAct != null && kcalAct > 0) {
-            parts.add('${kcalAct.round()} kcal');
-          }
-          if (src != null && src.isNotEmpty) {
-            parts.add('fonte: $src');
-          }
-          sb.writeln(
-            parts.isEmpty ? '  - $type' : '  - $type: ${parts.join(' | ')}',
-          );
-        }
-      }
-      if (d.health != null) {
-        final stats = d.health!['stats'] as Map<String, dynamic>?;
-        final steps = stats?['totalSteps'] ?? stats?['userSteps'];
-        final bb = stats?['bodyBatteryMostRecentValue'];
-        final sleep = d.health!['sleep'] as Map<String, dynamic>?;
-        final sleepScore = sleep?['sleepScore'] ?? sleep?['overallSleepScore'];
-        final maxMetrics = d.health!['max_metrics'] as Map<String, dynamic>?;
-        final vo2max =
-            maxMetrics?['vo2Max'] ?? maxMetrics?['maxVo2'] ?? stats?['vo2Max'];
-        final fitnessAge = d.health!['fitness_age'] as Map<String, dynamic>?;
-        final fitnessAgeVal = fitnessAge?['fitnessAge'] ?? fitnessAge?['age'];
-        sb.writeln(
-          'Passi: $steps | Body Battery: $bb | Sonno: $sleepScore | '
-          'VO2Max: ${vo2max ?? "—"} | Fitness Age: ${fitnessAgeVal ?? "—"}',
-        );
-      }
+      _appendDayDetailBody(sb, d);
       sb.writeln();
     }
     return sb.toString();
@@ -785,6 +908,9 @@ class UnifiedDailyContext {
   /// Medie settimanali ultimi 2 mesi.
   final List<WeeklySummary> weekly2Months;
 
+  /// Piano `ai_current/allenamenti` già salvato per [todayDate] (se esiste).
+  final AiCurrentAllenamentiModel? existingAllenamentiForToday;
+
   const UnifiedDailyContext({
     this.userProfile,
     required this.yesterdayDate,
@@ -797,6 +923,7 @@ class UnifiedDailyContext {
     this.baseline,
     this.detailed7Days = const [],
     this.weekly2Months = const [],
+    this.existingAllenamentiForToday,
   });
 }
 

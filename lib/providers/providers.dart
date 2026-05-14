@@ -233,13 +233,18 @@ Future<void> loadLongevityPlan(WidgetRef ref) async {
     final decoded = json.decode(cleaned) as Map<String, dynamic>?;
     if (decoded == null) return;
 
-    final todayLocal = localCalendarDateKey();
+    final dayKey = ctx.todayDate;
+    engine.mergeStableAllenamentoFromPrevious(
+      decoded: decoded,
+      previousForSameCalendarDay: ctx.existingAllenamentiForToday,
+      calendarDateYmd: dayKey,
+    );
 
     // Salva i 3 documenti ai_current + aggiorna diario
-    await engine.saveUnifiedAiCurrent(uid, decoded, todayLocal);
+    await engine.saveUnifiedAiCurrent(uid, decoded, dayKey);
 
     // Aggiorna subito lo stato ottimistico per la Home (evita attesa stream)
-    final homePlan = HomeLongevityPlanDay.fromUnifiedJson(decoded, todayLocal);
+    final homePlan = HomeLongevityPlanDay.fromUnifiedJson(decoded, dayKey);
     ref.read(homeLongevityPlanOptimisticProvider.notifier).setPlan(homePlan);
   } catch (_) {}
 }

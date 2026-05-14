@@ -10,6 +10,8 @@ class AiCurrentAllenamentiModel {
     this.durataMins = 0,
     this.intensita = '',
     this.forDate = '',
+    this.progressAgainstGoal01,
+    this.doneTodaySummary = '',
   });
 
   final String tipo;
@@ -19,6 +21,12 @@ class AiCurrentAllenamentiModel {
 
   /// Data YYYY-MM-DD per cui è stato generato l'obiettivo.
   final String forDate;
+
+  /// 0–1: quanto l'obiettivo giornaliero risulta coperto da attività già registrate oggi.
+  final double? progressAgainstGoal01;
+
+  /// Riconoscimento testuale (es. allenamento già fatto); max ~200 caratteri lato prompt.
+  final String doneTodaySummary;
 
   bool get hasContent => descrizione.isNotEmpty || tipo.isNotEmpty;
 
@@ -35,7 +43,19 @@ class AiCurrentAllenamentiModel {
       durataMins: (m['durata_min'] as num?)?.toInt() ?? 0,
       intensita: m['intensita']?.toString() ?? '',
       forDate: forDate,
+      progressAgainstGoal01: _progress01FromJson(m['progress_against_goal_0_1']),
+      doneTodaySummary:
+          m['done_today_summary']?.toString() ?? '',
     );
+  }
+
+  static double? _progress01FromJson(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble().clamp(0.0, 1.0);
+    return double.tryParse(v.toString().trim().replaceAll(',', '.'))?.clamp(
+          0.0,
+          1.0,
+        );
   }
 
   factory AiCurrentAllenamentiModel.fromFirestore(Map<String, dynamic> data) {
@@ -45,11 +65,14 @@ class AiCurrentAllenamentiModel {
       durataMins: (data['durata_min'] as num?)?.toInt() ?? 0,
       intensita: data['intensita']?.toString() ?? '',
       forDate: data['for_date']?.toString() ?? '',
+      progressAgainstGoal01:
+          _progress01FromJson(data['progress_against_goal_0_1']),
+      doneTodaySummary: data['done_today_summary']?.toString() ?? '',
     );
   }
 
   Map<String, dynamic> toFirestore() {
-    return {
+    final out = <String, dynamic>{
       'tipo': tipo,
       'descrizione': descrizione,
       'durata_min': durataMins,
@@ -57,5 +80,12 @@ class AiCurrentAllenamentiModel {
       'for_date': forDate,
       'updated_at': FieldValue.serverTimestamp(),
     };
+    if (progressAgainstGoal01 != null) {
+      out['progress_against_goal_0_1'] = progressAgainstGoal01;
+    }
+    if (doneTodaySummary.isNotEmpty) {
+      out['done_today_summary'] = doneTodaySummary;
+    }
+    return out;
   }
 }

@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:fitai_analyzer/models/meal_model.dart';
 import 'package:fitai_analyzer/providers/today_longevity_metrics_provider.dart';
+import 'package:fitai_analyzer/ui/widgets/anim_progress_ring.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -170,7 +171,7 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
             Stack(
               alignment: Alignment.center,
               children: [
-                _AnimNutritionProgressRing(
+                AnimProgressRing(
                   progress: foodProgress,
                   size: 115,
                   strokeWidth: 9,
@@ -248,7 +249,7 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
         Stack(
           alignment: Alignment.center,
           children: [
-            _AnimNutritionProgressRing(
+            AnimProgressRing(
               progress: macroProgress,
               size: 65,
               strokeWidth: 6,
@@ -340,73 +341,6 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
         color: active ? activeColor : inactiveColor,
         shape: BoxShape.circle,
       ),
-    );
-  }
-}
-
-/// Cerchio calorie/macro con transizione graduale (~2s). Usa [TweenAnimationBuilder] per evitare
-/// più [AnimationController] nel [PageView] (pagine non visibili / ticker: i macro non si aggiornavano).
-class _AnimNutritionProgressRing extends StatefulWidget {
-  const _AnimNutritionProgressRing({
-    required this.progress,
-    required this.size,
-    required this.strokeWidth,
-    required this.accentColor,
-    required this.trackColor,
-  });
-
-  final double progress;
-  final double size;
-  final double strokeWidth;
-  final Color accentColor;
-  final Color trackColor;
-
-  @override
-  State<_AnimNutritionProgressRing> createState() => _AnimNutritionProgressRingState();
-}
-
-class _AnimNutritionProgressRingState extends State<_AnimNutritionProgressRing> {
-  static const Duration _duration = Duration(seconds: 2);
-
-  late double _tweenBegin;
-  late double _tweenEnd;
-
-  @override
-  void initState() {
-    super.initState();
-    final p = widget.progress.clamp(0.0, 1.0);
-    _tweenBegin = p;
-    _tweenEnd = p;
-  }
-
-  @override
-  void didUpdateWidget(covariant _AnimNutritionProgressRing oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    final next = widget.progress.clamp(0.0, 1.0);
-    if ((next - _tweenEnd).abs() < 0.0001) return;
-    _tweenBegin = _tweenEnd;
-    _tweenEnd = next;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      duration: _duration,
-      curve: Curves.easeOutCubic,
-      tween: Tween<double>(begin: _tweenBegin, end: _tweenEnd),
-      builder: (context, value, _) {
-        return SizedBox(
-          width: widget.size,
-          height: widget.size,
-          child: CircularProgressIndicator(
-            value: value.clamp(0.0, 1.0),
-            strokeWidth: widget.strokeWidth,
-            backgroundColor: widget.trackColor,
-            valueColor: AlwaysStoppedAnimation<Color>(widget.accentColor),
-            strokeCap: StrokeCap.round,
-          ),
-        );
-      },
     );
   }
 }

@@ -4,6 +4,8 @@ import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/dashboard_activity_providers.dart';
 import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
+import 'package:fitai_analyzer/ui/widgets/anim_progress_ring.dart';
+import 'package:fitai_analyzer/utils/workout_goal_progress.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -107,7 +109,10 @@ class DashboardSuggestionsTab extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 16),
-          _WorkoutObjectiveCard(obiettivo: allenamentiObiettivo),
+          _WorkoutObjectiveCard(
+            obiettivo: allenamentiObiettivo,
+            todayActivities: todayActs,
+          ),
           const SizedBox(height: 16),
           _SuggestionTile(
             icon: Icons.water_drop_outlined,
@@ -199,14 +204,31 @@ class _TodayActivityRow extends StatelessWidget {
 /// Card che mostra l'obiettivo di allenamento giornaliero generato dal prompt AI unificato.
 /// I dati arrivano da `ai_current/allenamenti` via [aiCurrentAllenamentiStreamProvider].
 class _WorkoutObjectiveCard extends StatelessWidget {
-  const _WorkoutObjectiveCard({this.obiettivo});
+  const _WorkoutObjectiveCard({
+    this.obiettivo,
+    required this.todayActivities,
+  });
 
   final AiCurrentAllenamentiModel? obiettivo;
+  final List<FitnessData> todayActivities;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final hasData = obiettivo != null && obiettivo!.hasContent;
+    final ringTrack =
+        theme.colorScheme.onSurface.withValues(alpha: isDark ? 0.05 : 0.10);
+
+    double? progressDisplay;
+    if (hasData) {
+      progressDisplay = workoutProgressForDisplay(
+        goal: obiettivo,
+        todayActivities: todayActivities,
+      );
+    }
+
+    final ack = obiettivo?.doneTodaySummary.trim() ?? '';
 
     return Card(
       elevation: 0,
@@ -247,60 +269,140 @@ class _WorkoutObjectiveCard extends StatelessWidget {
                 ),
               )
             else ...[
-              if (obiettivo!.tipo.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(20),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      AnimProgressRing(
+                        progress: progressDisplay ?? 0,
+                        size: 100,
+                        strokeWidth: 8,
+                        accentColor: theme.colorScheme.primary,
+                        trackColor: ringTrack,
+                      ),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '${((progressDisplay ?? 0) * 100).round()}',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            '% obiettivo',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  child: Text(
-                    obiettivo!.tipo,
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: theme.colorScheme.onPrimaryContainer,
-                      fontWeight: FontWeight.w600,
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (obiettivo!.tipo.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.primaryContainer,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                obiettivo!.tipo,
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  color: theme.colorScheme.onPrimaryContainer,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        Text(
+                          obiettivo!.descrizione,
+                          style:
+                              theme.textTheme.bodyMedium?.copyWith(height: 1.4),
+                        ),
+                        if (obiettivo!.durataMins > 0 ||
+                            obiettivo!.intensita.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              if (obiettivo!.durataMins > 0) ...[
+                                Icon(
+                                  Icons.timer_outlined,
+                                  size: 14,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${obiettivo!.durataMins} min',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                              ],
+                              if (obiettivo!.intensita.isNotEmpty) ...[
+                                Icon(
+                                  Icons.speed_outlined,
+                                  size: 14,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  obiettivo!.intensita,
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                ),
-              if (obiettivo!.tipo.isNotEmpty) const SizedBox(height: 8),
-              Text(
-                obiettivo!.descrizione,
-                style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
+                ],
               ),
-              if (obiettivo!.durataMins > 0 || obiettivo!.intensita.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    if (obiettivo!.durataMins > 0) ...[
+              if (ack.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer.withValues(
+                      alpha: 0.45,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Icon(
-                        Icons.timer_outlined,
-                        size: 14,
-                        color: theme.colorScheme.onSurfaceVariant,
+                        Icons.check_circle_outline,
+                        size: 18,
+                        color: theme.colorScheme.primary,
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${obiettivo!.durataMins} min',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                    ],
-                    if (obiettivo!.intensita.isNotEmpty) ...[
-                      Icon(
-                        Icons.speed_outlined,
-                        size: 14,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        obiettivo!.intensita,
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          ack,
+                          style:
+                              theme.textTheme.bodySmall?.copyWith(height: 1.35),
                         ),
                       ),
                     ],
-                  ],
+                  ),
                 ),
               ],
             ],
