@@ -137,10 +137,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                     fontWeight: FontWeight.w600,
                                   ),
                             ),
-                            if (uid != null && MealConstants.isMainMealWindow(DateTime.now())) ...[
+                            if (uid != null &&
+                                MealConstants.isMainMealWindow(DateTime.now()) &&
+                                !_hasMealForCurrentSlot(ref, localCalendarDateKey())) ...[
                               const SizedBox(height: 10),
-                              Align(
-                                alignment: Alignment.centerLeft,
+                              SizedBox(
+                                width: double.infinity,
                                 child: FilledButton.tonalIcon(
                                   onPressed: () => _onAddMealFromHome(context),
                                   icon: const Icon(Icons.add),
@@ -154,10 +156,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               pillarContents: dailyGoals.isEmpty ? null : dailyGoals,
                               pillarCompletion: pillarCompletion,
                               onGenerateTap: () => _onGeneratePlan(context),
-                              onPillarContentTap: {
-                                LongevityPillar.alimentazione: () =>
-                                    _onAddMealFromHome(context),
-                              },
                               onPillarCompletionAnswer: (pillar, completed) =>
                                   _onPillarCompletion(context, ref, pillar, completed),
                             ),
@@ -236,6 +234,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  bool _hasMealForCurrentSlot(WidgetRef ref, String dateStr) {
+    final async = ref.watch(mealsForDateByTypeProvider(dateStr));
+    final label = MealConstants.mealLabelForTime(DateTime.now());
+    final type = MealConstants.toMealType(label);
+    return async.maybeWhen(
+      data: (map) => (map[type] ?? []).isNotEmpty,
+      orElse: () => false,
     );
   }
 

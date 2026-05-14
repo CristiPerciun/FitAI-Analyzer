@@ -23,7 +23,6 @@ class PillarGrid extends StatelessWidget {
     this.pillarContents,
     this.pillarCompletion = const {},
     this.onGenerateTap,
-    this.onPillarContentTap,
     this.onPillarCompletionAnswer,
   });
 
@@ -38,9 +37,6 @@ class PillarGrid extends StatelessWidget {
 
   /// Callback quando l'utente chiede di generare obiettivi (card vuota).
   final VoidCallback? onGenerateTap;
-
-  /// Solo Alimentazione: apre aggiungi pasto. [onTap] isolato dal tap card.
-  final Map<LongevityPillar, VoidCallback>? onPillarContentTap;
 
   /// Dopo Sì/No nel dialog (solo se `hasContent`).
   final Future<void> Function(LongevityPillar pillar, bool completed)?
@@ -62,7 +58,6 @@ class PillarGrid extends StatelessWidget {
           completion: pillarCompletion[p],
           isLoading: isLoading,
           onEmptyTap: onGenerateTap,
-          onContentTap: onPillarContentTap?[p],
           onPillarCompletionAnswer: onPillarCompletionAnswer,
         );
       }).toList(),
@@ -77,7 +72,6 @@ class _PillarCard extends StatelessWidget {
     this.completion,
     required this.isLoading,
     this.onEmptyTap,
-    this.onContentTap,
     this.onPillarCompletionAnswer,
   });
 
@@ -86,14 +80,10 @@ class _PillarCard extends StatelessWidget {
   final bool? completion;
   final bool isLoading;
   final VoidCallback? onEmptyTap;
-  final VoidCallback? onContentTap;
   final Future<void> Function(LongevityPillar pillar, bool completed)?
       onPillarCompletionAnswer;
 
   bool get _hasContent => content != null && content!.trim().isNotEmpty;
-
-  bool get _showMealAdd =>
-      pillar == LongevityPillar.alimentazione && _hasContent && onContentTap != null;
 
   Future<void> _showCompletionQuestion(BuildContext context) async {
     final answered = await showDialog<bool>(
@@ -115,24 +105,6 @@ class _PillarCard extends StatelessWidget {
     );
     if (answered == null || !context.mounted) return;
     await onPillarCompletionAnswer?.call(pillar, answered);
-  }
-
-  Widget _mealAddButton() {
-    return GestureDetector(
-      onTap: onContentTap,
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.all(4),
-        child: Container(
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: pillar.color.withValues(alpha: 0.18),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(Icons.add, color: pillar.color, size: 18),
-        ),
-      ),
-    );
   }
 
   BoxDecoration _iconDecoration(ThemeData theme) {
@@ -190,24 +162,12 @@ class _PillarCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final compact = MediaQuery.sizeOf(context).width < 600;
 
     final iconBox = Container(
       padding: const EdgeInsets.all(8),
       decoration: _iconDecoration(theme),
       child: _iconChild(theme),
     );
-
-    final leading = _showMealAdd && compact
-        ? Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              iconBox,
-              const SizedBox(height: 8),
-              _mealAddButton(),
-            ],
-          )
-        : iconBox;
 
     return Material(
       color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
@@ -236,38 +196,26 @@ class _PillarCard extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  leading,
+                  iconBox,
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    pillar.title,
-                                    style: theme.textTheme.titleSmall?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                      color: pillar.color,
-                                    ),
-                                  ),
-                                  Text(
-                                    pillar.subtitle,
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (_showMealAdd && !compact) _mealAddButton(),
-                          ],
+                        Text(
+                          pillar.title,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: pillar.color,
+                          ),
+                        ),
+                        Text(
+                          pillar.subtitle,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
