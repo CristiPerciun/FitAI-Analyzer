@@ -56,6 +56,7 @@ class _MiFitnessConnectDialogBodyState
           uid: widget.uid,
           email: email,
           password: pw,
+          region: 'eu',
         );
     if (!mounted) return;
     if (r['success'] == true) {
@@ -80,7 +81,8 @@ class _MiFitnessConnectDialogBodyState
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Account Xiaomi usato con Mi Fitness. Le credenziali vengono inviate '
+              'Account Xiaomi usato con Mi Fitness. Il collegamento usa per default '
+              'la regione Europa (Huami DE / Zepp EU). Le credenziali vengono inviate '
               'una sola volta al tuo server in HTTPS; non vengono salvate in chiaro '
               'nel cloud. Servizio non ufficiale: potrebbe smettere di funzionare.',
               style: theme.textTheme.bodySmall?.copyWith(

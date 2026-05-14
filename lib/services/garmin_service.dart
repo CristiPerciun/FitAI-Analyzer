@@ -758,10 +758,12 @@ class GarminService {
   }
 
   /// Collega Mi Fitness (credenziali una tantum sul server → solo token su Firestore).
+  /// [region]: `eu` (default) usa prima cluster EU/Zepp EU2; `us` per account non europei.
   Future<Map<String, dynamic>> connectMiFitness({
     required String uid,
     required String email,
     required String password,
+    String region = 'eu',
   }) async {
     final baseUrl = await _resolveBaseUrl();
     final uri = Uri.parse('$baseUrl/mi-fitness/connect');
@@ -775,6 +777,7 @@ class GarminService {
               'uid': uid,
               'email': email.trim(),
               'password': password,
+              'region': region,
             }),
           )
           .timeout(const Duration(seconds: 90));
