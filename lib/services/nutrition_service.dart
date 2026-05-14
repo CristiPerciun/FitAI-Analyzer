@@ -47,6 +47,37 @@ class NutritionService {
     return base64Encode(raw);
   }
 
+  /// Fonte di verità: somma calorie e macro da tutti i [MealModel] del giorno.
+  /// Evita desincronizzazioni tra sottocollezione `meals` e `nutrition_summary` (grafici / rolling).
+  static Map<String, dynamic> _nutritionSummaryFromMeals(
+    List<MealModel> meals, {
+    required double longevitySum,
+    required int longevityCount,
+  }) {
+    var totalKcal = 0.0;
+    var totalProtein = 0.0;
+    var totalCarbs = 0.0;
+    var totalFat = 0.0;
+    for (final m in meals) {
+      totalKcal += m.calories;
+      totalProtein += m.proteinG;
+      totalCarbs += m.carbsG;
+      totalFat += m.fatG;
+    }
+    return <String, dynamic>{
+      'total_kcal': totalKcal.round().clamp(0, 1 << 30),
+      'total_protein_g': totalProtein.round().clamp(0, 1 << 30),
+      'total_carbs_g': totalCarbs.round().clamp(0, 1 << 30),
+      'total_fat_g': totalFat.round().clamp(0, 1 << 30),
+      'meals_count': meals.length,
+      'avg_longevity_score': longevityCount > 0
+          ? (longevitySum / longevityCount).toStringAsFixed(1)
+          : null,
+      '_longevity_sum': longevitySum,
+      '_longevity_count': longevityCount,
+    };
+  }
+
   /// Salva il pasto nella sottocollezione meals e aggiorna nutrition_summary sul daily_log.
   /// Usa il **NUOVO MealModel** (campi flat proteinG / carbsG / fatG + ingredients + aiConfidence).
   /// Con [existingMealId] aggiorna il documento e ricalcola il summary (no duplicati).
@@ -109,16 +140,6 @@ class NutritionService {
         throw StateError('Pasto da aggiornare non trovato');
       }
       oldMeal = MealModel.fromFirestore(oldSnap.data()!, documentId: existingMealId);
-      final totalKcal = _num(existingSummary['total_kcal'] ?? 0) - oldMeal.calories + calories;
-      final totalProtein = _num(existingSummary['total_protein_g'] ?? existingSummary['total_protein'] ?? 0) -
-          oldMeal.proteinG +
-          proteinG;
-      final totalCarbs = _num(existingSummary['total_carbs_g'] ?? existingSummary['total_carbs'] ?? 0) -
-          oldMeal.carbsG +
-          carbsG;
-      final totalFat = _num(existingSummary['total_fat_g'] ?? existingSummary['total_fat'] ?? 0) -
-          oldMeal.fatG +
-          fatG;
 
       final thumb = _mealThumbBase64FromBytes(mealPhotoBytes) ?? oldMeal.mealThumbBase64;
 
@@ -141,18 +162,16 @@ class NutritionService {
       final longevitySum = _num(existingSummary['_longevity_sum'] ?? 0);
       final longevityCount = _intFromFirestore(existingSummary['_longevity_count']);
 
-      final nutritionSummary = <String, dynamic>{
-        'total_kcal': totalKcal.round().clamp(0, 1 << 30),
-        'total_protein_g': totalProtein.round().clamp(0, 1 << 30),
-        'total_carbs_g': totalCarbs.round().clamp(0, 1 << 30),
-        'total_fat_g': totalFat.round().clamp(0, 1 << 30),
-        'meals_count': _intFromFirestore(existingSummary['meals_count']).clamp(0, 1 << 20),
-        'avg_longevity_score': longevityCount > 0
-            ? (longevitySum / longevityCount).toStringAsFixed(1)
-            : null,
-        '_longevity_sum': longevitySum,
-        '_longevity_count': longevityCount,
-      };
+      final mealsThatDay = await getMealsForDay(uid, dateStr);
+      final allMeals = mealsThatDay
+          .map((m) => m.firestoreDocumentId == existingMealId ? meal : m)
+          .toList();
+
+      final nutritionSummary = _nutritionSummaryFromMeals(
+        allMeals,
+        longevitySum: longevitySum,
+        longevityCount: longevityCount,
+      );
 
       final sanitizedGemini =
           _sanitizeForFirestoreMap(Map<String, dynamic>.from(nutritionGemini));
@@ -194,33 +213,19 @@ class NutritionService {
     // Lettura + batch (no runTransaction): su Windows il client Firestore C++ va spesso
     // in abort() con le transazioni; iOS/Android reggono meglio ma il batch è equivalente
     // per questo flusso (piccola race se due salvataggi simultanei sullo stesso giorno).
-    final totalKcal = _num(existingSummary['total_kcal'] ?? 0) + calories;
-    final totalProtein =
-        _num(existingSummary['total_protein_g'] ?? existingSummary['total_protein'] ?? 0) + proteinG;
-    final totalCarbs =
-        _num(existingSummary['total_carbs_g'] ?? existingSummary['total_carbs'] ?? 0) + carbsG;
-    final totalFat =
-        _num(existingSummary['total_fat_g'] ?? existingSummary['total_fat'] ?? 0) + fatG;
-
-    final mealsCount = _intFromFirestore(existingSummary['meals_count']) + 1;
+    final mealsThatDay = await getMealsForDay(uid, dateStr);
+    final allMeals = [...mealsThatDay, meal];
 
     final longevitySum = _num(existingSummary['_longevity_sum'] ?? 0) +
         (longevityScore > 0 ? longevityScore : 0);
     final longevityCount = _intFromFirestore(existingSummary['_longevity_count']) +
         (longevityScore > 0 ? 1 : 0);
 
-    final nutritionSummary = <String, dynamic>{
-      'total_kcal': totalKcal.round(),
-      'total_protein_g': totalProtein.round(),
-      'total_carbs_g': totalCarbs.round(),
-      'total_fat_g': totalFat.round(),
-      'meals_count': mealsCount,
-      'avg_longevity_score': longevityCount > 0
-          ? (longevitySum / longevityCount).toStringAsFixed(1)
-          : null,
-      '_longevity_sum': longevitySum,
-      '_longevity_count': longevityCount,
-    };
+    final nutritionSummary = _nutritionSummaryFromMeals(
+      allMeals,
+      longevitySum: longevitySum,
+      longevityCount: longevityCount,
+    );
 
     final sanitizedGemini =
         _sanitizeForFirestoreMap(Map<String, dynamic>.from(nutritionGemini));
@@ -242,7 +247,7 @@ class NutritionService {
     return mealRef.id;
   }
 
-  /// Elimina un pasto da `meals/{mealId}` e sottrae i macro dal `nutrition_summary` del giorno.
+  /// Elimina un pasto da `meals/{mealId}` e ricalcola `nutrition_summary` dai pasti rimanenti.
   Future<void> deleteMeal(String uid, String dateStr, String mealId) async {
     if (mealId.isEmpty) throw ArgumentError('mealId vuoto');
 
@@ -258,7 +263,6 @@ class NutritionService {
     if (!mealSnap.exists || mealSnap.data() == null) {
       throw StateError('Pasto non trovato');
     }
-    final deleted = MealModel.fromFirestore(mealSnap.data()!, documentId: mealId);
 
     final dailySnap = await dailyRef.get();
     final currentData = dailySnap.data() ?? {};
@@ -267,41 +271,18 @@ class NutritionService {
         ? Map<String, dynamic>.from(rawSummary)
         : <String, dynamic>{};
 
-    final totalKcal =
-        (_num(existingSummary['total_kcal'] ?? 0) - deleted.calories).clamp(0.0, 1 << 30);
-    final totalProtein = (_num(
-              existingSummary['total_protein_g'] ?? existingSummary['total_protein'] ?? 0,
-            ) -
-            deleted.proteinG)
-        .clamp(0.0, 1 << 30);
-    final totalCarbs = (_num(
-              existingSummary['total_carbs_g'] ?? existingSummary['total_carbs'] ?? 0,
-            ) -
-            deleted.carbsG)
-        .clamp(0.0, 1 << 30);
-    final totalFat = (_num(
-              existingSummary['total_fat_g'] ?? existingSummary['total_fat'] ?? 0,
-            ) -
-            deleted.fatG)
-        .clamp(0.0, 1 << 30);
-
-    final mealsCount = (_intFromFirestore(existingSummary['meals_count']) - 1).clamp(0, 1 << 20);
-
     final longevitySum = _num(existingSummary['_longevity_sum'] ?? 0);
     final longevityCount = _intFromFirestore(existingSummary['_longevity_count']);
 
-    final nutritionSummary = <String, dynamic>{
-      'total_kcal': totalKcal.round(),
-      'total_protein_g': totalProtein.round(),
-      'total_carbs_g': totalCarbs.round(),
-      'total_fat_g': totalFat.round(),
-      'meals_count': mealsCount,
-      'avg_longevity_score': longevityCount > 0
-          ? (longevitySum / longevityCount).toStringAsFixed(1)
-          : null,
-      '_longevity_sum': longevitySum,
-      '_longevity_count': longevityCount,
-    };
+    final mealsThatDay = await getMealsForDay(uid, dateStr);
+    final remaining =
+        mealsThatDay.where((m) => m.firestoreDocumentId != mealId).toList();
+
+    final nutritionSummary = _nutritionSummaryFromMeals(
+      remaining,
+      longevitySum: longevitySum,
+      longevityCount: longevityCount,
+    );
 
     final now = DateTime.now();
     final batch = firestore.batch();
