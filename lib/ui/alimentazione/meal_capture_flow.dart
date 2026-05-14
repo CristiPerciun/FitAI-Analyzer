@@ -1,11 +1,13 @@
 import 'dart:typed_data';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:fitai_analyzer/app.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/nutrition_chart_provider.dart';
 import 'package:fitai_analyzer/providers/nutrition_meal_edit_provider.dart';
 import 'package:fitai_analyzer/providers/pending_meal_analysis_provider.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
+import 'package:fitai_analyzer/routes/app_router.dart';
 import 'package:fitai_analyzer/services/nutrition_service.dart';
 import 'package:fitai_analyzer/ui/alimentazione/nutrition_meal_analysis_screen.dart';
 import 'package:fitai_analyzer/ui/home/widgets/manual_entry_dialog.dart';
@@ -182,21 +184,15 @@ Future<void> retryPendingMealAnalysis(
       return;
     }
 
-    await ref.read(nutritionServiceProvider).saveToFirestore(
-          uid,
-          result,
-          mealLabel: pending.mealLabelKey,
-          date: DateTime.parse(pending.dateStr),
-          mealPhotoBytes: pending.imageBytes,
-        );
-
     ref.read(pendingMealAnalysisProvider.notifier).remove(pending.id);
-    refreshNutritionAfterMealChange(ref);
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Analisi salvata')),
-      );
-    }
+    _pushNutritionMealReviewFromRoot(
+      ref,
+      result,
+      uid: uid,
+      mealLabel: pending.mealLabelKey,
+      dateStr: pending.dateStr,
+      mealPhotoBytes: pending.imageBytes,
+    );
   } catch (e) {
     ref
         .read(pendingMealAnalysisProvider.notifier)
@@ -302,7 +298,8 @@ List<dynamic> _nutritionFoodsList(dynamic v) {
   return [];
 }
 
-/// Analizza un pasto da fotocamera o galleria e salva in Firestore.
+/// Analizza un pasto da fotocamera o galleria e apre la schermata di revisione
+/// (salvataggio dopo conferma utente).
 /// IMPORTANTE: `ImagePicker().pickImage` deve essere chiamato come PRIMA
 /// operazione (no await prima) per non perdere il "user gesture token" su
 /// web/PWA (iOS Chrome/Safari, Android Chrome) che bloccano silenziosamente
@@ -315,8 +312,12 @@ Future<void> _analyzeMealFromPicker(
   required ImageSource imageSource,
 }) async {
   final source = _isCameraSupported ? imageSource : ImageSource.gallery;
-  final pickerFuture =
-      ImagePicker().pickImage(source: source, imageQuality: 85);
+  final pickerFuture = ImagePicker().pickImage(
+    source: source,
+    maxWidth: 1280,
+    maxHeight: 1280,
+    imageQuality: 72,
+  );
 
   final uid = await ensureNutritionUid(context, ref);
   if (uid == null) return;
@@ -360,26 +361,84 @@ Future<void> _analyzeMealFromPicker(
       return;
     }
 
-    await ref.read(nutritionServiceProvider).saveToFirestore(
-          uid,
-          result,
-          mealLabel: mealLabel,
-          date: DateTime.parse(dateStr),
-          mealPhotoBytes: Uint8List.fromList(bytes),
-        );
-
     ref.read(pendingMealAnalysisProvider.notifier).remove(pendingId);
-    refreshNutritionAfterMealChange(ref);
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Analisi salvata')),
-      );
-    }
+    _pushNutritionMealReviewFromRoot(
+      ref,
+      result,
+      uid: uid,
+      mealLabel: mealLabel,
+      dateStr: dateStr,
+      mealPhotoBytes: Uint8List.fromList(bytes),
+    );
   } catch (e) {
     ref
         .read(pendingMealAnalysisProvider.notifier)
         .finishWithError(pendingId, e.toString());
   }
+}
+
+/// Apre [NutritionMealAnalysisScreen] sul navigator root (sopra tab shell).
+void _pushNutritionMealReviewFromRoot(
+  WidgetRef ref,
+  Map<String, dynamic> nut, {
+  required String uid,
+  String? mealLabel,
+  String? dateStr,
+  String? existingMealId,
+  Uint8List? mealPhotoBytes,
+  Future<void> Function()? onDelete,
+}) {
+  final nav = rootNavigatorKey.currentState;
+  final advice = _nutritionAdviceString(nut['advice']);
+  final foods = _nutritionFoodsList(nut['foods']);
+
+  if (nav == null) {
+    scaffoldMessengerKey.currentState?.showSnackBar(
+      const SnackBar(
+        content: Text('Impossibile aprire la revisione pasto. Riprova.'),
+        duration: Duration(seconds: 4),
+      ),
+    );
+    return;
+  }
+
+  ref.read(nutritionMealEditProvider.notifier).beginFrom(nut);
+
+  nav
+      .push<void>(
+    MaterialPageRoute<void>(
+      builder: (ctx) => NutritionMealAnalysisScreen(
+        advice: advice,
+        foods: foods,
+        onSave: (modifiedNut) async {
+          try {
+            await ref.read(nutritionServiceProvider).saveToFirestore(
+                  uid,
+                  modifiedNut,
+                  mealLabel: mealLabel,
+                  date: dateStr != null ? DateTime.parse(dateStr) : null,
+                  existingMealId: existingMealId,
+                  mealPhotoBytes: mealPhotoBytes,
+                );
+            refreshNutritionAfterMealChange(ref);
+            scaffoldMessengerKey.currentState?.showSnackBar(
+              SnackBar(
+                content: Text(
+                  existingMealId != null ? 'Pasto aggiornato' : 'Analisi salvata',
+                ),
+              ),
+            );
+          } catch (e) {
+            if (ctx.mounted) showErrorDialog(ctx, e.toString());
+          }
+        },
+        onDelete: onDelete,
+      ),
+    ),
+  )
+      .then((_) {
+    ref.read(nutritionMealEditProvider.notifier).clear();
+  });
 }
 
 void _showNutritionDialog(

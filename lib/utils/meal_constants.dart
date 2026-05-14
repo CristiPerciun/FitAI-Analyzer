@@ -45,4 +45,7 @@ class MealConstants {
     if (minutes >= cenaStart && minutes < cenaEnd) return 'cena';
     return 'spuntino';
   }
+
+  /// True in fascia colazione, pranzo o cena (esclude solo lo spuntino).
+  static bool isMainMealWindow(DateTime now) => mealLabelForTime(now) != 'spuntino';
 }

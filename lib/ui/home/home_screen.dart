@@ -6,6 +6,7 @@ import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart'
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/services/nutrition_service.dart';
 import 'package:fitai_analyzer/utils/boot_log.dart';
+import 'package:fitai_analyzer/utils/meal_constants.dart';
 import 'package:fitai_analyzer/ui/alimentazione/meal_capture_flow.dart';
 import 'package:fitai_analyzer/ui/home/widgets/garmin_daily_stats.dart';
 import 'package:fitai_analyzer/ui/home/widgets/longevity_header.dart';
@@ -136,6 +137,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                     fontWeight: FontWeight.w600,
                                   ),
                             ),
+                            if (uid != null && MealConstants.isMainMealWindow(DateTime.now())) ...[
+                              const SizedBox(height: 10),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: FilledButton.tonalIcon(
+                                  onPressed: () => _onAddMealFromHome(context),
+                                  icon: const Icon(Icons.add),
+                                  label: const Text('Aggiungi pasto'),
+                                ),
+                              ),
+                            ],
                             const SizedBox(height: 12),
                             PillarGrid(
                               isLoading: isLoadingPlan,

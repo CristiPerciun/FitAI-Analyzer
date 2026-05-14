@@ -1,3 +1,5 @@
+import 'package:fitai_analyzer/app.dart';
+import 'package:fitai_analyzer/providers/pending_meal_analysis_provider.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/providers/sync_backfill_status_provider.dart';
 import 'package:fitai_analyzer/ui/alimentazione/alimentazione_screen.dart';
@@ -34,6 +36,34 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<List<PendingMealAnalysis>>(
+      pendingMealAnalysisProvider,
+      (prev, next) {
+        if (prev == null) return;
+        for (final p in next) {
+          if (p.errorMessage == null || p.analyzing) continue;
+          final wasAnalyzing =
+              prev.any((x) => x.id == p.id && x.analyzing && x.errorMessage == null);
+          if (!wasAnalyzing) continue;
+          final msg = p.errorMessage!;
+          scaffoldMessengerKey.currentState?.showSnackBar(
+            SnackBar(
+              content: Text(
+                msg.length > 120 ? '${msg.substring(0, 120)}…' : msg,
+              ),
+              backgroundColor: Theme.of(context).colorScheme.error,
+              duration: const Duration(seconds: 10),
+              action: SnackBarAction(
+                label: 'Alimentazione',
+                onPressed: () =>
+                    ref.read(selectedTabIndexProvider.notifier).state = 2,
+              ),
+            ),
+          );
+        }
+      },
+    );
+
     final index = ref.watch(selectedTabIndexProvider);
     final isNarrow = MediaQuery.of(context).size.width < 600;
     final backfillAsync = ref.watch(syncBackfillStatusStreamProvider);

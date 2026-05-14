@@ -5,11 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+/// Navigator root dell'app (push modali sopra AuthGateway / shell).
+final rootNavigatorKey = GlobalKey<NavigatorState>();
+
 final appRouterProvider = Provider<GoRouter>((ref) {
   final authRefresh = ValueNotifier(0);
   ref.listen(authNotifierProvider, (_, _) => authRefresh.value++);
 
   return GoRouter(
+    navigatorKey: rootNavigatorKey,
     refreshListenable: authRefresh,
     redirect: (context, state) {
       final isLoggedIn = ref.read(authNotifierProvider).user != null;
