@@ -7,6 +7,7 @@ import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/services/garmin_service.dart';
 import 'package:fitai_analyzer/providers/strava_sync_status_notifier.dart';
+import 'package:fitai_analyzer/sync/comm_mi_fitness_post_connect_sync.dart';
 import 'package:fitai_analyzer/providers/theme_mode_provider.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
@@ -512,13 +513,12 @@ class ImpostazioniScreen extends ConsumerWidget {
     WidgetRef ref,
     String uid,
   ) async {
-    final ok = await ref
-        .read(garminSyncNotifierProvider.notifier)
-        .syncNow(uid: uid, trigger: 'settings_mi_fitness_post_login');
-    ref.invalidate(activitiesStreamProvider);
-    ref.invalidate(activitiesByDateProvider);
+    final result =
+        await commMiFitnessRunInitialDelta(ref, uid);
+    commMiFitnessInvalidateActivityCaches(ref);
     if (!context.mounted) return;
     final messenger = scaffoldMessengerKey.currentState;
+    final ok = result['success'] == true;
     if (ok) {
       messenger?.showSnackBar(
         const SnackBar(
@@ -526,7 +526,7 @@ class ImpostazioniScreen extends ConsumerWidget {
         ),
       );
     } else {
-      final err = ref.read(garminSyncNotifierProvider).error ??
+      final err = result['message']?.toString() ??
           'Sincronizzazione non riuscita.';
       messenger?.showSnackBar(
         SnackBar(

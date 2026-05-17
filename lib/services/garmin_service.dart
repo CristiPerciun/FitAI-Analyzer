@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:fitai_analyzer/utils/comm_fitai_server_json_detail.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart'
     show debugPrint, kDebugMode, kIsWeb, visibleForTesting;
@@ -790,20 +792,26 @@ class GarminService {
         requestHeaders: _jsonHeaders,
         omitBody: true,
       );
+      final st = response.statusCode;
       final data = _tryDecodeJsonObject(response.body) ?? {};
-      if (response.statusCode == 200 && data['success'] == true) {
+      if (st == 200 && data['success'] == true) {
         return {
           'success': true,
           'message': data['message']?.toString() ?? 'Mi Fitness collegato.',
         };
       }
-      final detail = _serverDetailOrMessage(data);
+      final detail = commFitaiServerDetailOrMessage(data);
       if (detail.isNotEmpty) {
         return {'success': false, 'message': detail};
       }
       return {
         'success': false,
-        'message': 'Mi Fitness: connessione non riuscita (${response.statusCode}).',
+        'message': _connectFailureUserMessage(
+          statusCode: st,
+          baseUrl: baseUrl,
+          body: response.body,
+          serverDetail: null,
+        ),
       };
     } on TimeoutException catch (e) {
       _invalidateBaseUrlCacheOnNetworkFailure(e);

@@ -32,6 +32,8 @@ class _MiFitnessConnectDialogBodyState
   bool _obscure = true;
   bool _loading = false;
   String? _error;
+  /// `eu` vs `us` — allinea a `normalize_mifitness_region` sul server (cluster Huami/Zepp).
+  String _region = 'eu';
 
   @override
   void dispose() {
@@ -56,7 +58,7 @@ class _MiFitnessConnectDialogBodyState
           uid: widget.uid,
           email: email,
           password: pw,
-          region: 'eu',
+          region: _region,
         );
     if (!mounted) return;
     if (r['success'] == true) {
@@ -111,6 +113,27 @@ class _MiFitnessConnectDialogBodyState
                   onPressed: () => setState(() => _obscure = !_obscure),
                 ),
               ),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: _region,
+              decoration: const InputDecoration(
+                labelText: 'Area account',
+                border: OutlineInputBorder(),
+              ),
+              items: const [
+                DropdownMenuItem(
+                  value: 'eu',
+                  child: Text('Europa'),
+                ),
+                DropdownMenuItem(
+                  value: 'us',
+                  child: Text('USA / Globale'),
+                ),
+              ],
+              onChanged: _loading
+                  ? null
+                  : (v) => setState(() => _region = v ?? 'eu'),
             ),
             if (_error != null) ...[
               const SizedBox(height: 12),
