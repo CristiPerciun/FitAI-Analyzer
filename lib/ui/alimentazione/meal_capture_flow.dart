@@ -119,24 +119,18 @@ Future<void> showAddMealSheet(
                   final uid = await ensureNutritionUid(context, ref);
                   if (uid == null || !context.mounted) return;
 
-                  final result = await showDialog<Map<String, dynamic>>(
+                  final text = await showDialog<String>(
                     context: context,
                     builder: (_) => const ManualEntryDialog(),
                   );
 
-                  if (result == null || !context.mounted) return;
-                  if (result.containsKey('error')) {
-                    showErrorDialog(
-                      context,
-                      result['error']?.toString() ?? 'Errore',
-                    );
+                  if (text == null || text.trim().isEmpty || !context.mounted) {
                     return;
                   }
 
-                  _showNutritionDialog(
-                    context,
+                  _analyzeMealFromManualText(
                     ref,
-                    result,
+                    text: text.trim(),
                     uid: uid,
                     mealLabel: effectiveLabel,
                     dateStr: effectiveDate,
@@ -171,10 +165,15 @@ Future<void> retryPendingMealAnalysis(
 
   try {
     final ai = ref.read(unifiedAiServiceProvider);
-    final result = await ai.analyzeNutritionFromImage(
-      pending.imageBytes,
-      mimeType: pending.mimeType,
-    );
+    final Map<String, dynamic> result;
+    if (pending.isManualEntry) {
+      result = await ai.getFoodInfoFromText(pending.manualDescription!);
+    } else {
+      result = await ai.analyzeNutritionFromImage(
+        pending.imageBytes!,
+        mimeType: pending.mimeType ?? 'image/jpeg',
+      );
+    }
 
     if (result.containsKey('error')) {
       ref.read(pendingMealAnalysisProvider.notifier).finishWithError(
@@ -369,6 +368,50 @@ Future<void> _analyzeMealFromPicker(
       mealLabel: mealLabel,
       dateStr: dateStr,
       mealPhotoBytes: Uint8List.fromList(bytes),
+    );
+  } catch (e) {
+    ref
+        .read(pendingMealAnalysisProvider.notifier)
+        .finishWithError(pendingId, e.toString());
+  }
+}
+
+/// Analizza un pasto da descrizione testuale in background (come la foto).
+Future<void> _analyzeMealFromManualText(
+  WidgetRef ref, {
+  required String text,
+  required String uid,
+  required String mealLabel,
+  required String dateStr,
+}) async {
+  final typeLabel = MealConstants.toMealType(mealLabel);
+  final pendingId =
+      ref.read(pendingMealAnalysisProvider.notifier).startManualAnalysis(
+            dateStr: dateStr,
+            mealTypeLabel: typeLabel,
+            mealLabelKey: mealLabel,
+            description: text,
+          );
+
+  try {
+    final ai = ref.read(unifiedAiServiceProvider);
+    final result = await ai.getFoodInfoFromText(text);
+
+    if (result.containsKey('error')) {
+      ref.read(pendingMealAnalysisProvider.notifier).finishWithError(
+            pendingId,
+            result['error']?.toString() ?? 'Errore',
+          );
+      return;
+    }
+
+    ref.read(pendingMealAnalysisProvider.notifier).remove(pendingId);
+    _pushNutritionMealReviewFromRoot(
+      ref,
+      result,
+      uid: uid,
+      mealLabel: mealLabel,
+      dateStr: dateStr,
     );
   } catch (e) {
     ref

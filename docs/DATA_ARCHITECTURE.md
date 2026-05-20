@@ -27,6 +27,8 @@ users/{uid}/
     meal             ← NutritionMealPlanAi (obiettivi pasto giornalieri)
     allenamenti      ← AiCurrentAllenamentiModel (obiettivo allenamento del giorno)
     home_longevity_plan ← HomeLongevityPlanDay (4 pilastri + sprint + consiglio)
+
+  feedback/{messageId} ← FeedbackMessage (chat utente → admin)
 ```
 
 > **Nota**: `daily_health` è scritto dal `garmin-sync-server` (Python, repo separato). Il path rimane invariato perché richiederebbe modifiche server-side.
@@ -48,6 +50,7 @@ users/{uid}/
 | AI meal | `ai_current/meal` | `LongevityEngine`, `NutritionMealPlanService` | `nutritionMealPlanAiStreamProvider` |
 | AI allenamenti | `ai_current/allenamenti` | `LongevityEngine` | `aiCurrentAllenamentiStreamProvider` |
 | AI home plan | `ai_current/home_longevity_plan` | `LongevityEngine` | `homeLongevityPlanDayStreamProvider` |
+| Feedback | `feedback/{messageId}` | `FeedbackService` (client) | `feedbackMessagesStreamProvider` |
 
 ---
 

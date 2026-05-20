@@ -2,15 +2,16 @@ import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Pasto in attesa di analisi IA (card nel diario con foto + loader).
+/// Pasto in attesa di analisi IA (card nel diario con foto o testo + loader).
 class PendingMealAnalysis {
   const PendingMealAnalysis({
     required this.id,
     required this.dateStr,
     required this.mealTypeLabel,
     required this.mealLabelKey,
-    required this.imageBytes,
-    required this.mimeType,
+    this.imageBytes,
+    this.mimeType,
+    this.manualDescription,
     this.analyzing = true,
     this.errorMessage,
   });
@@ -21,10 +22,15 @@ class PendingMealAnalysis {
   final String mealTypeLabel;
   /// Es. colazione, pranzo, cena (per [NutritionService.saveToFirestore]).
   final String mealLabelKey;
-  final Uint8List imageBytes;
-  final String mimeType;
+  final Uint8List? imageBytes;
+  final String? mimeType;
+  /// Descrizione testuale per inserimento manuale (senza foto).
+  final String? manualDescription;
   final bool analyzing;
   final String? errorMessage;
+
+  bool get isManualEntry =>
+      manualDescription != null && manualDescription!.trim().isNotEmpty;
 }
 
 class PendingMealAnalysisNotifier extends Notifier<List<PendingMealAnalysis>> {
@@ -54,6 +60,28 @@ class PendingMealAnalysisNotifier extends Notifier<List<PendingMealAnalysis>> {
     return id;
   }
 
+  String startManualAnalysis({
+    required String dateStr,
+    required String mealTypeLabel,
+    required String mealLabelKey,
+    required String description,
+  }) {
+    final trimmed = description.trim();
+    final id =
+        '${DateTime.now().microsecondsSinceEpoch}_manual_${trimmed.hashCode}';
+    state = [
+      ...state,
+      PendingMealAnalysis(
+        id: id,
+        dateStr: dateStr,
+        mealTypeLabel: mealTypeLabel,
+        mealLabelKey: mealLabelKey,
+        manualDescription: trimmed,
+      ),
+    ];
+    return id;
+  }
+
   void finishWithError(String id, String message) {
     state = [
       for (final p in state)
@@ -65,6 +93,7 @@ class PendingMealAnalysisNotifier extends Notifier<List<PendingMealAnalysis>> {
             mealLabelKey: p.mealLabelKey,
             imageBytes: p.imageBytes,
             mimeType: p.mimeType,
+            manualDescription: p.manualDescription,
             analyzing: false,
             errorMessage: message,
           )
@@ -84,6 +113,7 @@ class PendingMealAnalysisNotifier extends Notifier<List<PendingMealAnalysis>> {
             mealLabelKey: p.mealLabelKey,
             imageBytes: p.imageBytes,
             mimeType: p.mimeType,
+            manualDescription: p.manualDescription,
             analyzing: true,
             errorMessage: null,
           )

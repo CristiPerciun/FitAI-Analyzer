@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fitai_analyzer/models/ai_current_allenamenti_model.dart';
 import 'package:fitai_analyzer/models/daily_log_model.dart';
+import 'package:fitai_analyzer/models/feedback_message_model.dart';
 import 'package:fitai_analyzer/models/home_longevity_plan_day.dart';
 import 'package:fitai_analyzer/models/longevity_home_package.dart';
 import 'package:fitai_analyzer/models/meal_model.dart';
@@ -15,6 +16,7 @@ import 'package:fitai_analyzer/services/ai_backend_preference_service.dart';
 import 'package:fitai_analyzer/services/ai_prompt_service.dart';
 import 'package:fitai_analyzer/services/auth_service.dart';
 import 'package:fitai_analyzer/services/deepseek_service.dart';
+import 'package:fitai_analyzer/services/feedback_service.dart';
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/services/gemini_service.dart';
 import 'package:fitai_analyzer/services/openrouter_service.dart';
@@ -338,3 +340,17 @@ Map<String, List<MealModel>> _groupMealsByType(List<MealModel> meals) {
   }
   return byType;
 }
+
+/// Messaggi feedback utente → admin (`users/{uid}/feedback`).
+final feedbackMessagesStreamProvider =
+    StreamProvider.autoDispose<List<FeedbackMessage>>((ref) async* {
+  final uid = ref.watch(authNotifierProvider).user?.uid;
+  if (uid == null) {
+    yield [];
+    return;
+  }
+  await for (final list
+      in ref.read(feedbackServiceProvider).messagesStream(uid)) {
+    yield list;
+  }
+});

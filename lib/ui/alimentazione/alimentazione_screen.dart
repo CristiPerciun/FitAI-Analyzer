@@ -664,9 +664,11 @@ class _PendingMealTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isManual = pending.isManualEntry;
     final subtitle = pending.analyzing
         ? 'Analisi IA in corso…'
         : (pending.errorMessage ?? 'Errore');
+    final title = isManual ? 'Descrizione inviata all’IA' : 'Foto inviata all’IA';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -681,11 +683,21 @@ class _PendingMealTile extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.memory(
-                    pending.imageBytes,
-                    fit: BoxFit.cover,
-                    gaplessPlayback: true,
-                  ),
+                  if (isManual)
+                    Container(
+                      color: cardTheme.contentColor.withValues(alpha: 0.22),
+                      child: Icon(
+                        Icons.edit_note,
+                        color: cardTheme.contentColor,
+                        size: 28,
+                      ),
+                    )
+                  else
+                    Image.memory(
+                      pending.imageBytes!,
+                      fit: BoxFit.cover,
+                      gaplessPlayback: true,
+                    ),
                   if (pending.analyzing)
                     Center(
                       child: Container(
@@ -714,12 +726,23 @@ class _PendingMealTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Foto inviata all’IA',
+                  title,
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                         color: cardTheme.contentColor,
                         fontWeight: FontWeight.w600,
                       ),
                 ),
+                if (isManual && pending.manualDescription != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    pending.manualDescription!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: cardTheme.contentColorMuted,
+                        ),
+                  ),
+                ],
                 const SizedBox(height: 2),
                 Text(
                   subtitle,

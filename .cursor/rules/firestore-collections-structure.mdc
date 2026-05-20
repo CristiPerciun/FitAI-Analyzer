@@ -32,6 +32,8 @@ users/{uid}/
     meal                 ← NutritionMealPlanAi (obiettivi pasto giornalieri)
     allenamenti          ← AiCurrentAllenamentiModel (obiettivo allenamento del giorno)
     home_longevity_plan  ← HomeLongevityPlanDay (4 pilastri + sprint + consiglio)
+
+  feedback/{messageId}   ← FeedbackMessage (chat utente → admin)
 ```
 
 ---
@@ -88,6 +90,18 @@ users/{uid}/
 
 ---
 
+### 6. `feedback/{messageId}`
+
+**Contenuto**: Messaggi chat feedback utente → amministratore.
+
+**Campi**: `text`, `created_at` (Timestamp), `sender` (`user` | `admin`).
+
+**Scrittore**: `FeedbackService` (client, solo `sender: user` per ora).
+
+**Lettore**: `feedbackMessagesStreamProvider` (stesso utente).
+
+---
+
 ## Chi scrive dove (riepilogo)
 
 | Collezione | Scrittore |
@@ -102,6 +116,7 @@ users/{uid}/
 | `ai_current/*` | FitAI (LongevityEngine) |
 | `daily_logs` | FitAI (NutritionService) + Server |
 | `daily_logs/.../meals` | FitAI (NutritionService) |
+| `feedback/{messageId}` | FitAI (FeedbackService) |
 
 ---
 

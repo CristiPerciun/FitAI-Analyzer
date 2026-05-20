@@ -19,6 +19,7 @@ import 'package:fitai_analyzer/services/user_ai_settings_sync_service.dart';
 import 'package:fitai_analyzer/ui/widgets/deepseek_api_key_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/openrouter_api_key_dialog.dart';
+import 'package:fitai_analyzer/ui/impostazioni/feedback_screen.dart';
 import 'package:fitai_analyzer/ui/profile/profile_hub_screen.dart';
 import 'package:fitai_analyzer/ui/widgets/garmin_connect_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/mi_fitness_connect_dialog.dart';
@@ -236,7 +237,11 @@ class ImpostazioniScreen extends ConsumerWidget {
           _IosGroup(
             color: groupBg,
             isDark: isDark,
-            child: const _ThemeModeIosRow(),
+            children: const [
+              _ThemeModeIosRow(),
+              _IosRowDivider(indent: _IosGroup.rowLabelInset),
+              _FeedbackNavigationRow(),
+            ],
           ),
           const SizedBox(height: 10),
           _IosSectionHeader(label: 'INTELLIGENZA ARTIFICIALE', color: headerColor),
@@ -1203,6 +1208,58 @@ class _IosDestructiveRow extends StatelessWidget {
                 fontWeight: FontWeight.w400,
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FeedbackNavigationRow extends StatelessWidget {
+  const _FeedbackNavigationRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => const FeedbackScreen(),
+            ),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 29,
+                child: Icon(
+                  Icons.chat_bubble_outline,
+                  color: theme.colorScheme.primary,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Lascia un feedback',
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.w400,
+                    fontSize: 17,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                size: 22,
+              ),
+            ],
           ),
         ),
       ),
