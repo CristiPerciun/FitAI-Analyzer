@@ -85,7 +85,7 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
         mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(
-            height: 320,
+            height: 305,
             child: ScrollConfiguration(
               behavior: ScrollConfiguration.of(context).copyWith(
                 dragDevices: {
@@ -97,6 +97,7 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
               child: TickerMode(
                 enabled: true,
                 child: PageView(
+                  clipBehavior: Clip.none,
                   controller: _pageController,
                   physics: const BouncingScrollPhysics(),
                   onPageChanged: (int page) {
@@ -222,20 +223,30 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
     required Color onCardMuted,
     required Color ringTrack,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Macros', style: TextStyle(color: onCard, fontSize: 22, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 20),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            _macroCircle(carbs, 'Carbs', onCard: onCard, onCardMuted: onCardMuted, ringTrack: ringTrack),
-            _macroCircle(fats, 'Fats', onCard: onCard, onCardMuted: onCardMuted, ringTrack: ringTrack),
-            _macroCircle(proteins, 'Proteins', onCard: onCard, onCardMuted: onCardMuted, ringTrack: ringTrack),
-          ],
-        ),
-      ],
+    return SizedBox.expand(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Macros',
+            style: TextStyle(color: onCard, fontSize: 22, fontWeight: FontWeight.bold),
+          ),
+          Expanded(
+            child: Align(
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  _macroCircle(carbs, 'Carbs', onCard: onCard, onCardMuted: onCardMuted, ringTrack: ringTrack),
+                  _macroCircle(fats, 'Fats', onCard: onCard, onCardMuted: onCardMuted, ringTrack: ringTrack),
+                  _macroCircle(proteins, 'Proteins', onCard: onCard, onCardMuted: onCardMuted, ringTrack: ringTrack),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -256,23 +267,27 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
       children: [
         Stack(
           alignment: Alignment.center,
+          clipBehavior: Clip.none,
           children: [
-            AnimProgressRing(
-              progress: macroProgress,
-              size: 118,
-              strokeWidth: 10,
-              accentColor: goal.color,
-              trackColor: ringTrack,
+            Padding(
+              padding: const EdgeInsets.all(6),
+              child: AnimProgressRing(
+                progress: macroProgress,
+                size: 96,
+                strokeWidth: 8,
+                accentColor: goal.color,
+                trackColor: ringTrack,
+              ),
             ),
             Text(
               '${consumed.toInt()}/${target.toInt()}',
-              style: TextStyle(color: onCard, fontSize: 13, fontWeight: FontWeight.bold),
+              style: TextStyle(color: onCard, fontSize: 11, fontWeight: FontWeight.bold),
             ),
           ],
         ),
-        const SizedBox(height: 10),
-        Text(label, style: TextStyle(color: onCard, fontSize: 15, fontWeight: FontWeight.w600)),
-        Text('${left.toInt()}g left', style: TextStyle(color: onCardMuted, fontSize: 13)),
+        const SizedBox(height: 8),
+        Text(label, style: TextStyle(color: onCard, fontSize: 14, fontWeight: FontWeight.w600)),
+        Text('${left.toInt()}g left', style: TextStyle(color: onCardMuted, fontSize: 12)),
       ],
     );
   }
