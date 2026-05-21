@@ -140,7 +140,7 @@ class _NutritionMealAnalysisScreenState extends ConsumerState<NutritionMealAnaly
           ),
           const SizedBox(height: 8),
           Text(
-            'Modifica i grammi totali stimati: calorie e macro si aggiornano in proporzione all’analisi iniziale.',
+            'Modifica i grammi totali stimati: calorie e macro si aggiornano in proporzione all’analisi iniziale. Usa ±3 g o tocca il numero per inserire la quantità esatta.',
             style: theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
           ),
           const SizedBox(height: 20),
@@ -175,7 +175,7 @@ class _PortionRow extends StatefulWidget {
   final void Function(int deltaGrams) onDelta;
   final void Function(int grams) onSetPortion;
 
-  static const int _step = 10;
+  static const int _step = 3;
 
   @override
   State<_PortionRow> createState() => _PortionRowState();
@@ -291,7 +291,11 @@ class _PortionRowState extends State<_PortionRow> {
                           ),
                           contentPadding: const EdgeInsets.only(left: 4, right: 4, top: 6, bottom: 8),
                         ),
-                        onSubmitted: (_) => _focus.unfocus(),
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) {
+                          _applyPortionFromField();
+                          _focus.unfocus();
+                        },
                       ),
                     ),
                   ),

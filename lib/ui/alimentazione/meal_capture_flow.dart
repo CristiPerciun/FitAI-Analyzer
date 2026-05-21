@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitai_analyzer/app.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
+import 'package:fitai_analyzer/providers/caloric_deficit_chart_provider.dart';
 import 'package:fitai_analyzer/providers/nutrition_chart_provider.dart';
 import 'package:fitai_analyzer/providers/nutrition_meal_edit_provider.dart';
 import 'package:fitai_analyzer/providers/pending_meal_analysis_provider.dart';
@@ -228,6 +229,7 @@ Future<String?> ensureNutritionUid(
 void refreshNutritionAfterMealChange(WidgetRef ref) {
   ref.invalidate(nutritionChartDataProvider);
   ref.invalidate(nutritionDiaryWeekChartDataProvider);
+  ref.invalidate(caloricDeficitWeekChartProvider);
   ref.invalidate(longevityHomePackageProvider);
 }
 

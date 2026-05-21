@@ -112,7 +112,8 @@ class NutritionMealEditState {
 }
 
 class NutritionMealEditNotifier extends Notifier<NutritionMealEditState?> {
-  static const int _portionMin = 20;
+  /// Minimo 1 g: integratori (es. creatina 3 g) non vanno forzati a porzioni da pasto.
+  static const int _portionMin = 1;
   static const int _portionMax = 2000;
 
   @override

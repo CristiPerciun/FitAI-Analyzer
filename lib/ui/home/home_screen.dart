@@ -3,6 +3,7 @@ import 'package:fitai_analyzer/models/home_longevity_plan_day.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart'
     show GarminSyncState, garminSyncNotifierProvider;
+import 'package:fitai_analyzer/providers/home_widget_preference_provider.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/services/nutrition_service.dart';
 import 'package:fitai_analyzer/utils/boot_log.dart';
@@ -11,6 +12,9 @@ import 'package:fitai_analyzer/ui/alimentazione/meal_capture_flow.dart';
 import 'package:fitai_analyzer/ui/home/widgets/garmin_daily_stats.dart';
 import 'package:fitai_analyzer/ui/home/widgets/longevity_header.dart';
 import 'package:fitai_analyzer/ui/home/widgets/longevity_path_section.dart';
+import 'package:fitai_analyzer/ui/home/widgets/home_selected_widget_section.dart';
+import 'package:fitai_analyzer/ui/home/widgets/home_widget_add_card.dart';
+import 'package:fitai_analyzer/ui/home/widgets/home_widget_picker_sheet.dart';
 import 'package:fitai_analyzer/ui/home/widgets/pillar_grid.dart';
 import 'package:fitai_analyzer/ui/home/widgets/weekly_sprint_card.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
@@ -97,6 +101,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final isLoadingPlan = ref.watch(_longevityPlanLoadingProvider);
     final isGarminSyncing =
         ref.watch(garminSyncNotifierProvider.select((s) => s.isSyncing));
+    final homeWidgetAsync = ref.watch(homeWidgetPreferenceProvider);
+    final homeWidgetType = homeWidgetAsync.valueOrNull;
+    final homeWidgetReady = !homeWidgetAsync.isLoading;
 
     return Scaffold(
       appBar: AppBar(
@@ -158,6 +165,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               onGenerateTap: () => _onGeneratePlan(context),
                               onPillarCompletionAnswer: (pillar, completed) =>
                                   _onPillarCompletion(context, ref, pillar, completed),
+                            ),
+                            if (homeWidgetReady && homeWidgetType != null) ...[
+                              const SizedBox(height: 12),
+                              HomeSelectedWidgetSection(
+                                type: homeWidgetType,
+                                onRemove: () => ref
+                                    .read(homeWidgetPreferenceProvider.notifier)
+                                    .clearWidget(),
+                              ),
+                            ],
+                            const SizedBox(height: 12),
+                            HomeWidgetAddCard(
+                              hasSelection: homeWidgetReady && homeWidgetType != null,
+                              onTap: () => showHomeWidgetPickerSheet(context, ref),
+                              onRemove: homeWidgetReady && homeWidgetType != null
+                                  ? () => ref
+                                      .read(homeWidgetPreferenceProvider.notifier)
+                                      .clearWidget()
+                                  : null,
                             ),
                             const SizedBox(height: 16),
                             const GarminDailyStats(),

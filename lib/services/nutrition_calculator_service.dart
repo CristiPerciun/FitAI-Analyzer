@@ -188,6 +188,62 @@ class NutritionCalculatorService {
     };
   }
 
+  /// kcal di deficit/surplus impostato (TDEE statico − target giornaliero).
+  static double deficitKcalFromResult(NutritionEnergyResult result) {
+    return (result.tdeeKcal - result.calorieTarget).clamp(0, double.infinity);
+  }
+
+  /// Obiettivo dimagrimento (mostra bande Invictus 15–20% / 25–30%).
+  static bool isWeightLossObjective(String nutritionObjective) {
+    switch (nutritionObjective.toLowerCase()) {
+      case 'perdita_grasso':
+      case 'dimagrimento':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  /// Tetto calorico deficit moderato (~17,5% sotto TDEE statico) — solo riferimento.
+  static double moderateDeficitCeilingKcal(double tdeeKcal) => tdeeKcal * 0.825;
+
+  /// Tetto calorico deficit aggressivo (~27,5% sotto TDEE statico) — solo riferimento.
+  static double aggressiveDeficitCeilingKcal(double tdeeKcal) => tdeeKcal * 0.725;
+
+  /// Spesa dinamica del giorno = TDEE medio + calorie attività registrate.
+  ///
+  /// Il TDEE medio include già metabolismo basale + attività quotidiana stimata
+  /// dal profilo; le attività registrate alzano il tetto del singolo giorno.
+  static double dynamicTdeeKcal({
+    required double tdeeKcal,
+    required double activityBurnKcal,
+  }) =>
+      tdeeKcal + activityBurnKcal;
+
+  /// Tetto assunzione giornaliero allineato a [NutritionChartCard]:
+  /// target profilo + credito attività del giorno.
+  static double dailyCalorieCeilingKcal({
+    required double calorieTarget,
+    required double activityBurnKcal,
+  }) =>
+      calorieTarget + activityBurnKcal;
+
+  /// Banda Invictus moderata (15–20%): ~82,5% della spesa dinamica del giorno.
+  static double dynamicModerateCeilingKcal({
+    required double tdeeKcal,
+    required double activityBurnKcal,
+  }) =>
+      dynamicTdeeKcal(tdeeKcal: tdeeKcal, activityBurnKcal: activityBurnKcal) *
+      0.825;
+
+  /// Banda Invictus aggressiva (25–30%): ~72,5% della spesa dinamica del giorno.
+  static double dynamicAggressiveCeilingKcal({
+    required double tdeeKcal,
+    required double activityBurnKcal,
+  }) =>
+      dynamicTdeeKcal(tdeeKcal: tdeeKcal, activityBurnKcal: activityBurnKcal) *
+      0.725;
+
   /// Aggiorna solo i campi nutrizione su `users/{uid}/profile/baseline` (merge).
   static Future<void> syncNutritionFieldsToBaseline({
     required FirebaseFirestore firestore,

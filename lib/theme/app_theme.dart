@@ -16,6 +16,14 @@ abstract final class AppColors {
   /// Xiaomi / Mi Fitness (integrazione non ufficiale).
   static const Color miFitnessOrange = Color(0xFFFF6900);
   static const Color activityBurnBar = Color(0xFFDAAE63);
+  /// Barra obiettivo / soglia deficit calorico.
+  static const Color caloricDeficitGoalBar = Color(0xFF4A4A4A);
+  /// Calorie assunte nel grafico bilancio calorico.
+  static const Color caloricIntakeBar = Color(0xFFE6C547);
+  /// Surplus sopra soglia nel grafico bilancio calorico.
+  static const Color caloricSurplusBar = Color(0xFFB8860B);
+  /// Viola pilastri longevità / banda deficit moderato nel grafico bilancio.
+  static const Color longevityPurple = Color(0xFF7B1FA2);
   static const Color error = Color(0xFFB00020);
   static const Color textDark = Color(0xFF2C2C2C);
   /// Testo muted per il tema scuro.

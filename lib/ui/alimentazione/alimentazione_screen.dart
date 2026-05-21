@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:fitai_analyzer/models/meal_model.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart';
+import 'package:fitai_analyzer/providers/caloric_deficit_chart_provider.dart';
 import 'package:fitai_analyzer/providers/nutrition_chart_provider.dart';
 import 'package:fitai_analyzer/providers/nutrition_meal_edit_provider.dart';
 import 'package:fitai_analyzer/providers/pending_meal_analysis_provider.dart';
@@ -20,6 +21,7 @@ import 'package:fitai_analyzer/utils/meal_constants.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fitai_analyzer/ui/widgets/NutritionChartCard.dart';
+import 'package:fitai_analyzer/ui/alimentazione/widgets/caloric_deficit_bar_chart_card.dart';
 import 'package:fitai_analyzer/ui/widgets/weekly_macro_stacked_bar_chart.dart';
 
 double? _macroNum(Map<String, dynamic>? m, List<String> keys) {
@@ -192,6 +194,7 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
                     );
                     ref.invalidate(nutritionChartDataProvider);
                     ref.invalidate(nutritionDiaryWeekChartDataProvider);
+                    ref.invalidate(caloricDeficitWeekChartProvider);
                   },
                     child: SingleChildScrollView(
                       physics: const AlwaysScrollableScrollPhysics(),
@@ -310,6 +313,9 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
                 },
               ),
             ],
+
+            const SizedBox(height: 16),
+            const CaloricDeficitBarChartCard(),
 
             const SizedBox(height: 20),
             Text(
