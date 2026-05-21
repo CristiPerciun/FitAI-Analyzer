@@ -12,6 +12,7 @@ import 'package:fitai_analyzer/ui/alimentazione/meal_capture_flow.dart';
 import 'package:fitai_analyzer/ui/home/widgets/garmin_daily_stats.dart';
 import 'package:fitai_analyzer/ui/home/widgets/longevity_header.dart';
 import 'package:fitai_analyzer/ui/home/widgets/longevity_path_section.dart';
+import 'package:fitai_analyzer/ui/home/widgets/home_action_card.dart';
 import 'package:fitai_analyzer/ui/home/widgets/home_selected_widget_section.dart';
 import 'package:fitai_analyzer/ui/home/widgets/home_widget_add_card.dart';
 import 'package:fitai_analyzer/ui/home/widgets/home_widget_picker_sheet.dart';
@@ -148,13 +149,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 MealConstants.isMainMealWindow(DateTime.now()) &&
                                 !_hasMealForCurrentSlot(ref, localCalendarDateKey())) ...[
                               const SizedBox(height: 10),
-                              SizedBox(
-                                width: double.infinity,
-                                child: FilledButton.tonalIcon(
-                                  onPressed: () => _onAddMealFromHome(context),
-                                  icon: const Icon(Icons.add),
-                                  label: const Text('Aggiungi pasto'),
-                                ),
+                              HomeActionCard(
+                                onTap: () => _onAddMealFromHome(context),
+                                label: 'Aggiungi pasto',
+                                semanticLabel: 'Aggiungi pasto',
                               ),
                             ],
                             const SizedBox(height: 12),
