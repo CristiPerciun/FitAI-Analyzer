@@ -225,26 +225,24 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
   }) {
     return SizedBox.expand(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
             'Macros',
             style: TextStyle(color: onCard, fontSize: 22, fontWeight: FontWeight.bold),
           ),
-          Expanded(
-            child: Align(
-              alignment: Alignment.center,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  _macroCircle(carbs, 'Carbs', onCard: onCard, onCardMuted: onCardMuted, ringTrack: ringTrack),
-                  _macroCircle(fats, 'Fats', onCard: onCard, onCardMuted: onCardMuted, ringTrack: ringTrack),
-                  _macroCircle(proteins, 'Proteins', onCard: onCard, onCardMuted: onCardMuted, ringTrack: ringTrack),
-                ],
-              ),
-            ),
+          const SizedBox(height: 32),
+          const Spacer(),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _macroCircle(carbs, 'Carbs', onCard: onCard, onCardMuted: onCardMuted, ringTrack: ringTrack),
+              _macroCircle(fats, 'Fats', onCard: onCard, onCardMuted: onCardMuted, ringTrack: ringTrack),
+              _macroCircle(proteins, 'Proteins', onCard: onCard, onCardMuted: onCardMuted, ringTrack: ringTrack),
+            ],
           ),
+          const Spacer(),
         ],
       ),
     );
