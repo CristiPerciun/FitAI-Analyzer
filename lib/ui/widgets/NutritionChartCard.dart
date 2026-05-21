@@ -27,6 +27,8 @@ class NutritionChartCard extends ConsumerStatefulWidget {
 class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
+  final Set<String> _macroFullNotified = {};
+  bool _macroCheckScheduled = false;
 
   // Helper per trovare il goal specifico nella lista del progetto
   NutrientGoal _getGoalByTitle(String titlePart) {
@@ -67,6 +69,9 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
 
     final double exercise = metrics.caloriesBurned;
     final double remainingCal = targetCal - foodCal + exercise;
+
+    _scheduleMacroFullCheck();
+
     return Container(
       width: MediaQuery.of(context).size.width * 0.90,
       margin: const EdgeInsets.symmetric(vertical: 10),
@@ -80,7 +85,7 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
         mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(
-            height: 240,
+            height: 320,
             child: ScrollConfiguration(
               behavior: ScrollConfiguration.of(context).copyWith(
                 dragDevices: {
@@ -118,11 +123,6 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
                       onCardMuted: onCardMuted,
                       ringTrack: ringTrack,
                     ),
-                    _buildInsightsPage(
-                      theme: theme,
-                      onCard: onCard,
-                      onCardMuted: onCardMuted,
-                    ),
                   ],
                 ),
               ),
@@ -135,7 +135,7 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(
-              3,
+              2,
               (index) => _buildDot(index == _currentPage, dotActive, dotInactive),
             ),
           ),
@@ -164,17 +164,18 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
           'Remaining = Goal - Food + Exercise',
           style: TextStyle(color: onCardMuted, fontSize: 11),
         ),
-        const SizedBox(height: 25),
+        const SizedBox(height: 16),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Stack(
               alignment: Alignment.center,
               children: [
                 AnimProgressRing(
                   progress: foodProgress,
-                  size: 115,
-                  strokeWidth: 9,
+                  size: 152,
+                  strokeWidth: 11,
                   accentColor: accentColor,
                   trackColor: ringTrack,
                 ),
@@ -183,9 +184,16 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
                   children: [
                     Text(
                       '${rem.toInt()}',
-                      style: TextStyle(color: onCard, fontSize: 26, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        color: onCard,
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                    Text('Remaining', style: TextStyle(color: onCardMuted, fontSize: 10)),
+                    Text(
+                      'Remaining',
+                      style: TextStyle(color: onCardMuted, fontSize: 12),
+                    ),
                   ],
                 )
               ],
@@ -194,9 +202,9 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _legendItem(Icons.flag, 'Base Goal', '${target.toInt()}', onCardMuted, onCard),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 _legendItem(Icons.restaurant, 'Food', '${food.toInt()}', Colors.blueAccent, onCard),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 _legendItem(Icons.local_fire_department, 'Exercise', '${ex.toInt()}', Colors.orangeAccent, onCard),
               ],
             )
@@ -218,9 +226,9 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('Macros', style: TextStyle(color: onCard, fontSize: 22, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 30),
+        const SizedBox(height: 20),
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             _macroCircle(carbs, 'Carbs', onCard: onCard, onCardMuted: onCardMuted, ringTrack: ringTrack),
             _macroCircle(fats, 'Fats', onCard: onCard, onCardMuted: onCardMuted, ringTrack: ringTrack),
@@ -251,83 +259,80 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
           children: [
             AnimProgressRing(
               progress: macroProgress,
-              size: 65,
-              strokeWidth: 6,
+              size: 118,
+              strokeWidth: 10,
               accentColor: goal.color,
               trackColor: ringTrack,
             ),
             Text(
               '${consumed.toInt()}/${target.toInt()}',
-              style: TextStyle(color: onCard, fontSize: 9, fontWeight: FontWeight.bold),
+              style: TextStyle(color: onCard, fontSize: 13, fontWeight: FontWeight.bold),
             ),
           ],
         ),
-        const SizedBox(height: 8),
-        Text(label, style: TextStyle(color: onCard, fontSize: 12, fontWeight: FontWeight.w500)),
-        Text('${left.toInt()}g left', style: TextStyle(color: onCardMuted, fontSize: 10)),
+        const SizedBox(height: 10),
+        Text(label, style: TextStyle(color: onCard, fontSize: 15, fontWeight: FontWeight.w600)),
+        Text('${left.toInt()}g left', style: TextStyle(color: onCardMuted, fontSize: 13)),
       ],
     );
+  }
+
+  void _scheduleMacroFullCheck() {
+    if (_macroCheckScheduled) return;
+    _macroCheckScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _macroCheckScheduled = false;
+      if (!mounted) return;
+      _notifyIfMacroTargetReached();
+    });
+  }
+
+  void _notifyIfMacroTargetReached() {
+    final macros = <({String titlePart, String key, String labelIt})>[
+      (titlePart: 'Carb', key: 'carbs', labelIt: 'carboidrati'),
+      (titlePart: 'Grass', key: 'fats', labelIt: 'grassi'),
+      (titlePart: 'Prot', key: 'proteins', labelIt: 'proteine'),
+    ];
+
+    for (final macro in macros) {
+      if (_macroFullNotified.contains(macro.key)) continue;
+
+      NutrientGoal goal;
+      try {
+        goal = _getGoalByTitle(macro.titlePart);
+      } catch (_) {
+        continue;
+      }
+
+      final target = goal.target;
+      if (target <= 0) continue;
+
+      final consumed = _valueForTodayInIsoWeek(goal.weeklyData);
+      if (consumed < target) continue;
+
+      _macroFullNotified.add(macro.key);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Obiettivo ${macro.labelIt} raggiunto per oggi!'),
+          duration: const Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   Widget _legendItem(IconData icon, String label, String val, Color iconColor, Color valColor) {
     return Row(
       children: [
-        Icon(icon, size: 16, color: iconColor),
-        const SizedBox(width: 8),
+        Icon(icon, size: 22, color: iconColor),
+        const SizedBox(width: 10),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: TextStyle(color: iconColor.withValues(alpha: 0.8), fontSize: 10)),
-            Text(val, style: TextStyle(color: valColor, fontSize: 14, fontWeight: FontWeight.bold)),
+            Text(label, style: TextStyle(color: iconColor.withValues(alpha: 0.8), fontSize: 12)),
+            Text(val, style: TextStyle(color: valColor, fontSize: 18, fontWeight: FontWeight.bold)),
           ],
         )
-      ],
-    );
-  }
-
-  Widget _buildInsightsPage({
-    required ThemeData theme,
-    required Color onCard,
-    required Color onCardMuted,
-  }) {
-    final cs = theme.colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('AI Insights', style: TextStyle(color: onCard, fontSize: 22, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 20),
-        Container(
-          padding: const EdgeInsets.all(15),
-          decoration: BoxDecoration(
-            color: cs.primaryContainer.withValues(alpha: 0.35),
-            borderRadius: BorderRadius.circular(15),
-            border: Border.all(color: cs.primary.withValues(alpha: 0.25)),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.auto_awesome, color: cs.primary, size: 30),
-              const SizedBox(width: 15),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Analisi Odierna',
-                      style: TextStyle(color: onCard, fontWeight: FontWeight.bold, fontSize: 14),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      'Stai andando forte! Hai assunto abbastanza proteine. Ricorda di bere più acqua per ottimizzare il metabolismo.',
-                      style: TextStyle(color: onCardMuted, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 15),
-        _legendItem(Icons.water_drop, 'Hydration', '1.5 / 2.5 L', Colors.cyan, onCard),
       ],
     );
   }

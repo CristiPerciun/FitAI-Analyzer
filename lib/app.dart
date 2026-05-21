@@ -177,8 +177,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
             const SnackBar(content: Text('✅ Garmin collegato.')),
           );
         } else {
-          final msg =
-              sessionResult['message']?.toString().trim() ?? '';
+          final msg = sessionResult['message']?.toString().trim() ?? '';
           if (msg.isNotEmpty) {
             scaffoldMessengerKey.currentState?.showSnackBar(
               SnackBar(
@@ -231,6 +230,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       if (kIsWeb) {
+        unawaited(_resumeStravaWebOAuthIfNeeded());
         unawaited(_resumeGarminWebOAuthIfNeeded());
         // Su iOS la PWA torna in primo piano DOPO che l'auth Garmin è avvenuta
         // in una tab Safari separata. L'exchange ha già scritto garmin_linked=true
@@ -255,11 +255,15 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       next,
     ) {
       if (next == null || next == prev) return;
-      unawaited(
-        ref
+      unawaited(() async {
+        if (kIsWeb) {
+          await _resumeStravaWebOAuthIfNeeded();
+        }
+        if (!mounted) return;
+        await ref
             .read(garminSyncNotifierProvider.notifier)
-            .syncNow(uid: next, trigger: 'login'),
-      );
+            .syncNow(uid: next, trigger: 'login');
+      }());
     });
 
     // Web: rileva quando `garmin_linked` passa false → true mentre l'utente è
@@ -285,10 +289,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         unawaited(
           ref
               .read(garminSyncNotifierProvider.notifier)
-              .syncNow(
-                uid: uid,
-                trigger: 'settings_garmin_connect_web_resume',
-              ),
+              .syncNow(uid: uid, trigger: 'settings_garmin_connect_web_resume'),
         );
         scaffoldMessengerKey.currentState?.showSnackBar(
           const SnackBar(content: Text('✅ Garmin collegato.')),

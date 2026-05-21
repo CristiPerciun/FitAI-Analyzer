@@ -236,14 +236,19 @@ CaloricDeficitWeekChartData _buildFromInputs({
 }
 
 /// Settimana ISO (lun–dom) per il grafico bilancio calorico su Alimentazione.
+/// Provider sincrono: evita flicker del FutureProvider quando cambiano
+/// activitiesStream / piano AI (ogni emit riavviava il future → spinner).
 final caloricDeficitWeekChartProvider =
-    FutureProvider<CaloricDeficitWeekChartData>((ref) async {
+    Provider<CaloricDeficitWeekChartData>((ref) {
   final weekOffset = ref.watch(nutritionDiaryWeekOffsetProvider);
   final profile = ref.watch(userProfileNotifierProvider).profile;
   final plan = ref.watch(nutritionMealPlanAiStreamProvider).valueOrNull;
-  final aiCalorieTarget = _macroNum(plan?.macroGiornalieri, ['kcal', 'calories']);
+  final aiCalorieTarget =
+      _macroNum(plan?.macroGiornalieri, ['kcal', 'calories']);
   final activitiesByDate = ref.watch(activitiesByDateProvider);
-  final chartData = await ref.watch(nutritionDiaryWeekChartDataProvider.future);
+  final chartAsync = ref.watch(nutritionDiaryWeekChartDataProvider);
+  final chartData = chartAsync.valueOrNull ??
+      NutritionChartData.empty(weekOffset: weekOffset);
 
   return _buildFromInputs(
     weekOffset: weekOffset,

@@ -8,6 +8,7 @@ import 'package:fitai_analyzer/providers/strava_sync_status_notifier.dart';
 import 'package:fitai_analyzer/services/aggregation_service.dart';
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/services/garmin_service.dart';
+import 'package:fitai_analyzer/services/strava_oauth_credentials_service.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
 import 'package:fitai_analyzer/services/user_ai_settings_sync_service.dart';
 import 'package:fitai_analyzer/utils/strava_error_messages.dart';
@@ -90,17 +91,20 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 
   /// Avvia OAuth per il servizio specificato.
-  Future<void> startOAuth(
-    String service, {
-    void Function()? onSuccess,
-  }) async {
-    state = state.copyWith(isLoading: true, currentService: service, error: null);
+  Future<void> startOAuth(String service, {void Function()? onSuccess}) async {
+    state = state.copyWith(
+      isLoading: true,
+      currentService: service,
+      error: null,
+    );
 
     try {
-      await _startOAuthImpl(service, onSuccess)
-          .timeout(const Duration(minutes: 2), onTimeout: () {
-        throw TimeoutException('Timeout connessione Strava (2 min)');
-      });
+      await _startOAuthImpl(service, onSuccess).timeout(
+        const Duration(minutes: 2),
+        onTimeout: () {
+          throw TimeoutException('Timeout connessione Strava (2 min)');
+        },
+      );
     } catch (e) {
       final userMsg = service == 'strava'
           ? stravaErrorToUserMessage(e)
@@ -140,27 +144,65 @@ class AuthNotifier extends Notifier<AuthState> {
     }
 
     if (service == 'strava') {
-        final uid = FirebaseAuth.instance.currentUser?.uid;
-        if (uid == null) {
-          throw StateError('Utente non autenticato. Riprova.');
-        }
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) {
+        throw StateError('Utente non autenticato. Riprova.');
+      }
 
-        final statusNotifier = ref.read(stravaSyncStatusProvider.notifier);
-        statusNotifier.reset();
+      final statusNotifier = ref.read(stravaSyncStatusProvider.notifier);
+      statusNotifier.reset();
+      final credentials = await ref
+          .read(stravaOAuthCredentialsServiceProvider)
+          .read(uid);
+      if (credentials == null) {
+        throw StateError(
+          'Client ID/Secret Strava mancanti. Inseriscili dalle Impostazioni prima di collegare Strava.',
+        );
+      }
 
+      statusNotifier.setPhase(
+        StravaSyncPhase.connecting,
+        message: 'Connessione a Strava...',
+      );
+
+      try {
         statusNotifier.setPhase(
           StravaSyncPhase.connecting,
-          message: 'Connessione a Strava...',
+          message: 'Autorizzazione Strava...',
         );
-
-        try {
+        await ref
+            .read(stravaServiceProvider)
+            .authenticate(
+              credentials: credentials,
+              garminService: ref.read(garminServiceProvider),
+              uid: uid,
+            );
+      } catch (e) {
+        if (e is StravaWebOAuthRedirectPending) {
+          state = state.copyWith(
+            isLoading: false,
+            currentService: null,
+            error: null,
+          );
+          return;
+        }
+        final msg = e.toString();
+        if (msg.contains('permessi') ||
+            msg.contains('activity:read_permission') ||
+            msg.contains('activity:read_all')) {
           statusNotifier.setPhase(
             StravaSyncPhase.connecting,
-            message: 'Autorizzazione Strava...',
+            message: 'Nuova autorizzazione Strava (permessi attività)...',
           );
-          await ref.read(stravaServiceProvider).authenticate();
-        } catch (e) {
-          if (e is StravaWebOAuthRedirectPending) {
+          try {
+            await ref
+                .read(stravaServiceProvider)
+                .authenticate(
+                  credentials: credentials,
+                  garminService: ref.read(garminServiceProvider),
+                  uid: uid,
+                );
+          } on StravaWebOAuthRedirectPending {
             state = state.copyWith(
               isLoading: false,
               currentService: null,
@@ -168,61 +210,55 @@ class AuthNotifier extends Notifier<AuthState> {
             );
             return;
           }
-          final msg = e.toString();
-          if (msg.contains('permessi') ||
-              msg.contains('activity:read_permission') ||
-              msg.contains('activity:read_all')) {
-            statusNotifier.setPhase(
-              StravaSyncPhase.connecting,
-              message: 'Nuova autorizzazione Strava (permessi attività)...',
-            );
-            try {
-              await ref.read(stravaServiceProvider).authenticate();
-            } on StravaWebOAuthRedirectPending {
-              state = state.copyWith(
-                isLoading: false,
-                currentService: null,
-                error: null,
-              );
-              return;
-            }
-          } else {
-            rethrow;
-          }
+        } else {
+          rethrow;
         }
+      }
 
-        final tokens = await ref.read(stravaServiceProvider).getTokensForServer();
-        if (tokens == null) {
-          throw StateError('Token Strava non disponibili dopo OAuth.');
-        }
+      final tokens = await ref.read(stravaServiceProvider).getTokensForServer();
+      if (tokens == null) {
+        throw StateError('Token Strava non disponibili dopo OAuth.');
+      }
 
-        statusNotifier.setPhase(
-          StravaSyncPhase.connecting,
-          message: 'Invio token al server (backfill attività)...',
+      statusNotifier.setPhase(
+        StravaSyncPhase.connecting,
+        message: 'Invio token al server (backfill attività)...',
+      );
+      final reg = await ref
+          .read(garminServiceProvider)
+          .registerStravaOnServer(
+            uid: uid,
+            accessToken: tokens.access,
+            refreshToken: tokens.refresh,
+            expiresAtMs: tokens.expiresAtMs,
+            clientId: credentials.clientId,
+          );
+      if (reg['success'] != true) {
+        throw Exception(
+          reg['message']?.toString() ??
+              'Registrazione Strava sul server fallita.',
         );
-        final reg = await ref.read(garminServiceProvider).registerStravaOnServer(
-              uid: uid,
-              accessToken: tokens.access,
-              refreshToken: tokens.refresh,
-              expiresAtMs: tokens.expiresAtMs,
-            );
-        if (reg['success'] != true) {
-          throw Exception(reg['message']?.toString() ?? 'Registrazione Strava sul server fallita.');
-        }
+      }
 
-        statusNotifier.setPhase(
-          StravaSyncPhase.completed,
-          message: 'Strava collegato: sincronizzazione in background sul server.',
-        );
+      statusNotifier.setPhase(
+        StravaSyncPhase.completed,
+        message: 'Strava collegato: sincronizzazione in background sul server.',
+      );
 
-        try {
-          await ref.read(aggregationServiceProvider).updateRolling10DaysAndBaseline(uid);
-        } catch (_) {}
+      try {
+        await ref
+            .read(aggregationServiceProvider)
+            .updateRolling10DaysAndBaseline(uid);
+      } catch (_) {}
 
-        state = state.copyWith(isLoading: false, currentService: null, error: null);
-        ref.invalidate(stravaConnectedProvider);
-        onSuccess?.call();
-        return;
+      state = state.copyWith(
+        isLoading: false,
+        currentService: null,
+        error: null,
+      );
+      ref.invalidate(stravaConnectedProvider);
+      onSuccess?.call();
+      return;
     } else {
       throw ArgumentError('Servizio non supportato: $service');
     }
@@ -235,6 +271,9 @@ class AuthNotifier extends Notifier<AuthState> {
 
     final tokens = await ref.read(stravaServiceProvider).getTokensForServer();
     if (tokens == null) return;
+    final credentials = await ref
+        .read(stravaOAuthCredentialsServiceProvider)
+        .read(uid);
 
     final statusNotifier = ref.read(stravaSyncStatusProvider.notifier);
     statusNotifier.setPhase(
@@ -242,16 +281,20 @@ class AuthNotifier extends Notifier<AuthState> {
       message: 'Invio token al server (backfill attività)...',
     );
 
-    final reg = await ref.read(garminServiceProvider).registerStravaOnServer(
+    final reg = await ref
+        .read(garminServiceProvider)
+        .registerStravaOnServer(
           uid: uid,
           accessToken: tokens.access,
           refreshToken: tokens.refresh,
           expiresAtMs: tokens.expiresAtMs,
+          clientId: credentials?.clientId,
         );
     if (reg['success'] != true) {
       statusNotifier.reset();
       state = state.copyWith(
-        error: reg['message']?.toString() ??
+        error:
+            reg['message']?.toString() ??
             'Registrazione Strava sul server fallita.',
       );
       return;
@@ -263,7 +306,9 @@ class AuthNotifier extends Notifier<AuthState> {
     );
 
     try {
-      await ref.read(aggregationServiceProvider).updateRolling10DaysAndBaseline(uid);
+      await ref
+          .read(aggregationServiceProvider)
+          .updateRolling10DaysAndBaseline(uid);
     } catch (_) {}
 
     ref.invalidate(stravaConnectedProvider);
@@ -296,10 +341,7 @@ class AuthNotifier extends Notifier<AuthState> {
         );
       });
     } catch (e) {
-      state = state.copyWith(
-        error: e.toString(),
-        isLoading: false,
-      );
+      state = state.copyWith(error: e.toString(), isLoading: false);
       rethrow;
     }
   }
@@ -345,11 +387,12 @@ class AuthNotifier extends Notifier<AuthState> {
     state = state.copyWith(isLoading: true, error: null);
     try {
       await _runOnPlatformThread(() async {
-        await ref.read(authServiceProvider).signInWithEmailAndPassword(
-              email.trim(),
-              password,
-            );
-        await ref.read(credentialStorageServiceProvider).saveCredentials(
+        await ref
+            .read(authServiceProvider)
+            .signInWithEmailAndPassword(email.trim(), password);
+        await ref
+            .read(credentialStorageServiceProvider)
+            .saveCredentials(
               email: email,
               password: password,
               rememberMe: rememberMe,
@@ -361,10 +404,7 @@ class AuthNotifier extends Notifier<AuthState> {
         );
       });
     } catch (e) {
-      state = state.copyWith(
-        error: _authErrorToMessage(e),
-        isLoading: false,
-      );
+      state = state.copyWith(error: _authErrorToMessage(e), isLoading: false);
       rethrow;
     }
   }
@@ -378,11 +418,12 @@ class AuthNotifier extends Notifier<AuthState> {
     state = state.copyWith(isLoading: true, error: null);
     try {
       await _runOnPlatformThread(() async {
-        await ref.read(authServiceProvider).createUserWithEmailAndPassword(
-              email.trim(),
-              password,
-            );
-        await ref.read(credentialStorageServiceProvider).saveCredentials(
+        await ref
+            .read(authServiceProvider)
+            .createUserWithEmailAndPassword(email.trim(), password);
+        await ref
+            .read(credentialStorageServiceProvider)
+            .saveCredentials(
               email: email,
               password: password,
               rememberMe: rememberMe,
@@ -394,33 +435,30 @@ class AuthNotifier extends Notifier<AuthState> {
         );
       });
     } catch (e) {
-      state = state.copyWith(
-        error: _authErrorToMessage(e),
-        isLoading: false,
-      );
+      state = state.copyWith(error: _authErrorToMessage(e), isLoading: false);
       rethrow;
     }
   }
 
   /// Auto-login con credenziali salvate. Usato all'avvio se "Ricordami" era attivo.
   Future<bool> tryAutoLoginWithSavedCredentials() async {
-    final creds = await ref.read(credentialStorageServiceProvider).getCredentials();
+    final creds = await ref
+        .read(credentialStorageServiceProvider)
+        .getCredentials();
     if (creds == null) return false;
 
     try {
       if (isWindows) {
         await _runOnPlatformThread(() async {
-          await ref.read(authServiceProvider).signInWithEmailAndPassword(
-                creds.email,
-                creds.password,
-              );
+          await ref
+              .read(authServiceProvider)
+              .signInWithEmailAndPassword(creds.email, creds.password);
           state = state.copyWith(user: FirebaseAuth.instance.currentUser);
         });
       } else {
-        await ref.read(authServiceProvider).signInWithEmailAndPassword(
-              creds.email,
-              creds.password,
-            );
+        await ref
+            .read(authServiceProvider)
+            .signInWithEmailAndPassword(creds.email, creds.password);
         state = state.copyWith(user: FirebaseAuth.instance.currentUser);
       }
       return true;
@@ -452,10 +490,13 @@ class AuthNotifier extends Notifier<AuthState> {
         await user.updatePassword(newPassword);
       });
       final user = FirebaseAuth.instance.currentUser;
-      final creds =
-          await ref.read(credentialStorageServiceProvider).getCredentials();
+      final creds = await ref
+          .read(credentialStorageServiceProvider)
+          .getCredentials();
       if (creds != null && user?.email != null) {
-        await ref.read(credentialStorageServiceProvider).saveCredentials(
+        await ref
+            .read(credentialStorageServiceProvider)
+            .saveCredentials(
               email: user!.email!,
               password: newPassword,
               rememberMe: true,
@@ -524,17 +565,21 @@ class AuthNotifier extends Notifier<AuthState> {
 
   static String _authErrorToMessage(Object e) {
     final msg = e.toString().toLowerCase();
-    if (msg.contains('invalid-credential') || msg.contains('invalid_credential')) {
+    if (msg.contains('invalid-credential') ||
+        msg.contains('invalid_credential')) {
       return 'Email o password non corretti.';
     }
     if (msg.contains('user-not-found')) return 'Utente non trovato.';
     if (msg.contains('wrong-password')) return 'Password errata.';
     if (msg.contains('email-already-in-use')) return 'Email già registrata.';
-    if (msg.contains('weak-password')) return 'Password troppo debole (min 6 caratteri).';
+    if (msg.contains('weak-password')) {
+      return 'Password troppo debole (min 6 caratteri).';
+    }
     if (msg.contains('invalid-email')) return 'Email non valida.';
     return e.toString();
   }
 }
 
-final authNotifierProvider =
-    NotifierProvider<AuthNotifier, AuthState>(AuthNotifier.new);
+final authNotifierProvider = NotifierProvider<AuthNotifier, AuthState>(
+  AuthNotifier.new,
+);

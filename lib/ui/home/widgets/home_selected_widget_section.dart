@@ -8,6 +8,7 @@ import 'package:fitai_analyzer/ui/dashboard/widgets/activity_burn_bar_chart_card
 import 'package:fitai_analyzer/ui/dashboard/widgets/activity_calendar_card.dart';
 import 'package:fitai_analyzer/ui/widgets/NutritionChartCard.dart';
 import 'package:fitai_analyzer/ui/widgets/weekly_macro_stacked_bar_chart.dart';
+import 'package:fitai_analyzer/utils/nutrition_macro_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -102,6 +103,7 @@ class _HomeNutritionChartSection extends ConsumerWidget {
     final profile = ref.watch(userProfileNotifierProvider).profile;
 
     return chartAsync.when(
+      skipLoadingOnReload: true,
       data: (chartData) {
         final goals = <NutrientGoal>[
           NutrientGoal(
@@ -115,7 +117,7 @@ class _HomeNutritionChartSection extends ConsumerWidget {
             title: 'Carboidrati',
             unit: 'g',
             target: _macroNum(aiMacroGiornalieri, ['carboidrati_g', 'carbs_g']) ?? 250.0,
-            color: Colors.greenAccent,
+            color: NutritionMacroColors.carbs,
             weeklyData: chartData.carbsData,
           ),
           NutrientGoal(
@@ -123,14 +125,14 @@ class _HomeNutritionChartSection extends ConsumerWidget {
             unit: 'g',
             target: _macroNum(aiMacroGiornalieri, ['proteine_g', 'protein_g']) ??
                 (profile != null ? nutritionGoal.proteinGPerKg * profile.weightKg : 150.0),
-            color: Colors.purpleAccent,
+            color: NutritionMacroColors.protein,
             weeklyData: chartData.proteinData,
           ),
           NutrientGoal(
             title: 'Grassi',
             unit: 'g',
             target: _macroNum(aiMacroGiornalieri, ['grassi_g', 'fat_g']) ?? 70.0,
-            color: Colors.orangeAccent,
+            color: NutritionMacroColors.fat,
             weeklyData: chartData.fatData,
           ),
         ];

@@ -9,6 +9,19 @@ class ManualEntryDialog extends StatefulWidget {
 
 class _ManualEntryDialogState extends State<ManualEntryDialog> {
   final TextEditingController _controller = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    // autofocus alone often fails on mobile after closing a bottom sheet;
+    // request focus after the dialog route has finished its open animation.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(const Duration(milliseconds: 250), () {
+        if (mounted) _focusNode.requestFocus();
+      });
+    });
+  }
 
   void _submit() {
     final text = _controller.text.trim();
@@ -18,6 +31,7 @@ class _ManualEntryDialogState extends State<ManualEntryDialog> {
 
   @override
   void dispose() {
+    _focusNode.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -32,8 +46,10 @@ class _ManualEntryDialogState extends State<ManualEntryDialog> {
       ),
       content: TextField(
         controller: _controller,
+        focusNode: _focusNode,
         maxLines: 3,
         autofocus: true,
+        keyboardType: TextInputType.multiline,
         textCapitalization: TextCapitalization.sentences,
         autocorrect: true,
         decoration: InputDecoration(

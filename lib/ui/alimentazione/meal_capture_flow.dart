@@ -229,7 +229,6 @@ Future<String?> ensureNutritionUid(
 void refreshNutritionAfterMealChange(WidgetRef ref) {
   ref.invalidate(nutritionChartDataProvider);
   ref.invalidate(nutritionDiaryWeekChartDataProvider);
-  ref.invalidate(caloricDeficitWeekChartProvider);
   ref.invalidate(longevityHomePackageProvider);
 }
 

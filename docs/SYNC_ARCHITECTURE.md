@@ -130,9 +130,10 @@ Il server mantiene **`_store_sync_status`** (`garmin_last_sync_*`) per compatibi
 
 ### 7.2 Solo Strava (lettura veloce)
 
-1. OAuth in app → token locali (prefs) + `POST /strava/register-tokens` → backfill server.  
-2. Disconnect: `POST /strava/disconnect` + clear prefs in app.  
-3. Delta: incluso in `POST /sync/delta` se `strava` in `sources` e env server configurato.
+1. L’utente salva Client ID + Client Secret della propria app Strava in `users/{uid}/app_sync/strava_oauth`.
+2. OAuth in app con quel `client_id` → exchange token via `POST /strava/exchange-oauth-code` → token locali (prefs) + `POST /strava/register-tokens` → backfill server.  
+3. Disconnect: `POST /strava/disconnect` + clear prefs in app.  
+4. Delta: incluso in `POST /sync/delta` se `strava` in `sources`.
 
 ---
 
@@ -149,13 +150,13 @@ Il server mantiene **`_store_sync_status`** (`garmin_last_sync_*`) per compatibi
 - **Mobile (iOS/Android):** `myhealthsync://strava/callback`  
 - **Callback Domain** su Strava: `strava` o `myhealthsync` (Strava può interpretarli in modo diverso)
 
-### Client ID
+### Client ID e Client Secret
 
-L’app può usare un Client ID di progetto. Se registri **la tua** app Strava, configura il Callback Domain su **quella** app; stesso Client ID che usi in `strava_service.dart` e sul server (`STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET` devono combaciare con OAuth refresh lato server).
+Ogni utente può usare la propria app Strava Developer. Prima di OAuth, l’app chiede **Client ID** e **Client Secret** e li salva sotto `users/{uid}/app_sync/strava_oauth`. Il `client_id` viene usato nell’URL di authorize; il `client_secret` serve solo al `garmin-sync-server` per exchange e refresh token.
 
 ### Server
 
-Dopo OAuth, l’app invia i token a **`POST /strava/register-tokens`**. Sul Pi servono **`STRAVA_CLIENT_ID`** e **`STRAVA_CLIENT_SECRET`** uguali a quelli dell’app.
+Dopo OAuth, l’app usa **`POST /strava/exchange-oauth-code`** con `{ uid, code, redirect_uri, client_id }`. Il server legge il secret utente da Firestore con Admin SDK, scambia il codice con Strava e risponde con i token. Poi l’app invia i token a **`POST /strava/register-tokens`** includendo anche `client_id`, così il server può usare le stesse credenziali nei refresh futuri. Le env **`STRAVA_CLIENT_ID`** e **`STRAVA_CLIENT_SECRET`** sul Pi sono solo fallback/migrazione.
 
 ---
 

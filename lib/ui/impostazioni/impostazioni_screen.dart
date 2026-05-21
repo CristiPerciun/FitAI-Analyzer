@@ -15,10 +15,12 @@ import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/services/ai_backend_preference_service.dart';
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/services/openrouter_service.dart';
+import 'package:fitai_analyzer/services/strava_oauth_credentials_service.dart';
 import 'package:fitai_analyzer/services/user_ai_settings_sync_service.dart';
 import 'package:fitai_analyzer/ui/widgets/deepseek_api_key_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/gemini_api_key_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/openrouter_api_key_dialog.dart';
+import 'package:fitai_analyzer/ui/widgets/strava_oauth_credentials_dialog.dart';
 import 'package:fitai_analyzer/ui/impostazioni/feedback_screen.dart';
 import 'package:fitai_analyzer/ui/profile/profile_hub_screen.dart';
 import 'package:fitai_analyzer/ui/widgets/garmin_connect_dialog.dart';
@@ -87,7 +89,9 @@ class ImpostazioniScreen extends ConsumerWidget {
     final isDark = theme.brightness == Brightness.dark;
     final screenBg = theme.scaffoldBackgroundColor;
     final groupBg = theme.colorScheme.surfaceContainerHighest;
-    final headerColor = theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.72);
+    final headerColor = theme.colorScheme.onSurfaceVariant.withValues(
+      alpha: 0.72,
+    );
     final footerColor = theme.colorScheme.onSurfaceVariant;
 
     ref.listen(authNotifierProvider, (prev, next) {
@@ -161,9 +165,7 @@ class ImpostazioniScreen extends ConsumerWidget {
                 activeColor: _iosSwitchOn,
                 onChanged: isStravaLoading
                     ? null
-                    : (v) => unawaited(
-                        _onStravaSwitchChanged(context, ref, v),
-                      ),
+                    : (v) => unawaited(_onStravaSwitchChanged(context, ref, v)),
               ),
               _IosRowDivider(indent: _IosGroup.rowLabelInset),
               _IosSwitchRow(
@@ -175,8 +177,11 @@ class ImpostazioniScreen extends ConsumerWidget {
                     color: AppColors.garminBlue.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(7),
                   ),
-                  child:
-                      Icon(Icons.watch, color: AppColors.garminBlue, size: 20),
+                  child: Icon(
+                    Icons.watch,
+                    color: AppColors.garminBlue,
+                    size: 20,
+                  ),
                 ),
                 title: 'Garmin Connect',
                 value: isGarminConnected,
@@ -244,7 +249,10 @@ class ImpostazioniScreen extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 10),
-          _IosSectionHeader(label: 'INTELLIGENZA ARTIFICIALE', color: headerColor),
+          _IosSectionHeader(
+            label: 'INTELLIGENZA ARTIFICIALE',
+            color: headerColor,
+          ),
           aiBackendAsync.when(
             data: (snap) => Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -267,11 +275,11 @@ class ImpostazioniScreen extends ConsumerWidget {
                       // così un utente senza chiave vede lo switch OFF e il tap
                       // apre il dialog per inserirla (turnOn=true), anche se il
                       // backend di default è Gemini.
-                      value: snap.backend == AiBackend.gemini && snap.hasGeminiKey,
+                      value:
+                          snap.backend == AiBackend.gemini && snap.hasGeminiKey,
                       activeColor: _iosSwitchOn,
-                      onChanged: (v) => unawaited(
-                        _onGeminiBackendSwitch(context, ref, v),
-                      ),
+                      onChanged: (v) =>
+                          unawaited(_onGeminiBackendSwitch(context, ref, v)),
                     ),
                     _IosRowDivider(indent: _IosGroup.rowLabelInset),
                     _IosAiBackendSwitchRow(
@@ -284,11 +292,12 @@ class ImpostazioniScreen extends ConsumerWidget {
                       subtitle: snap.hasDeepSeekKey
                           ? 'Sincronizzata tra i dispositivi (stesso account)'
                           : 'Chiave non impostata · attiva per inserirla',
-                      value: snap.backend == AiBackend.deepseek && snap.hasDeepSeekKey,
+                      value:
+                          snap.backend == AiBackend.deepseek &&
+                          snap.hasDeepSeekKey,
                       activeColor: _iosSwitchOn,
-                      onChanged: (v) => unawaited(
-                        _onDeepSeekBackendSwitch(context, ref, v),
-                      ),
+                      onChanged: (v) =>
+                          unawaited(_onDeepSeekBackendSwitch(context, ref, v)),
                     ),
                     _IosRowDivider(indent: _IosGroup.rowLabelInset),
                     _IosAiBackendSwitchRow(
@@ -301,7 +310,9 @@ class ImpostazioniScreen extends ConsumerWidget {
                       subtitle: snap.hasOpenRouterKey
                           ? 'Sincronizzata tra i dispositivi (stesso account)'
                           : 'Chiave non impostata · attiva per inserirla',
-                      value: snap.backend == AiBackend.openrouter && snap.hasOpenRouterKey,
+                      value:
+                          snap.backend == AiBackend.openrouter &&
+                          snap.hasOpenRouterKey,
                       activeColor: _iosSwitchOn,
                       onChanged: (v) => unawaited(
                         _onOpenRouterBackendSwitch(context, ref, v),
@@ -314,9 +325,8 @@ class ImpostazioniScreen extends ConsumerWidget {
                   OutlinedButton.icon(
                     icon: const Icon(Icons.info_outline, size: 20),
                     label: const Text('Info crediti OpenRouter'),
-                    onPressed: () => unawaited(
-                      _showOpenRouterCreditsDialog(context, ref),
-                    ),
+                    onPressed: () =>
+                        unawaited(_showOpenRouterCreditsDialog(context, ref)),
                   ),
                 ],
               ],
@@ -342,8 +352,7 @@ class ImpostazioniScreen extends ConsumerWidget {
             isDark: isDark,
             child: _IosDestructiveRow(
               title: 'Esci',
-              onTap: () =>
-                  ref.read(authNotifierProvider.notifier).signOut(),
+              onTap: () => ref.read(authNotifierProvider.notifier).signOut(),
             ),
           ),
         ],
@@ -360,17 +369,35 @@ class ImpostazioniScreen extends ConsumerWidget {
       final connected = ref.read(stravaConnectedProvider).valueOrNull ?? false;
       if (connected) return;
 
-      await ref.read(authNotifierProvider.notifier).startOAuth(
-        'strava',
-        onSuccess: () {
-          ref.invalidate(activitiesStreamProvider);
-          ref.read(selectedTabIndexProvider.notifier).state = 1;
-          final uid = ref.read(authNotifierProvider).user?.uid;
-          if (uid != null) {
-            unawaited(_runStravaPostLoginSync(context, ref, uid));
-          }
-        },
-      );
+      final uid = ref.read(authNotifierProvider).user?.uid;
+      if (uid == null) {
+        scaffoldMessengerKey.currentState?.showSnackBar(
+          const SnackBar(content: Text('Accedi prima di collegare Strava.')),
+        );
+        return;
+      }
+      final hasCredentials = await ref
+          .read(stravaOAuthCredentialsServiceProvider)
+          .hasValidCredentials(uid);
+      if (!hasCredentials) {
+        if (!context.mounted) return;
+        final saved = await showStravaOAuthCredentialsDialog(context, ref);
+        if (!saved) return;
+      }
+
+      await ref
+          .read(authNotifierProvider.notifier)
+          .startOAuth(
+            'strava',
+            onSuccess: () {
+              ref.invalidate(activitiesStreamProvider);
+              ref.read(selectedTabIndexProvider.notifier).state = 1;
+              final uid = ref.read(authNotifierProvider).user?.uid;
+              if (uid != null) {
+                unawaited(_runStravaPostLoginSync(context, ref, uid));
+              }
+            },
+          );
       return;
     }
 
@@ -404,8 +431,7 @@ class ImpostazioniScreen extends ConsumerWidget {
     }
 
     if (turnOn) {
-      final already =
-          ref.read(garminConnectedProvider).valueOrNull ?? false;
+      final already = ref.read(garminConnectedProvider).valueOrNull ?? false;
       if (already) return;
 
       final result = await showGarminConnectDialog(context, ref, uid: uid);
@@ -421,8 +447,7 @@ class ImpostazioniScreen extends ConsumerWidget {
       return;
     }
 
-    final connected =
-        ref.read(garminConnectedProvider).valueOrNull ?? false;
+    final connected = ref.read(garminConnectedProvider).valueOrNull ?? false;
     if (!connected) return;
 
     final ok = await _showCupertinoConfirm(
@@ -453,8 +478,7 @@ class ImpostazioniScreen extends ConsumerWidget {
     }
 
     if (turnOn) {
-      final already =
-          ref.read(miFitnessConnectedProvider).valueOrNull ?? false;
+      final already = ref.read(miFitnessConnectedProvider).valueOrNull ?? false;
       if (already) return;
 
       final result = await showMiFitnessConnectDialog(context, ref, uid: uid);
@@ -469,15 +493,13 @@ class ImpostazioniScreen extends ConsumerWidget {
       return;
     }
 
-    final connected =
-        ref.read(miFitnessConnectedProvider).valueOrNull ?? false;
+    final connected = ref.read(miFitnessConnectedProvider).valueOrNull ?? false;
     if (!connected) return;
 
     final ok = await _showCupertinoConfirm(
       context,
       title: 'Disconnetti Mi Fitness?',
-      message:
-          'I token Xiaomi sul server verranno rimossi per questo account.',
+      message: 'I token Xiaomi sul server verranno rimossi per questo account.',
       confirmLabel: 'Disconnetti',
       isDestructive: true,
     );
@@ -491,8 +513,9 @@ class ImpostazioniScreen extends ConsumerWidget {
     WidgetRef ref,
     String uid,
   ) async {
-    final result =
-        await ref.read(garminServiceProvider).disconnectMiFitness(uid: uid);
+    final result = await ref
+        .read(garminServiceProvider)
+        .disconnectMiFitness(uid: uid);
     if (context.mounted) {
       ref.invalidate(miFitnessConnectedProvider);
       ref.invalidate(activitiesStreamProvider);
@@ -518,21 +541,18 @@ class ImpostazioniScreen extends ConsumerWidget {
     WidgetRef ref,
     String uid,
   ) async {
-    final result =
-        await commMiFitnessRunInitialDelta(ref, uid);
+    final result = await commMiFitnessRunInitialDelta(ref, uid);
     commMiFitnessInvalidateActivityCaches(ref);
     if (!context.mounted) return;
     final messenger = scaffoldMessengerKey.currentState;
     final ok = result['success'] == true;
     if (ok) {
       messenger?.showSnackBar(
-        const SnackBar(
-          content: Text('Mi Fitness: sincronizzazione avviata.'),
-        ),
+        const SnackBar(content: Text('Mi Fitness: sincronizzazione avviata.')),
       );
     } else {
-      final err = result['message']?.toString() ??
-          'Sincronizzazione non riuscita.';
+      final err =
+          result['message']?.toString() ?? 'Sincronizzazione non riuscita.';
       messenger?.showSnackBar(
         SnackBar(
           content: Text('Mi Fitness: $err'),
@@ -598,12 +618,11 @@ class ImpostazioniScreen extends ConsumerWidget {
     final messenger = scaffoldMessengerKey.currentState;
     if (ok) {
       messenger?.showSnackBar(
-        const SnackBar(
-          content: Text('Strava: dati aggiornati dal server.'),
-        ),
+        const SnackBar(content: Text('Strava: dati aggiornati dal server.')),
       );
     } else {
-      final err = ref.read(garminSyncNotifierProvider).error ??
+      final err =
+          ref.read(garminSyncNotifierProvider).error ??
           'Sincronizzazione non riuscita.';
       messenger?.showSnackBar(
         SnackBar(
@@ -670,13 +689,14 @@ class ImpostazioniScreen extends ConsumerWidget {
           ref.invalidate(aiBackendSettingsProvider);
           return;
         }
-      } else if (uid != null &&
-          !await sync.hasGeminiKeyInCloud(uid)) {
+      } else if (uid != null && !await sync.hasGeminiKeyInCloud(uid)) {
         // `hasValidKey()` include la chiave in `.env`: in quel caso Firestore può
         // restare vuoto e l'utente non vede mai il dialog. Se la chiave è solo in
         // `.env`, chiediamola esplicitamente (non carichiamo automaticamente `.env`
         // su Firebase). Se è già in Secure Storage, la inviamo in cloud.
-        final secureKey = await geminiKeys.readSecureStorageKeyOrEmpty(uid: uid);
+        final secureKey = await geminiKeys.readSecureStorageKeyOrEmpty(
+          uid: uid,
+        );
         if (secureKey.isNotEmpty) {
           await sync.saveGeminiKeyLocalAndCloud(uid, secureKey);
           ref.invalidate(aiBackendSettingsProvider);
@@ -922,9 +942,9 @@ class _IosGroup extends StatelessWidget {
     this.child,
     this.children,
   }) : assert(
-          (child != null) ^ (children != null),
-          'Provide either child or children',
-        );
+         (child != null) ^ (children != null),
+         'Provide either child or children',
+       );
 
   static const double rowLabelInset = 57;
 
@@ -935,8 +955,8 @@ class _IosGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final content = child ??
-        Column(mainAxisSize: MainAxisSize.min, children: children!);
+    final content =
+        child ?? Column(mainAxisSize: MainAxisSize.min, children: children!);
 
     return Container(
       decoration: BoxDecoration(
@@ -945,7 +965,9 @@ class _IosGroup extends StatelessWidget {
         border: isDark
             ? null
             : Border.all(
-                color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.12),
+                color: Theme.of(
+                  context,
+                ).colorScheme.outline.withValues(alpha: 0.12),
               ),
       ),
       clipBehavior: Clip.antiAlias,
@@ -1084,9 +1106,7 @@ class _IosSwitchRow extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onChanged == null
-            ? null
-            : () => onChanged!(!value),
+        onTap: onChanged == null ? null : () => onChanged!(!value),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Row(
@@ -1227,9 +1247,7 @@ class _FeedbackNavigationRow extends StatelessWidget {
       child: InkWell(
         onTap: () {
           Navigator.of(context).push<void>(
-            MaterialPageRoute<void>(
-              builder: (_) => const FeedbackScreen(),
-            ),
+            MaterialPageRoute<void>(builder: (_) => const FeedbackScreen()),
           );
         },
         child: Padding(
@@ -1256,7 +1274,9 @@ class _FeedbackNavigationRow extends StatelessWidget {
               ),
               Icon(
                 Icons.chevron_right,
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                color: theme.colorScheme.onSurfaceVariant.withValues(
+                  alpha: 0.5,
+                ),
                 size: 22,
               ),
             ],
@@ -1342,7 +1362,9 @@ class _ThemeModeIosRow extends ConsumerWidget {
               ),
               Icon(
                 Icons.chevron_right,
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                color: theme.colorScheme.onSurfaceVariant.withValues(
+                  alpha: 0.5,
+                ),
                 size: 22,
               ),
             ],

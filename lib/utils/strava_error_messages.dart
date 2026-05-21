@@ -3,6 +3,16 @@
 String stravaErrorToUserMessage(Object e) {
   final msg = e.toString();
 
+  if (msg.contains('Client ID/Secret Strava') ||
+      msg.contains('client_secret') ||
+      msg.contains('client id') ||
+      msg.contains('Client ID Strava')) {
+    return 'Credenziali Strava mancanti o non corrette.\n\n'
+        'Apri Impostazioni → Strava e inserisci Client ID e Client Secret della tua app Strava. '
+        'Devono appartenere alla stessa app configurata su https://www.strava.com/settings/api.\n\n'
+        'Per GitHub Pages / iPhone web, il Callback Domain di Strava deve combaciare con il dominio pubblico della web app.';
+  }
+
   // PlatformException: User canceled login (quando l'utente chiude la web view)
   if (msg.contains('PlatformException') &&
       (msg.contains('CANCELED') ||
@@ -39,7 +49,8 @@ String stravaErrorToUserMessage(Object e) {
     return 'Per Strava su Chrome / web il server di sync deve esporre '
         'POST /strava/exchange-oauth-code (scambio del codice OAuth lato server: '
         'il browser non può chiamare direttamente strava.com/oauth/token).\n\n'
-        'Aggiorna garmin-sync-server, aggiungi l’endpoint e riavvia il servizio sul Pi.';
+        'Aggiorna garmin-sync-server: l’endpoint deve accettare uid, code, redirect_uri e client_id, '
+        'leggere il client_secret utente da Firestore e riavviare il servizio sul Pi.';
   }
 
   // Server sync (garmin-sync-server) senza credenziali API Strava

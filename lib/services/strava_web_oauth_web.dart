@@ -20,18 +20,21 @@ void stravaWebAssignLocation(String url) {
 
 void stravaWebReplaceCleanUrl(Uri clean) {
   html.window.history.replaceState(null, '', clean.toString());
+  html.window.dispatchEvent(html.PopStateEvent('popstate'));
 }
 
 void stravaWebSessionSet(String key, String value) {
   html.window.sessionStorage[key] = value;
+  html.window.localStorage[key] = value;
 }
 
 String? stravaWebSessionGet(String key) {
-  return html.window.sessionStorage[key];
+  return html.window.sessionStorage[key] ?? html.window.localStorage[key];
 }
 
 void stravaWebSessionRemove(String key) {
   html.window.sessionStorage.remove(key);
+  html.window.localStorage.remove(key);
 }
 
 String stravaWebNewOAuthState() {

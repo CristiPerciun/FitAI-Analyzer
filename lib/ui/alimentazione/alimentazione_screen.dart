@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:fitai_analyzer/models/meal_model.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart';
-import 'package:fitai_analyzer/providers/caloric_deficit_chart_provider.dart';
 import 'package:fitai_analyzer/providers/nutrition_chart_provider.dart';
 import 'package:fitai_analyzer/providers/nutrition_meal_edit_provider.dart';
 import 'package:fitai_analyzer/providers/pending_meal_analysis_provider.dart';
@@ -18,6 +17,7 @@ import 'package:fitai_analyzer/theme/app_card_theme.dart';
 import 'package:fitai_analyzer/ui/widgets/date_filter_chips.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/utils/meal_constants.dart';
+import 'package:fitai_analyzer/utils/nutrition_macro_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fitai_analyzer/ui/widgets/NutritionChartCard.dart';
@@ -194,7 +194,6 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
                     );
                     ref.invalidate(nutritionChartDataProvider);
                     ref.invalidate(nutritionDiaryWeekChartDataProvider);
-                    ref.invalidate(caloricDeficitWeekChartProvider);
                   },
                     child: SingleChildScrollView(
                       physics: const AlwaysScrollableScrollPhysics(),
@@ -233,6 +232,7 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
                   final profile = ref.watch(userProfileNotifierProvider).profile;
 
                   return chartAsync.when(
+                    skipLoadingOnReload: true,
                     data: (chartData) {
                       // Costruiamo la lista di obiettivi reali per la card
                       final goals = <NutrientGoal>[
@@ -247,7 +247,7 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
                           title: 'Carboidrati',
                           unit: 'g',
                           target: _macroNum(aiMacroGiornalieri, ['carboidrati_g', 'carbs_g']) ?? 250.0,
-                          color: Colors.greenAccent,
+                          color: NutritionMacroColors.carbs,
                           weeklyData: chartData.carbsData, 
                         ),
                         NutrientGoal(
@@ -255,14 +255,14 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
                           unit: 'g',
                           target: _macroNum(aiMacroGiornalieri, ['proteine_g', 'protein_g']) ?? 
                                   (profile != null ? nutritionGoal.proteinGPerKg * profile.weightKg : 150.0),
-                          color: Colors.purpleAccent,
+                          color: NutritionMacroColors.protein,
                           weeklyData: chartData.proteinData,
                         ),
                         NutrientGoal(
                           title: 'Grassi',
                           unit: 'g',
                           target: _macroNum(aiMacroGiornalieri, ['grassi_g', 'fat_g']) ?? 70.0,
-                          color: Colors.orangeAccent,
+                          color: NutritionMacroColors.fat,
                           weeklyData: chartData.fatData,
                         ),
                       ];

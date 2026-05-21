@@ -274,7 +274,8 @@ class GarminService {
     /// `flutter run`/web-server su **http://localhost**: qui ha senso il probe LAN verso il Pi in rete locale.
     /// Su **HTTPS** (GitHub Pages) evitiamo LAN: spesso è solo HTTP (mixed content) e 3s di timeout
     /// rovinano lo scambio ticket Garmin.
-    final webDevHttpLocalhost = kIsWeb &&
+    final webDevHttpLocalhost =
+        kIsWeb &&
         _isGarminWebLocalHttpDevHost(garmin_web.garminWebCurrentUri());
 
     if (kIsWeb) {
@@ -297,7 +298,9 @@ class GarminService {
         );
         try {
           final sw = Stopwatch()..start();
-          final r = await _http.get(Uri.parse('$lan/')).timeout(_lanProbeTimeout);
+          final r = await _http
+              .get(Uri.parse('$lan/'))
+              .timeout(_lanProbeTimeout);
           _garminTraceHttpResponse(
             label: 'resolveBaseUrl Web local LAN probe',
             uri: Uri.parse('$lan/'),
@@ -312,9 +315,13 @@ class GarminService {
             );
             return lan;
           }
-          _garminHttpVerbose('Web localhost: LAN HTTP ${r.statusCode} -> REMOTE');
+          _garminHttpVerbose(
+            'Web localhost: LAN HTTP ${r.statusCode} -> REMOTE',
+          );
         } on Object catch (e) {
-          _garminHttpVerbose('Web localhost: LAN non disponibile: $e -> REMOTE');
+          _garminHttpVerbose(
+            'Web localhost: LAN non disponibile: $e -> REMOTE',
+          );
         }
         _cachedBaseUrl = remote;
         _garminHttpVerbose('Web localhost: base finale -> $remote');
@@ -464,10 +471,7 @@ class GarminService {
     );
     garmin_web.garminWebSessionRemove(_garminWebSessionResultKey);
     garmin_web.garminWebSessionRemove(_garminWebSessionMessageKey);
-    return {
-      'success': status == 'success',
-      'message': message ?? '',
-    };
+    return {'success': status == 'success', 'message': message ?? ''};
   }
 
   /// URL di ritorno base per Garmin OAuth su web (stesso host/path, senza query/fragment).
@@ -639,7 +643,9 @@ class GarminService {
       final msg = rawMsg.isNotEmpty
           ? rawMsg
           : 'Impossibile avviare OAuth Garmin (prepare fallito). Aggiorna garmin-sync-server e PUBLIC_SERVER_URL.';
-      _garminOAuthWebLog('_garminSsoWebFullPageWithPrepare: prepare failed message=$msg');
+      _garminOAuthWebLog(
+        '_garminSsoWebFullPageWithPrepare: prepare failed message=$msg',
+      );
       return {'success': false, 'message': msg};
     }
 
@@ -702,7 +708,9 @@ class GarminService {
     if (ticket != null &&
         ticket.isNotEmpty &&
         _garminWebLastExchangedTicket == ticket) {
-      _garminOAuthWebLog('completeGarminWebOAuthIfPresent: ticket già scambiato, skip');
+      _garminOAuthWebLog(
+        'completeGarminWebOAuthIfPresent: ticket già scambiato, skip',
+      );
       final clean = garminWebRedirectBase(loc);
       garmin_web.garminWebReplaceCleanUrl(clean);
       return null;
@@ -714,7 +722,9 @@ class GarminService {
 
     try {
       if (error != null && error.isNotEmpty) {
-        _garminOAuthWebLog('completeGarminWebOAuthIfPresent: errore OAuth in URL');
+        _garminOAuthWebLog(
+          'completeGarminWebOAuthIfPresent: errore OAuth in URL',
+        );
         return {'success': false, 'message': 'Garmin: $error'};
       }
       // Costruiamo ticketOrUrl come returnPage?ticket=ST-...
@@ -724,9 +734,9 @@ class GarminService {
       if (ticket != null && ticket.isNotEmpty) {
         // `login-url` sul server deve coincidere col `service` usato col ticket
         // (app principale `/` oppure `garmin_oauth_return.html` su iOS popup).
-        ticketOrUrl = garminWebRedirectBase(loc)
-            .replace(queryParameters: {'ticket': ticket})
-            .toString();
+        ticketOrUrl = garminWebRedirectBase(
+          loc,
+        ).replace(queryParameters: {'ticket': ticket}).toString();
       } else {
         ticketOrUrl = loc.toString();
       }
@@ -815,14 +825,19 @@ class GarminService {
       };
     } on TimeoutException catch (e) {
       _invalidateBaseUrlCacheOnNetworkFailure(e);
-      return {'success': false, 'message': 'Timeout durante connessione Mi Fitness.'};
+      return {
+        'success': false,
+        'message': 'Timeout durante connessione Mi Fitness.',
+      };
     } on Exception catch (e) {
       _invalidateBaseUrlCacheOnNetworkFailure(e);
       return {'success': false, 'message': 'Errore di rete: $e'};
     }
   }
 
-  Future<Map<String, dynamic>> disconnectMiFitness({required String uid}) async {
+  Future<Map<String, dynamic>> disconnectMiFitness({
+    required String uid,
+  }) async {
     final baseUrl = await _resolveBaseUrl();
     final uri = Uri.parse('$baseUrl/mi-fitness/disconnect');
     try {
@@ -1222,13 +1237,16 @@ class GarminService {
   /// `https://www.strava.com/oauth/token` per CORS.
   ///
   /// Serve su **garmin-sync-server** un endpoint `POST /strava/exchange-oauth-code`
-  /// con body JSON `{ "uid", "code", "redirect_uri" }` che esegue il POST server-side
-  /// verso Strava (`client_id`, `client_secret`, `code`, `grant_type=authorization_code`,
-  /// `redirect_uri`) e risponde con gli stessi campi token di Strava + `success: true`.
+  /// con body JSON `{ "uid", "code", "redirect_uri", "client_id" }`.
+  /// Il server deve leggere il `client_secret` utente da
+  /// `users/{uid}/app_sync/strava_oauth` e poi chiamare Strava server-side con
+  /// `client_id`, `client_secret`, `code`, `grant_type=authorization_code`,
+  /// `redirect_uri`. Risposta attesa: campi token di Strava + `success: true`.
   Future<Map<String, dynamic>> exchangeStravaOAuthCodeOnServer({
     required String uid,
     required String code,
     required String redirectUri,
+    String? clientId,
   }) async {
     final baseUrl = await _resolveBaseUrl();
     final uri = Uri.parse('$baseUrl/strava/exchange-oauth-code');
@@ -1237,6 +1255,9 @@ class GarminService {
       'code': code,
       'redirect_uri': redirectUri,
     };
+    if (clientId != null && clientId.trim().isNotEmpty) {
+      body['client_id'] = clientId.trim();
+    }
     try {
       final sw = Stopwatch()..start();
       final response = await _http
@@ -1284,11 +1305,14 @@ class GarminService {
   }
 
   /// Registra token Strava sul server (backfill 60gg in background).
+  /// `client_id` permette al server di associare i token alle credenziali
+  /// per-utente e usare le stesse credenziali durante i refresh futuri.
   Future<Map<String, dynamic>> registerStravaOnServer({
     required String uid,
     required String accessToken,
     required String refreshToken,
     int? expiresAtMs,
+    String? clientId,
   }) async {
     final baseUrl = await _resolveBaseUrl();
     final uri = Uri.parse('$baseUrl/strava/register-tokens');
@@ -1299,6 +1323,9 @@ class GarminService {
     };
     if (expiresAtMs != null) {
       body['expires_at'] = expiresAtMs;
+    }
+    if (clientId != null && clientId.trim().isNotEmpty) {
+      body['client_id'] = clientId.trim();
     }
     try {
       final swReg = Stopwatch()..start();

@@ -1,4 +1,5 @@
 import 'package:fitai_analyzer/providers/nutrition_chart_provider.dart';
+import 'package:fitai_analyzer/utils/nutrition_macro_colors.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -31,10 +32,15 @@ class WeeklyMacroStackedBarChartCard extends ConsumerWidget {
         );
 
     return chartAsync.when(
+      skipLoadingOnReload: true,
       data: (data) {
         final totalKcal = data.caloriesData.fold<double>(0, (a, e) => a + e.value);
         final dailyAvgKcal = totalKcal / 7.0;
-        final mc = _macroColors(theme);
+        const mc = _MacroColors(
+          protein: NutritionMacroColors.protein,
+          carbs: NutritionMacroColors.carbs,
+          fat: NutritionMacroColors.fat,
+        );
 
         // Max grams across the 7 days (used for Y axis scale)
         double maxGrams = 10.0;
@@ -271,22 +277,6 @@ class _MacroColors {
   final Color protein;
   final Color carbs;
   final Color fat;
-}
-
-_MacroColors _macroColors(ThemeData theme) {
-  final dark = theme.brightness == Brightness.dark;
-  if (dark) {
-    return const _MacroColors(
-      protein: Color(0xFFCF9FE8), // soft purple
-      carbs: Color(0xFF7DD9A0),   // soft green
-      fat: Color(0xFFFFBF6B),     // soft amber/orange
-    );
-  }
-  return const _MacroColors(
-    protein: Color(0xFF8E30C0), // deep purple
-    carbs: Color(0xFF1F9950),   // deep green
-    fat: Color(0xFFD97B0A),     // deep orange
-  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

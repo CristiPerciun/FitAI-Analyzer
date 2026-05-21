@@ -13,8 +13,10 @@ import 'strava_desktop_stub.dart'
     if (dart.library.io) 'strava_desktop_io.dart'
     as desktop;
 import 'strava_oauth_callback.dart';
+import 'strava_oauth_credentials_service.dart';
 import 'strava_web_oauth_stub.dart'
-    if (dart.library.html) 'strava_web_oauth_web.dart' as strava_web;
+    if (dart.library.html) 'strava_web_oauth_web.dart'
+    as strava_web;
 
 import '../models/fitness_data.dart';
 import 'garmin_service.dart';
@@ -95,7 +97,9 @@ class StravaActivity {
   factory StravaActivity.fromFitnessData(FitnessData d) {
     final raw = d.stravaRaw ?? d.miFitnessRaw ?? d.raw ?? {};
     var idStr = d.stravaActivityId ?? '';
-    if (idStr.isEmpty && d.miFitnessTrackId != null && d.miFitnessTrackId!.isNotEmpty) {
+    if (idStr.isEmpty &&
+        d.miFitnessTrackId != null &&
+        d.miFitnessTrackId!.isNotEmpty) {
       idStr = d.miFitnessTrackId!;
     }
     if (idStr.isEmpty && d.id.startsWith('strava_')) {
@@ -128,16 +132,18 @@ class StravaActivity {
 }
 
 class StravaService {
-  static const String clientId = '210889';
-  static const String clientSecret = '86f8945313e8f838bb08e074be926b2c09ab7a54';
-
   /// Redirect URI per OAuth. In Strava (strava.com/settings/api) imposta
   /// "Authorization Callback Domain" = strava (host di myhealthsync://strava/callback)
   static const String redirectUri = 'myhealthsync://strava/callback';
   static const String callbackScheme = 'myhealthsync';
 
   static const String _sessionOAuthState = 'fitai_strava_oauth_state';
-  static const String _sessionPendingRegister = 'fitai_strava_pending_server_register';
+  static const String _sessionPendingRegister =
+      'fitai_strava_pending_server_register';
+  static const String _sessionClientId = 'fitai_strava_client_id';
+  static const String _sessionRedirectUri = 'fitai_strava_redirect_uri';
+  static const String _prefsClientId = 'strava_client_id';
+  static const String _prefsClientSecret = 'strava_client_secret';
 
   static bool _webOAuthReturnHandled = false;
 
@@ -165,20 +171,55 @@ class StravaService {
       final raw = dotenv.env['STRAVA_WEB_REDIRECT_URI']?.trim();
       if (raw != null && raw.isNotEmpty) {
         final u = Uri.parse(raw);
-        return u.replace(query: '', fragment: '').toString();
+        final path = u.path.isEmpty ? '/' : u.path;
+        return Uri(
+          scheme: u.scheme,
+          userInfo: u.userInfo,
+          host: u.host,
+          port: u.hasPort ? u.port : null,
+          path: path,
+        ).toString();
       }
     }
     return stravaWebRedirectBase(loc).toString();
   }
 
+  static Map<String, String> _webOAuthParams(Uri loc) {
+    final params = <String, String>{...loc.queryParameters};
+    var fragment = loc.fragment.trim();
+    if (fragment.isEmpty) return params;
+
+    final queryStart = fragment.indexOf('?');
+    if (queryStart >= 0) {
+      fragment = fragment.substring(queryStart + 1);
+    }
+    while (fragment.startsWith('#') ||
+        fragment.startsWith('?') ||
+        fragment.startsWith('&')) {
+      fragment = fragment.substring(1);
+    }
+    if (fragment.isEmpty || !fragment.contains('=')) return params;
+
+    try {
+      params.addAll(Uri.splitQueryString(fragment));
+    } on FormatException {
+      // Il frammento può essere una route Flutter, non una query OAuth.
+    }
+    return params;
+  }
+
   String? _accessToken;
   String? _refreshToken;
+  String? _clientId;
+  String? _clientSecret;
   DateTime? _expiresAt;
 
   Future<void> _loadInitialTokens() async {
     final prefs = await SharedPreferences.getInstance();
     _accessToken = prefs.getString('strava_access_token');
     _refreshToken = prefs.getString('strava_refresh_token');
+    _clientId = prefs.getString(_prefsClientId);
+    _clientSecret = prefs.getString(_prefsClientSecret);
     final expires = prefs.getInt('strava_expires_at');
     _expiresAt = expires != null
         ? DateTime.fromMillisecondsSinceEpoch(expires)
@@ -206,8 +247,12 @@ class StravaService {
     await prefs.remove('strava_access_token');
     await prefs.remove('strava_refresh_token');
     await prefs.remove('strava_expires_at');
+    await prefs.remove(_prefsClientId);
+    await prefs.remove(_prefsClientSecret);
     _accessToken = null;
     _refreshToken = null;
+    _clientId = null;
+    _clientSecret = null;
     _expiresAt = null;
   }
 
@@ -230,21 +275,24 @@ class StravaService {
       return false;
     }
 
-    final err = loc.queryParameters['error'];
+    final oauthParams = _webOAuthParams(loc);
+    final err = oauthParams['error'];
     if (err != null) {
       _webOAuthReturnHandled = true;
       strava_web.stravaWebReplaceCleanUrl(stravaWebRedirectBase(loc));
       strava_web.stravaWebSessionRemove(_sessionOAuthState);
       strava_web.stravaWebSessionRemove(_sessionPendingRegister);
+      strava_web.stravaWebSessionRemove(_sessionClientId);
+      strava_web.stravaWebSessionRemove(_sessionRedirectUri);
       return false;
     }
 
-    final code = loc.queryParameters['code'];
+    final code = oauthParams['code'];
     if (code == null || code.isEmpty) {
       return false;
     }
 
-    final gotState = loc.queryParameters['state'];
+    final gotState = oauthParams['state'];
     final stored = strava_web.stravaWebSessionGet(_sessionOAuthState);
     if (stored == null ||
         stored.isEmpty ||
@@ -253,18 +301,36 @@ class StravaService {
       strava_web.stravaWebReplaceCleanUrl(stravaWebRedirectBase(loc));
       strava_web.stravaWebSessionRemove(_sessionOAuthState);
       strava_web.stravaWebSessionRemove(_sessionPendingRegister);
+      strava_web.stravaWebSessionRemove(_sessionClientId);
+      strava_web.stravaWebSessionRemove(_sessionRedirectUri);
       throw Exception(
         'Stato OAuth Strava non valido o sessione scaduta. Riprova a collegare Strava.',
       );
     }
 
-    final redirectStr = stravaOAuthWebRedirectUriString(loc);
+    final clientId = strava_web.stravaWebSessionGet(_sessionClientId);
+    if (clientId == null ||
+        !StravaOAuthCredentialsService.isValidClientId(clientId)) {
+      strava_web.stravaWebReplaceCleanUrl(stravaWebRedirectBase(loc));
+      strava_web.stravaWebSessionRemove(_sessionOAuthState);
+      strava_web.stravaWebSessionRemove(_sessionPendingRegister);
+      strava_web.stravaWebSessionRemove(_sessionClientId);
+      strava_web.stravaWebSessionRemove(_sessionRedirectUri);
+      throw Exception(
+        'Client ID Strava mancante nella sessione OAuth. Riprova a collegare Strava.',
+      );
+    }
+
+    final redirectStr =
+        strava_web.stravaWebSessionGet(_sessionRedirectUri) ??
+        stravaOAuthWebRedirectUriString(loc);
     _webOAuthReturnHandled = true;
     try {
       final reg = await garminService.exchangeStravaOAuthCodeOnServer(
         uid: uid,
         code: code,
         redirectUri: redirectStr,
+        clientId: clientId,
       );
 
       if (reg['success'] != true) {
@@ -284,10 +350,12 @@ class StravaService {
         throw StateError('Risposta server Strava incompleta (token mancanti).');
       }
 
-      await saveTokens(access, refresh, expiresIn);
+      await saveTokens(access, refresh, expiresIn, clientId: clientId);
 
       strava_web.stravaWebSessionRemove(_sessionOAuthState);
       strava_web.stravaWebSessionRemove(_sessionPendingRegister);
+      strava_web.stravaWebSessionRemove(_sessionClientId);
+      strava_web.stravaWebSessionRemove(_sessionRedirectUri);
       strava_web.stravaWebReplaceCleanUrl(stravaWebRedirectBase(loc));
       return true;
     } on Object {
@@ -296,10 +364,24 @@ class StravaService {
     }
   }
 
-  Future<void> saveTokens(String access, String refresh, int expiresIn) async {
+  Future<void> saveTokens(
+    String access,
+    String refresh,
+    int expiresIn, {
+    String? clientId,
+    String? clientSecret,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     _accessToken = access;
     _refreshToken = refresh;
+    if (clientId != null && clientId.trim().isNotEmpty) {
+      _clientId = clientId.trim();
+      await prefs.setString(_prefsClientId, _clientId!);
+    }
+    if (clientSecret != null && clientSecret.trim().isNotEmpty) {
+      _clientSecret = clientSecret.trim();
+      await prefs.setString(_prefsClientSecret, _clientSecret!);
+    }
     _expiresAt = DateTime.now().add(Duration(seconds: expiresIn));
     await prefs.setString('strava_access_token', access);
     await prefs.setString('strava_refresh_token', refresh);
@@ -307,7 +389,8 @@ class StravaService {
   }
 
   /// Token correnti per `GarminService.registerStravaOnServer` (dopo OAuth / refresh).
-  Future<({String access, String refresh, int expiresAtMs})?> getTokensForServer() async {
+  Future<({String access, String refresh, int expiresAtMs})?>
+  getTokensForServer() async {
     await _loadInitialTokens();
     final access = _accessToken;
     final refresh = _refreshToken;
@@ -320,11 +403,18 @@ class StravaService {
     );
   }
 
-  Future<void> authenticate() async {
+  Future<void> authenticate({
+    required StravaOAuthCredentials credentials,
+    required GarminService garminService,
+    required String uid,
+  }) async {
     await _loadInitialTokens();
     if (_accessToken != null && !_isTokenExpired()) {
       debugPrint('Token Strava già valido');
       return;
+    }
+    if (!credentials.isComplete) {
+      throw StateError('Client ID/Secret Strava mancanti o non validi.');
     }
 
     final bool isMobile =
@@ -344,7 +434,7 @@ class StravaService {
         ? 'https://www.strava.com/oauth/mobile/authorize?'
         : 'https://www.strava.com/oauth/authorize?';
     final Map<String, String> params = {
-      'client_id': clientId,
+      'client_id': credentials.clientId,
       'response_type': 'code',
       'scope': 'read,activity:read_all,profile:read_all',
       'approval_prompt': 'auto',
@@ -394,11 +484,22 @@ class StravaService {
       if (code == null) {
         throw Exception('Nessun code ricevuto da Strava (mobile)');
       }
-      await _exchangeCodeForToken(code, redirectUriUsed: redirectUri);
+      await _exchangeCodeForTokenOnServer(
+        code,
+        garminService: garminService,
+        uid: uid,
+        clientId: credentials.clientId,
+        clientSecret: credentials.clientSecret,
+        redirectUriUsed: redirectUri,
+      );
     } else if (isDesktop) {
       final code = await desktop.runDesktopStravaOAuth(authUrlBase, params);
-      await _exchangeCodeForToken(
+      await _exchangeCodeForTokenOnServer(
         code,
+        garminService: garminService,
+        uid: uid,
+        clientId: credentials.clientId,
+        clientSecret: credentials.clientSecret,
         redirectUriUsed: params['redirect_uri'],
       );
     } else if (kIsWeb) {
@@ -409,11 +510,14 @@ class StravaService {
         throw StateError('URL corrente non disponibile (web).');
       }
 
-      final errParam = loc.queryParameters['error'];
+      final oauthParams = _webOAuthParams(loc);
+      final errParam = oauthParams['error'];
       if (errParam != null) {
         strava_web.stravaWebReplaceCleanUrl(stravaWebRedirectBase(loc));
         strava_web.stravaWebSessionRemove(_sessionOAuthState);
         strava_web.stravaWebSessionRemove(_sessionPendingRegister);
+        strava_web.stravaWebSessionRemove(_sessionClientId);
+        strava_web.stravaWebSessionRemove(_sessionRedirectUri);
         throw Exception(
           errParam == 'access_denied'
               ? 'Autorizzazione Strava annullata.'
@@ -421,8 +525,7 @@ class StravaService {
         );
       }
 
-      if (loc.queryParameters['code'] != null &&
-          loc.queryParameters['code']!.isNotEmpty) {
+      if (oauthParams['code'] != null && oauthParams['code']!.isNotEmpty) {
         throw Exception(
           'Collegamento Strava in completamento: attendi qualche secondo o aggiorna la pagina.',
         );
@@ -431,8 +534,10 @@ class StravaService {
       final state = strava_web.stravaWebNewOAuthState();
       strava_web.stravaWebSessionSet(_sessionOAuthState, state);
       strava_web.stravaWebSessionSet(_sessionPendingRegister, '1');
+      strava_web.stravaWebSessionSet(_sessionClientId, credentials.clientId);
 
       final redirectStr = stravaOAuthWebRedirectUriString(loc);
+      strava_web.stravaWebSessionSet(_sessionRedirectUri, redirectStr);
       if (!redirectStr.startsWith('https://') &&
           !redirectStr.startsWith('http://localhost') &&
           !redirectStr.startsWith('http://127.0.0.1')) {
@@ -443,7 +548,7 @@ class StravaService {
       }
 
       final paramsWeb = <String, String>{
-        'client_id': clientId,
+        'client_id': credentials.clientId,
         'response_type': 'code',
         'scope': 'read,activity:read_all,profile:read_all',
         'approval_prompt': 'auto',
@@ -458,39 +563,48 @@ class StravaService {
       strava_web.stravaWebAssignLocation(authUrl);
       throw const StravaWebOAuthRedirectPending();
     } else {
-      throw UnsupportedError(
-        'Piattaforma non supportata per Strava OAuth',
-      );
+      throw UnsupportedError('Piattaforma non supportata per Strava OAuth');
     }
   }
 
-  Future<void> _exchangeCodeForToken(
+  Future<void> _exchangeCodeForTokenOnServer(
     String code, {
+    required GarminService garminService,
+    required String uid,
+    required String clientId,
+    required String clientSecret,
     String? redirectUriUsed,
   }) async {
-    final body = <String, String>{
-      'client_id': clientId,
-      'client_secret': clientSecret,
-      'code': code,
-      'grant_type': 'authorization_code',
-    };
-    if (redirectUriUsed != null) body['redirect_uri'] = redirectUriUsed;
-
-    final response = await http.post(
-      Uri.parse('https://www.strava.com/oauth/token'),
-      body: body,
+    final reg = await garminService.exchangeStravaOAuthCodeOnServer(
+      uid: uid,
+      code: code,
+      redirectUri: redirectUriUsed ?? redirectUri,
+      clientId: clientId,
     );
 
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      await saveTokens(
-        data['access_token'],
-        data['refresh_token'],
-        data['expires_in'],
+    if (reg['success'] != true) {
+      throw Exception(
+        reg['message']?.toString() ??
+            'Exchange OAuth Strava sul server fallito.',
       );
-    } else {
-      throw Exception('Strava OAuth fallito: ${response.body}');
     }
+
+    final access = reg['access_token'] as String?;
+    final refresh = reg['refresh_token'] as String?;
+    final expiresInRaw = reg['expires_in'];
+    final expiresIn = expiresInRaw is int
+        ? expiresInRaw
+        : int.tryParse('$expiresInRaw') ?? 21600;
+    if (access == null || refresh == null) {
+      throw StateError('Risposta server Strava incompleta (token mancanti).');
+    }
+    await saveTokens(
+      access,
+      refresh,
+      expiresIn,
+      clientId: clientId,
+      clientSecret: clientSecret,
+    );
   }
 
   bool _isTokenExpired() =>
@@ -498,6 +612,16 @@ class StravaService {
       DateTime.now().isAfter(_expiresAt!.subtract(const Duration(minutes: 5)));
 
   Future<void> _performTokenRefresh() async {
+    final clientId = _clientId;
+    final clientSecret = _clientSecret;
+    if (clientId == null ||
+        clientSecret == null ||
+        clientId.isEmpty ||
+        clientSecret.isEmpty) {
+      throw StateError(
+        'Client ID/Secret Strava mancanti: ricollega Strava dalle Impostazioni.',
+      );
+    }
     final response = await http.post(
       Uri.parse('https://www.strava.com/oauth/token'),
       body: {
@@ -552,10 +676,7 @@ class StravaService {
       '?keys=time,heartrate&key_by_type=true',
     );
     final response = await http
-        .get(
-          uri,
-          headers: {'Authorization': 'Bearer $_accessToken'},
-        )
+        .get(uri, headers: {'Authorization': 'Bearer $_accessToken'})
         .timeout(const Duration(seconds: 45));
 
     if (response.statusCode == 404) return null;

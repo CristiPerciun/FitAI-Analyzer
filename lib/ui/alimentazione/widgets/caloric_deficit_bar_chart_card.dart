@@ -99,7 +99,36 @@ class CaloricDeficitBarChartCard extends ConsumerWidget {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final weekOffset = ref.watch(nutritionDiaryWeekOffsetProvider);
-    final chartAsync = ref.watch(caloricDeficitWeekChartProvider);
+    final diaryAsync = ref.watch(nutritionDiaryWeekChartDataProvider);
+    final data = ref.watch(caloricDeficitWeekChartProvider);
+
+    if (diaryAsync.isLoading && !diaryAsync.hasValue) {
+      return Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: cs.outline.withValues(alpha: 0.2)),
+        ),
+        child: const Padding(
+          padding: EdgeInsets.all(24),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+
+    if (diaryAsync.hasError && !diaryAsync.hasValue) {
+      return Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: cs.outline.withValues(alpha: 0.2)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text('Errore grafico: ${diaryAsync.error}'),
+        ),
+      );
+    }
 
     return Card(
       elevation: 0,
@@ -107,22 +136,13 @@ class CaloricDeficitBarChartCard extends ConsumerWidget {
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: cs.outline.withValues(alpha: 0.2)),
       ),
-      child: chartAsync.when(
-        loading: () => const Padding(
-          padding: EdgeInsets.all(24),
-          child: Center(child: CircularProgressIndicator()),
-        ),
-        error: (e, _) => Padding(
-          padding: const EdgeInsets.all(16),
-          child: Text('Errore grafico: $e'),
-        ),
-        data: (data) => _ChartBody(
-          data: data,
-          weekOffset: weekOffset,
-          maxY: _maxY(data),
-          theme: theme,
-          onInfoTap: () => CaloricDeficitBarChartCard._showInfoDialog(context, data),
-        ),
+      child: _ChartBody(
+        data: data,
+        weekOffset: weekOffset,
+        maxY: _maxY(data),
+        theme: theme,
+        onInfoTap: () =>
+            CaloricDeficitBarChartCard._showInfoDialog(context, data),
       ),
     );
   }

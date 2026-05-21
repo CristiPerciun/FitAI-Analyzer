@@ -148,7 +148,8 @@ Implementazione: repository **`garmin-sync-server`** (locale es. `Custom_WorkSpa
 | `POST /garmin/sync-vitals` | `{ uid }` | **Compat**: stesso comportamento di `sync-today` |
 | `POST /sync/delta` | `{ uid, lastSuccessfulSync?, sources? }` | Delta all’avvio app: range da ultimo sync + Strava (lista `after` + dettaglio ultime 5 attività) |
 | `POST /garmin/disconnect` | `{ uid }` | Scollega Garmin: elimina token, `garmin_linked=false` |
-| `POST /strava/register-tokens` | `{ uid, access_token, refresh_token, expires_at? }` | Salva token in `strava_tokens/{uid}` (solo server), avvia backfill 60 gg paginato + merge fuzzy su `activities` |
+| `POST /strava/exchange-oauth-code` | `{ uid, code, redirect_uri, client_id? }` | Scambia il codice OAuth Strava lato server. Se `client_id` è presente, il server legge `users/{uid}/app_sync/strava_oauth.client_secret` e usa le credenziali per-utente |
+| `POST /strava/register-tokens` | `{ uid, access_token, refresh_token, expires_at?, client_id? }` | Salva token in `strava_tokens/{uid}` (solo server), associa il `client_id` usato, avvia backfill 60 gg paginato + merge fuzzy su `activities` |
 | `POST /strava/disconnect` | `{ uid }` | Elimina `strava_tokens/{uid}` |
 | `POST /garmin/activity-detail` | `{ uid, garmin_activity_id? \| strava_activity_id? }` | Dettaglio on-demand (FIT/API) e merge su Firestore |
 
@@ -160,9 +161,10 @@ Implementazione: repository **`garmin-sync-server`** (locale es. `Custom_WorkSpa
 |----------|--------|
 | `users/{uid}/sync_status/backfill` | `status`: `pending` \| `processing` \| `completed` \| `error`, `progress`, `message`, `source` (`garmin` / `strava`) |
 | `users/{uid}.lastSuccessfulSync` | Timestamp aggiornato a fine delta / sync-today riuscita |
-| `strava_tokens/{uid}` | Token Strava (stesse regole client di `garmin_tokens`: no accesso app) |
+| `strava_tokens/{uid}` | Token Strava (stesse regole client di `garmin_tokens`: no accesso app). Deve includere o poter ricavare il `client_id` usato per OAuth |
+| `users/{uid}/app_sync/strava_oauth` | Credenziali app Strava inserite dall’utente: `client_id`, `client_secret`, `updated_at`. Il server le legge con Admin SDK per exchange/refresh |
 
-**Server Strava**: impostare `STRAVA_CLIENT_ID` e `STRAVA_CLIENT_SECRET` (stessi valori dell’app per refresh token) nell’ambiente del `garmin-sync-server`.
+**Server Strava**: il flusso principale usa le credenziali per-utente salvate in `users/{uid}/app_sync/strava_oauth`. `STRAVA_CLIENT_ID` e `STRAVA_CLIENT_SECRET` nell’ambiente del `garmin-sync-server` possono restare solo come fallback di sviluppo/migrazione; non devono essere il percorso principale se più utenti usano app Strava diverse.
 
 ---
 
