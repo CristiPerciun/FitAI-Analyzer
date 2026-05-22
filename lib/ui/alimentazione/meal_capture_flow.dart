@@ -109,9 +109,16 @@ Future<void> showAddMealSheet(
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: () async {
+                  // Su web/PWA: apri l'input subito, dentro il gesto utente
+                  // (come pickImage per galleria/camera), prima di await e
+                  // prima di chiudere il bottom sheet.
+                  final text = await showManualEntryDialog(ctx);
+                  if (!ctx.mounted) return;
                   Navigator.of(ctx).pop();
 
-                  if (!context.mounted) return;
+                  if (text == null || text.trim().isEmpty || !context.mounted) {
+                    return;
+                  }
                   if (!await ensureActiveAiBackendHasKey(context, ref)) {
                     return;
                   }
@@ -119,15 +126,6 @@ Future<void> showAddMealSheet(
 
                   final uid = await ensureNutritionUid(context, ref);
                   if (uid == null || !context.mounted) return;
-
-                  final text = await showDialog<String>(
-                    context: context,
-                    builder: (_) => const ManualEntryDialog(),
-                  );
-
-                  if (text == null || text.trim().isEmpty || !context.mounted) {
-                    return;
-                  }
 
                   _analyzeMealFromManualText(
                     ref,

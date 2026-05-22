@@ -7,6 +7,7 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 
 import 'gemini_api_key_service.dart';
 import 'nutrition_ai_json_parser.dart';
+import 'nutrition_ai_prompts.dart';
 
 final geminiServiceProvider = Provider<GeminiService>((ref) {
   final apiKeyService = ref.watch(geminiApiKeyServiceProvider);
@@ -59,24 +60,7 @@ Future<Map<String, dynamic>> getFoodInfoFromText(String description) async {
   // 1. Otteniamo il modello corretto (configurato per JSON)
   final model = await _getModelNutrition();
 
-  final prompt = """
-    Analizza questo pasto: "$description". Sei un nutrizionista esperto.
-    Restituisci un JSON con questo schema esatto (allineato all'analisi foto):
-    {
-      "dish_name": "nome del piatto",
-      "total_calories": numero,
-      "estimated_portion_grams": numero (grammi totali del piatto usati per la stima),
-      "protein_g": numero,
-      "carbs_g": numero,
-      "fat_g": numero,
-      "fiber_g": numero,
-      "sugar_g": numero,
-      "longevity_score": numero da 1 a 10,
-      "foods": [{"name": "stringa", "calories": numero, "portion": "stringa"}],
-      "advice": "un breve consiglio nutrizionale in italiano"
-    }
-    Rispondi solo con il JSON, niente testo aggiuntivo.
-  """;
+  final prompt = NutritionAiPrompts.foodInfoFromText(description);
 
   try {
     final response = await _withRetry(
@@ -182,26 +166,7 @@ Rispondi in italiano, in modo strutturato e actionable.
 
     final imagePart = DataPart(mimeType, imageBytes);
 
-    const prompt = '''
-Analizza questa foto di un piatto/cibo. Sei un nutrizionista orientato alla longevità (Peter Attia, Outlive).
-
-Restituisci un JSON con questo schema esatto:
-{
-  "dish_name": "stringa breve descrittiva del piatto (es. Pollo e Broccoli)",
-  "total_calories": numero,
-  "estimated_portion_grams": numero (grammi totali del piatto porzionato usati per la stima),
-  "protein_g": numero,
-  "carbs_g": numero,
-  "fat_g": numero,
-  "fiber_g": numero,
-  "sugar_g": numero,
-  "longevity_score": numero da 1 a 10 (10 = ottimo per longevità: proteine adeguate, fibre, pochi zuccheri raffinati),
-  "foods": [{"name": "stringa", "calories": numero, "portion": "stringa"}],
-  "advice": "stringa con consigli nutrizionali brevi in italiano"
-}
-
-Stima le calorie e i macronutrienti in base al cibo visibile. Sii realistico.
-''';
+    const prompt = NutritionAiPrompts.nutritionFromImage;
 
     final response = await _withRetry(
       () => model.generateContent([Content.multi([TextPart(prompt), imagePart])]),

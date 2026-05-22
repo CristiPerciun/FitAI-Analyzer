@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 
 import 'ai_backend_preference_service.dart';
 import 'nutrition_ai_json_parser.dart';
+import 'nutrition_ai_prompts.dart';
 
 final openRouterServiceProvider = Provider<OpenRouterService>((ref) {
   return OpenRouterService(ref.watch(aiBackendPreferenceServiceProvider));
@@ -340,23 +341,7 @@ Rispondi in italiano, strutturato e actionable.
   }
 
   Future<Map<String, dynamic>> getFoodInfoFromText(String description) async {
-    final prompt = """
-Analizza questo pasto: "$description". Sei un nutrizionista esperto.
-Restituisci SOLO un JSON valido con questo schema esatto:
-{
-  "dish_name": "...",
-  "total_calories": numero,
-  "estimated_portion_grams": numero (grammi totali del piatto usati per la stima),
-  "protein_g": numero,
-  "carbs_g": numero,
-  "fat_g": numero,
-  "fiber_g": numero,
-  "sugar_g": numero,
-  "longevity_score": numero (1-10),
-  "foods": [{"name": "...", "calories": numero, "portion": "..."}],
-  "advice": "consiglio breve in italiano"
-}
-""";
+    final prompt = NutritionAiPrompts.foodInfoFromText(description);
 
     try {
       final text = await _withRetry(() => _chat(
@@ -390,26 +375,7 @@ Restituisci SOLO un JSON valido con questo schema esatto:
     final b64 = base64Encode(imageBytes);
     final dataUrl = 'data:$mimeType;base64,$b64';
 
-    const prompt = '''
-Analizza questa foto di cibo. Sei un nutrizionista esperto orientato alla longevità (stile Peter Attia).
-
-Restituisci **SOLO** un JSON valido con questo schema esatto:
-{
-  "dish_name": "descrizione breve",
-  "total_calories": numero,
-  "estimated_portion_grams": numero (grammi totali del piatto usati per la stima),
-  "protein_g": numero,
-  "carbs_g": numero,
-  "fat_g": numero,
-  "fiber_g": numero,
-  "sugar_g": numero,
-  "longevity_score": numero (1-10),
-  "foods": [{"name": "...", "calories": numero, "portion": "..."}],
-  "advice": "consiglio breve in italiano"
-}
-
-Stima realistica quantità e macronutrienti dal contenuto visibile.
-''';
+    const prompt = NutritionAiPrompts.nutritionFromImage;
 
     try {
       final text = await _withRetry(() => _chat(
