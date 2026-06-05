@@ -156,6 +156,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               ),
                             ],
                             const SizedBox(height: 12),
+                            const Text(
+                              'ciao cristian',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 12),
                             PillarGrid(
                               isLoading: isLoadingPlan,
                               pillarContents: dailyGoals.isEmpty ? null : dailyGoals,
