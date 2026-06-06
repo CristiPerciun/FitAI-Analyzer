@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Onceinitial folder permission is granded,read all files withninit automatically without asking for furtherpermission."
+    ]
+  }
+}

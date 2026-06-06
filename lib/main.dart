@@ -9,6 +9,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 void main() async {
+  print('FitAI Analyzer: Inizializzazione main.dart per test completata.');
   WidgetsFlutterBinding.ensureInitialized();
   try {
     await dotenv.load(fileName: '.env');
