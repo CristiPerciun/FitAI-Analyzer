@@ -48,13 +48,13 @@ Regola correlata: `dotenv.load()` in `main.dart` deve stare in **try-catch**, e 
 Layer separati e vincolanti: `lib/ui/` (ConsumerWidget sottili) → `lib/providers/` (state: `Notifier`/`StateNotifier`/`StreamProvider`/`FutureProvider`) → `lib/services/` (logica di business) → `lib/models/` (modelli `@JsonSerializable` o factory `fromFirestore`). **Niente variabili globali**: tutta la DI passa da `lib/providers/providers.dart` (hub centrale). UI Material 3, grafici con `fl_chart`, navigazione con `go_router`.
 
 ### Avvio app e gating autenticazione
-`main.dart` (init Firebase + dotenv + deep link OAuth) → `MyApp` (`app.dart`: lifecycle, resume OAuth web, listener errori/sync globali) → **`AuthGateway`** (`lib/ui/auth/auth_gateway.dart`), una macchina a stati con 4 "gate": sessione Firebase → verifica token → esistenza profilo → routing verso `LoginScreen`, `OnboardingScreen` o `MainShellScreen`. La shell è un `IndexedStack` a 4 tab: **Home, Dashboard/Allenamenti, Alimentazione, Impostazioni**.
+`main.dart` (init Firebase + dotenv + deep link OAuth) → `MyApp` (`app.dart`: lifecycle, resume OAuth web, listener errori/sync globali) → **`AuthGateway`** (`lib/ui/auth/auth_gateway.dart`), una macchina a stati con 4 "gate": sessione Firebase → verifica token → esistenza profilo → routing verso `LoginScreen`, `OnboardingScreen` o `MainShellScreen`. La shell è un `IndexedStack` a 4 tab: **Home, Allenamenti, Alimentazione, Impostazioni**.
 
 ### Sottosistema AI multi-backend
 `UnifiedAiService` (`lib/services/unified_ai_service.dart`) instrada ogni chiamata con uno `switch` su `AiBackend` verso uno di tre backend intercambiabili: **Gemini** (SDK `google_generative_ai`, `gemini-2.5-flash`), **DeepSeek** (HTTP OpenAI-compatibile), **OpenRouter** (catena di modelli free con fallback). Il backend attivo è in `AiBackendPreferenceService` (secure storage, chiave `AI_ACTIVE_BACKEND`). Le chiavi Gemini sono **per-UID** (`GEMINI_API_KEY_UID::<uid>`) per evitare leak cross-account su dispositivi condivisi, sincronizzate su `users/{uid}/app_sync/ai_keys` da `UserAiSettingsSyncService`. `NutritionAiJsonParser` normalizza il JSON dell'AI (somma le macro dei singoli alimenti e **corregge il totale se diverge >10%**).
 
 ### Strategia "Tre Livelli di Memoria" (VINCOLANTE — non modificare)
-È la spina dorsale dei dati, pensata per limitare il costo dei prompt AI. I livelli superiori leggono **solo i campi `*_summary`**, mai le sottocollezioni raw. Dettagli completi in `.cursor/rules/three-levels-memory-strategy.mdc` e `docs/DATA_ARCHITECTURE.md`.
+È la spina dorsale dei dati, pensata per limitare il costo dei prompt AI. I livelli superiori leggono **solo i campi `*_summary`**, mai le sottocollezioni raw. Dettagli completi in `.cursor/rules/three-levels-memory-strategy.mdc` e `docs/architecture/data-architecture.md`.
 
 - **Livello 1 — `users/{uid}/daily_logs/{YYYY-MM-DD}`**: documento indice giornaliero (`nutrition_summary`, `activity_ids`, `health_ref`, `total_burned_kcal`, completamento pilastri) + sottocollezione `meals/{mealId}`.
 - **Livello 2 — `rolling_10days/current`**: ricalcolato **ogni giorno** (medie macro 10 gg, minuti Zone 2, VO2Max stimato).
@@ -111,7 +111,7 @@ Prima di modifiche rilevanti, consultare (regole `.cursor/rules/` con `alwaysApp
 - `.cursor/rules/project-conventions.mdc` — Clean Architecture, Riverpod, Material 3, sicurezza.
 - `.cursor/rules/ios-build-ci.mdc` — requisiti `.env`/CI per la build iOS.
 - `.cursor/rules/garmin-server-pi-fork-sync.mdc` — separazione app vs server, branch `fork-sync`.
-- `docs/DATA_ARCHITECTURE.md`, `docs/SYNC_ARCHITECTURE.md`, `docs/GARMIN_INTEGRATION.md`, `docs/FIREBASE_SETUP.md`, `docs/IOS_SETUP.md` — architettura dati, sync, integrazioni, setup.
+- `docs/architecture/data-architecture.md`, `docs/architecture/sync-architecture.md`, `docs/integrations/garmin.md`, `docs/setup/firebase.md`, `docs/setup/ios.md` — architettura dati, sync, integrazioni, setup.
 - `AGENTS.md` impone la consultazione di queste regole prima di ogni prompt.
 
 **File da cui orientarsi:** `lib/main.dart` (avvio), `lib/ui/auth/auth_gateway.dart` (gating), `lib/providers/providers.dart` (DI), `lib/services/longevity_engine.dart` (orchestrazione AI), `lib/services/aggregation_service.dart` (L2/L3), `lib/services/unified_ai_service.dart` (router AI), `lib/services/garmin_service.dart` (sync), `firestore.rules` (confine di sicurezza).

@@ -1,7 +1,9 @@
 import 'package:fitai_analyzer/models/user_profile.dart';
 import 'package:fitai_analyzer/providers/user_profile_notifier.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
+import 'package:fitai_analyzer/ui/widgets/multi_select_chip.dart';
 import 'package:fitai_analyzer/utils/goal_options.dart';
+import 'package:fitai_analyzer/utils/onboarding_questions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -50,6 +52,15 @@ class MainProfileSinglePageFieldsState
   final _healthConditionsController = TextEditingController();
   double _avgSleepHours = 7.0;
   int _sleepImportance = 3;
+
+  // Campi specifici per obiettivo (condizionali).
+  String? _dailyActivityLevel;
+  final _targetWeightController = TextEditingController();
+  String? _trainingExperience;
+  String? _trainingFocus;
+  final _zone2Controller = TextEditingController();
+  final Set<String> _longevityPriorities = {};
+
   bool _seeded = false;
 
   @override
@@ -59,6 +70,8 @@ class MainProfileSinglePageFieldsState
     _weightController.dispose();
     _medicationsController.dispose();
     _healthConditionsController.dispose();
+    _targetWeightController.dispose();
+    _zone2Controller.dispose();
     super.dispose();
   }
 
@@ -78,10 +91,21 @@ class MainProfileSinglePageFieldsState
       _healthConditionsController.text = p.healthConditions;
       _avgSleepHours = p.avgSleepHours;
       _sleepImportance = p.sleepImportance.clamp(1, 5);
+      _dailyActivityLevel = p.dailyActivityLevel;
+      _targetWeightController.text =
+          p.targetWeightKg == null ? '' : p.targetWeightKg.toString();
+      _trainingExperience = p.trainingExperience;
+      _trainingFocus = p.trainingFocus;
+      _zone2Controller.text =
+          p.zone2MinutesTarget == null ? '' : p.zone2MinutesTarget.toString();
+      _longevityPriorities
+        ..clear()
+        ..addAll(p.longevityPriorities);
     });
   }
 
   UserProfile _buildBase() {
+    final vis = visibilityForGoal(_mainGoal);
     return UserProfile(
       mainGoal: _mainGoal ?? 'longevity',
       age: int.tryParse(_ageController.text.trim()) ?? 30,
@@ -95,26 +119,26 @@ class MainProfileSinglePageFieldsState
       healthConditions: _healthConditionsController.text.trim(),
       avgSleepHours: _avgSleepHours,
       sleepImportance: _sleepImportance,
+      // Campi specifici: valorizzati SOLO se pertinenti all'obiettivo corrente.
+      dailyActivityLevel: _dailyActivityLevel,
+      targetWeightKg: vis.showTargetWeight
+          ? double.tryParse(_targetWeightController.text.trim())
+          : null,
+      trainingExperience: vis.showTrainingExperience ? _trainingExperience : null,
+      trainingFocus: vis.showTrainingExperience ? _trainingFocus : null,
+      zone2MinutesTarget: vis.showLongevityPriorities
+          ? int.tryParse(_zone2Controller.text.trim())
+          : null,
+      longevityPriorities: vis.showLongevityPriorities
+          ? _longevityPriorities.toList()
+          : const [],
     );
   }
 
   /// Profilo principale + conserva ramo nutrizione e training dal profilo corrente in Firestore.
   UserProfile buildMergedProfile() {
-    final b = _buildBase();
     final cur = ref.read(userProfileNotifierProvider).profile;
-    return UserProfile(
-      mainGoal: b.mainGoal,
-      age: b.age,
-      gender: b.gender,
-      heightCm: b.heightCm,
-      weightKg: b.weightKg,
-      trainingDaysPerWeek: b.trainingDaysPerWeek,
-      equipment: b.equipment,
-      takesMedications: b.takesMedications,
-      medicationsList: b.medicationsList,
-      healthConditions: b.healthConditions,
-      avgSleepHours: b.avgSleepHours,
-      sleepImportance: b.sleepImportance,
+    return _buildBase().copyWith(
       nutritionGoal: cur?.nutritionGoal,
       trainingGoal: cur?.trainingGoal,
     );
@@ -167,6 +191,7 @@ class MainProfileSinglePageFieldsState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final vis = visibilityForGoal(_mainGoal);
     final p = ref.watch(userProfileNotifierProvider).profile;
     if (p != null && !_seeded) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -275,6 +300,22 @@ class MainProfileSinglePageFieldsState
           ],
           validator: _validateWeight,
         ),
+        if (vis.showTargetWeight) ...[
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _targetWeightController,
+            decoration: const InputDecoration(
+              labelText: 'Peso obiettivo (kg)',
+              hintText: 'Es. 68',
+              border: OutlineInputBorder(),
+            ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+              LengthLimitingTextInputFormatter(5),
+            ],
+          ),
+        ],
         const SizedBox(height: 28),
         Text(
           'Allenamento',
@@ -314,6 +355,77 @@ class MainProfileSinglePageFieldsState
               .toList(),
           onChanged: (v) => setState(() => _equipment = v),
         ),
+        const SizedBox(height: 16),
+        DropdownButtonFormField<String>(
+          key: const ValueKey('dailyActivityDropdown'),
+          initialValue: _dailyActivityLevel,
+          isExpanded: true,
+          decoration: const InputDecoration(
+            labelText: 'Attività quotidiana (fuori allenamento)',
+            border: OutlineInputBorder(),
+          ),
+          items: dailyActivityOptions
+              .map((e) => DropdownMenuItem(value: e.$1, child: Text(e.$2)))
+              .toList(),
+          onChanged: (v) => setState(() => _dailyActivityLevel = v),
+        ),
+        if (vis.showTrainingExperience) ...[
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            key: const ValueKey('trainingExperienceDropdown'),
+            initialValue: _trainingExperience,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Esperienza di allenamento',
+              border: OutlineInputBorder(),
+            ),
+            items: trainingExperienceOptions
+                .map((e) => DropdownMenuItem(value: e.$1, child: Text(e.$2)))
+                .toList(),
+            onChanged: (v) => setState(() => _trainingExperience = v),
+          ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            key: const ValueKey('trainingFocusDropdown'),
+            initialValue: _trainingFocus,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Focus allenamento',
+              border: OutlineInputBorder(),
+            ),
+            items: trainingFocusOptions
+                .map((e) => DropdownMenuItem(value: e.$1, child: Text(e.$2)))
+                .toList(),
+            onChanged: (v) => setState(() => _trainingFocus = v),
+          ),
+        ],
+        if (vis.showLongevityPriorities) ...[
+          const SizedBox(height: 24),
+          MultiSelectChipGroup(
+            title: 'Priorità di longevità (puoi sceglierne più di una)',
+            options: longevityPriorityOptions
+                .map((e) => MultiSelectOption(id: e.$1, label: e.$2))
+                .toList(),
+            selected: _longevityPriorities,
+            onChanged: (s) => setState(() => _longevityPriorities
+              ..clear()
+              ..addAll(s)),
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _zone2Controller,
+            decoration: const InputDecoration(
+              labelText: 'Target Zone 2 (minuti / settimana)',
+              hintText: 'Es. 150',
+              border: OutlineInputBorder(),
+            ),
+            keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(3),
+            ],
+          ),
+        ],
         const SizedBox(height: 28),
         Text(
           'Salute e recupero',

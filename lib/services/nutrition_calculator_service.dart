@@ -110,9 +110,12 @@ class NutritionCalculatorService {
   /// Calcolo completo a partire dal profilo onboarding + obiettivo nutrizione.
   static NutritionEnergyResult computeFromUserProfile(UserProfile profile) {
     final ng = profile.nutritionGoal;
-    final activityLevel = activityLevelFromTrainingDays(
-      profile.trainingDaysPerWeek,
-    );
+    // Preferisci il livello attività dichiarato in onboarding (NEAT); in
+    // mancanza, deriva dai giorni di allenamento (comportamento storico).
+    final declared = profile.dailyActivityLevel;
+    final activityLevel = (declared != null && declared.trim().isNotEmpty)
+        ? declared.trim()
+        : activityLevelFromTrainingDays(profile.trainingDaysPerWeek);
     final bmr = bmrMifflinStJeor(
       weightKg: profile.weightKg,
       heightCm: profile.heightCm,
@@ -155,20 +158,7 @@ class NutritionCalculatorService {
     if (ng == null) return profile;
 
     final r = computeFromUserProfile(profile);
-    return UserProfile(
-      mainGoal: profile.mainGoal,
-      age: profile.age,
-      gender: profile.gender,
-      heightCm: profile.heightCm,
-      weightKg: profile.weightKg,
-      trainingDaysPerWeek: profile.trainingDaysPerWeek,
-      equipment: profile.equipment,
-      takesMedications: profile.takesMedications,
-      medicationsList: profile.medicationsList,
-      healthConditions: profile.healthConditions,
-      avgSleepHours: profile.avgSleepHours,
-      sleepImportance: profile.sleepImportance,
-      trainingGoal: profile.trainingGoal,
+    return profile.copyWith(
       nutritionGoal: ng.copyWith(calorieTarget: r.calorieTarget),
     );
   }

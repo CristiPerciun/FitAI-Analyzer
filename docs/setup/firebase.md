@@ -2,7 +2,7 @@
 
 Unico punto di riferimento per **Authentication**, **allineamento app ↔ server ↔ Garmin** e **deploy delle regole Firestore**.
 
-**Vedi anche**: [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md) (collezioni), [SYNC_ARCHITECTURE.md](SYNC_ARCHITECTURE.md) (sync), [firestore.rules.example](firestore.rules.example).
+**Vedi anche**: [data-architecture](../architecture/data-architecture.md) (collezioni), [sync-architecture](../architecture/sync-architecture.md) (sync), [firestore.rules.example](../reference/firestore.rules.example).
 
 ---
 
@@ -69,7 +69,7 @@ Oppure: `dart pub global activate flutterfire_cli` → `flutterfire configure`.
 
 - Login Firebase Auth ok.  
 - Firestore: lettura `users/{uid}` senza errori di permesso.  
-- Garmin: lo stesso **uid** Auth che il server riceve in `POST /garmin/connect` (vedi [GARMIN_INTEGRATION.md](GARMIN_INTEGRATION.md)).
+- Garmin: lo stesso **uid** Auth che il server riceve in `POST /garmin/connect` (vedi [garmin](../integrations/garmin.md)).
 
 ---
 
@@ -89,4 +89,4 @@ firebase init firestore
 
 e indica `firestore.rules` come file delle regole.
 
-Le regole `match /users/{userId}/{document=**}` limitano read/write ai propri dati (`daily_logs`, `meals`, `activities`, `daily_health`, `rolling_10days`, `baseline_profile`, ecc.). Il garmin-sync-server usa **Admin SDK** e bypassa le regole lato client.
+Le regole `match /users/{userId}/{document=**}` limitano read/write ai propri dati (`daily_logs` incl. `meals`, `profile` incl. `baseline`/`diary`, `activities`, `daily_health`, `rolling_10days`, `ai_current`, `sync_status`, `feedback`, `app_sync`). Il garmin-sync-server usa **Admin SDK** e bypassa le regole lato client.

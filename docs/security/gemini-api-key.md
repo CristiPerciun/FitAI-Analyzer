@@ -11,14 +11,14 @@ La chiave Gemini è usata per analisi nutrizionale (foto piatto) e analisi AI fi
 
 Se non hai `.env` (es. build da CI o da un altro PC), puoi inserire la chiave nell'app:
 
-1. Apri **Alimentazione**
-2. Tocca l'icona **chiave** (🔑) in alto a destra
-3. Incolla la tua API key da [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
-4. Salva – la chiave resta sul dispositivo in Secure Storage
+- Quando provi ad **analizzare un pasto** (foto, galleria o descrizione manuale), se per il backend AI attivo non è configurata una chiave, l'app mostra **automaticamente** un dialog per inserirla (gate `ensureActiveAiBackendHasKey()` nel flusso di meal capture).
+- In alternativa, preconfigurala in **Impostazioni**.
+- Incolla la tua API key da [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+- La chiave resta sul dispositivo in **Secure Storage** (per-account) ed è sincronizzata via Firebase se l'account è collegato.
 
 ## Sviluppo locale
 
-- Crea `.env` da `.env.example` e inserisci `GEMINI_API_KEY`
+- Crea un file `.env` nella root del progetto con `GEMINI_API_KEY=...` (il `.env` non è versionato; in CI è generato dal secret `GEMINI_API_KEY`)
 - Oppure usa l'inserimento in-app come sopra
 
 ## CI/CD

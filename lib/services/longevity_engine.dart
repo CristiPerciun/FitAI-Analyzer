@@ -9,6 +9,7 @@ import '../models/longevity_home_package.dart';
 import '../models/nutrition_meal_plan_ai.dart';
 import '../models/rolling_10days_model.dart';
 import '../models/user_profile.dart';
+import '../utils/onboarding_questions.dart';
 
 final longevityEngineProvider = Provider<LongevityEngine>(
   (ref) => LongevityEngine(),
@@ -654,6 +655,8 @@ class LongevityEngine {
     var base = 'Main goal: ${_mainGoalLabel(p.mainGoal)} | Età: ${p.age} | '
         'Peso: ${p.weightKg} kg | Altezza: ${p.heightCm} cm | '
         'Allenamenti/sett: ${p.trainingDaysPerWeek} | Sonno medio: ${p.avgSleepHours}h';
+    final goalCtx = goalSpecificContextLine(p);
+    if (goalCtx.isNotEmpty) base = '$base | $goalCtx';
     final tg = p.trainingGoal;
     if (tg != null &&
         (tg.objectiveKey.isNotEmpty || tg.notes.isNotEmpty)) {
@@ -944,7 +947,7 @@ class GeminiHomeContext {
   final List<DayDetail> detailed7Days;
   final List<WeeklySummary> weeklySummary;
   final BaselineProfileModel? baseline;
-  /// Diario della Longevità precedente (da ai_insights) per aggiornare lo storico.
+  /// Diario della Longevità precedente (da profile/diary) per aggiornare lo storico.
   final String longevityDiary;
 
   const GeminiHomeContext({

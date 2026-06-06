@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Strategia a "Tre Livelli" di Memoria
 
-**VINCOLANTE**: Questa strategia NON deve essere modificata. Ogni nuovo dato deve integrarsi rispettandola. Per scrittori/lettori vedi `docs/DATA_ARCHITECTURE.md`.
+**VINCOLANTE**: Questa strategia NON deve essere modificata. Ogni nuovo dato deve integrarsi rispettandola. Per scrittori/lettori vedi `docs/architecture/data-architecture.md`.
 
 ## Principio
 
@@ -118,7 +118,7 @@ Ogni pasto: `dish_name`, `calories`, `macros`, `timestamp`, `meal_type`, `raw_ai
 - Legge tutti i `daily_logs` dell'anno
 - Per nutrizione: usa `nutritionForAi` (nutrition_summary) → medie in `annual_stats`, `monthly_trends`
 - Aggiornato ogni 10 giorni (`_baselineUpdateIntervalDays`)
-- **Con AI**: se API key Gemini valida, `evolution_notes` e `ai_ready_summary` sono generati dall'AI; altrimenti fallback a template
+- **Generati da template statici** (NON dall'AI): `evolution_notes` (intervallo date, km totali, n. allenamenti) e `ai_ready_summary` (~4000 caratteri: statistiche annuali, metriche longevità VO2max/Zone2, trend mensili, riferimenti Attia) sono costruiti sempre da `_buildEvolutionNotes()` e `_buildAiReadySummary()` in `AggregationService`, senza dipendere dalla Gemini API
 
 ### Quando usare Livello 3
 
@@ -196,14 +196,14 @@ LongevityEngine → legge daily_health per prompt AI (7 gg + 8 sett)
 ## Attività (Strava + Garmin)
 
 **Chi scrive dove** (NON confondere):
-- **Strava** → sync dall'**app FitAI** (StravaService): `activities/{id}`, `daily_logs/{date}.activity_ids`
+- **Strava** → l'app FitAI esegue solo l'OAuth e **registra i token sul server**; le **attività Strava sono scritte dal server** (garmin-sync-server): `activities/{id}`, `daily_logs/{date}.activity_ids`. `StravaService` (client) **non** scrive su Firestore (solo token in SharedPreferences + fetch API).
 - **Garmin** → sync dal **server Python** (garmin-sync-server): `activities/{id}`, `daily_logs/{date}.activity_ids`, `daily_logs/{date}.health_ref`
 
-Entrambi usano merge fuzzy lato scrittura: stessa finestra temporale `+/- 2 min` sul giorno -> un solo doc `activities/{id}` con `source: 'dual'`.
+Il **server** applica un merge fuzzy lato scrittura (`+/- 2 min` sul giorno) -> un solo doc `activities/{id}` con `source: 'dual'`.
 
 **Verifica duplicati**:
-- **Dove**: in scrittura su `StravaService` e `garmin-sync-server`
-- **Logica**: lookup stesso `dateKey` + `startTime +/- 2 min`; se compatibile, aggiornare il doc esistente e marcare `source: 'dual'`
+- **Lato server** (in scrittura): lookup stesso `dateKey` + `startTime +/- 2 min`; se compatibile aggiorna il doc esistente e marca `source: 'dual'`.
+- **Lato client** (in lettura/aggregazione): `DailyLogModel.activitiesForAggregation` / `_isStravaDuplicateOf` deduplica con tipo sport + `startTime +/- 15 min` + rapporto distanza, per non contare due volte la stessa attività.
 
 ## File di riferimento
 
@@ -217,4 +217,4 @@ Entrambi usano merge fuzzy lato scrittura: stessa finestra temporale `+/- 2 min`
 - `lib/services/longevity_engine.dart` – buildUnifiedDailyContext, buildUnifiedPromptFromContext, saveUnifiedAiCurrent
 - `lib/providers/providers.dart` – aiCurrentAllenamentiStreamProvider, nutritionMealPlanAiStreamProvider, homeLongevityPlanDayStreamProvider
 - `lib/providers/data_sync_notifier.dart` – `activitiesStreamProvider`, `dailyHealthStreamProvider`
-- `docs/DATA_ARCHITECTURE.md` – architettura completa con nuova struttura
+- `docs/architecture/data-architecture.md` – architettura completa con nuova struttura

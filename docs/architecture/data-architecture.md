@@ -44,7 +44,7 @@ users/{uid}/
 | Diary | `profile/diary` | `LongevityEngine` | `LongevityEngine` (contesto AI) |
 | Daily logs | `daily_logs/{date}` | `NutritionService`, garmin-sync-server | `DailyLogModel`, `LongevityEngine`, `AggregationService` |
 | Meals | `daily_logs/{date}/meals/{id}` | `NutritionService` | `mealsForDayStream` |
-| Activities | `activities/{id}` | garmin-sync-server, `StravaService` | `activitiesStreamProvider`, `LongevityEngine`, `AggregationService` |
+| Activities | `activities/{id}` | garmin-sync-server | `activitiesStreamProvider`, `LongevityEngine`, `AggregationService` |
 | Daily health | `daily_health/{date}` | garmin-sync-server | `dailyHealthStreamProvider`, `LongevityEngine`, `AggregationService` |
 | Rolling 10 days | `rolling_10days/current` | `AggregationService` | `Rolling10DaysModel`, `LongevityEngine` |
 | AI meal | `ai_current/meal` | `LongevityEngine`, `NutritionMealPlanService` | `nutritionMealPlanAiStreamProvider` |
@@ -129,7 +129,7 @@ Biometrici Garmin: `stats`, `sleep`, `hrv`, `body_battery`, `max_metrics`, `fitn
 ### Attività Strava / Garmin
 
 ```text
-[Strava OAuth] -> StravaService -> activities/{id} + daily_logs.activity_ids
+[Strava OAuth] -> StravaService (solo gestione token; nessuna scrittura Firestore) -> registra i token sul server
 [garmin-sync-server] -> daily_health/{date} + activities/{id} + daily_logs.activity_ids
 ```
 
@@ -153,7 +153,7 @@ Biometrici Garmin: `stats`, `sleep`, `hrv`, `body_battery`, `max_metrics`, `fitn
 | File/Servizio | Legge | Scrive |
 |---------------|-------|--------|
 | `NutritionService` | meals, daily_logs | meals, nutrition_summary |
-| `StravaService` | activities | activities, daily_logs.activity_ids |
+| `StravaService` | — (solo API Strava) | — (nessuna scrittura Firestore; token in SharedPreferences) |
 | `garmin-sync-server` | activities | daily_health, activities, daily_logs |
 | `AggregationService` | daily_logs, activities, daily_health, profile | rolling_10days, profile/baseline |
 | `NutritionCalculatorService` | profile | profile/baseline (campi nutrizione) |

@@ -44,22 +44,37 @@ class _CombinedOnboardingEditScreenState
 
     setState(() => _saving = true);
     try {
-      final profileMain = mainState.buildMergedProfile();
-      await ref.read(userProfileNotifierProvider.notifier).saveProfile(profileMain);
+      // Profilo principale + obiettivo nutrizione in UN UNICO oggetto, scritto
+      // con una sola set(merge) atomica: niente più salvataggi parziali.
+      final merged = mainState.buildMergedProfile().copyWith(
+            nutritionGoal: nutState.buildNutritionGoalModel(),
+          );
+      await ref
+          .read(userProfileNotifierProvider.notifier)
+          .saveCombinedOnboarding(merged);
       if (!mounted) return;
 
-      final goal = nutState.buildNutritionGoalModel();
-      await ref.read(userProfileNotifierProvider.notifier).updateNutritionGoal(goal);
-      if (!mounted) return;
-
+      // Generazione piano pasti AI: best-effort. Il profilo è già salvato, quindi
+      // un errore qui non deve presentarsi come "salvataggio fallito".
       final uid = ref.read(authNotifierProvider).user?.uid;
+      var mealPlanFailed = false;
       if (uid != null) {
-        await ref.read(nutritionMealPlanServiceProvider).generateAndSave(uid);
+        try {
+          await ref.read(nutritionMealPlanServiceProvider).generateAndSave(uid);
+        } catch (_) {
+          mealPlanFailed = true;
+        }
       }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profilo e obiettivo mangiare aggiornati.')),
+          SnackBar(
+            content: Text(
+              mealPlanFailed
+                  ? 'Profilo salvato. Piano pasti non rigenerato: riprova più tardi.'
+                  : 'Profilo e obiettivo mangiare aggiornati.',
+            ),
+          ),
         );
         Navigator.of(context).pop();
       }

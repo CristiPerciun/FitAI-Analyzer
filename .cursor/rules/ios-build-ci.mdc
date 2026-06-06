@@ -51,4 +51,4 @@ Per `image_picker` (analisi foto piatto) servono:
 - [ ] `dotenv.load()` è in try-catch?
 - [ ] `GeminiApiKeyService` usa dotenv.get con fallback?
 - [ ] `.env` è in `.gitignore`? (sì)
-- [ ] `.env.example` documenta le variabili necessarie?
+- [ ] Il secret `GEMINI_API_KEY` è configurato in GitHub Actions e il workflow genera `.env` prima di `flutter pub get`?

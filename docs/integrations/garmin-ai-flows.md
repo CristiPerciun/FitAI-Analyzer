@@ -1,8 +1,8 @@
 # Flussi Garmin, sync e AI
 
-> **Sincronizzazione (endpoint, Firestore, Flutter, deprecazioni)**: [SYNC_ARCHITECTURE.md](SYNC_ARCHITECTURE.md)  
-> **Server Garmin, rete, schema API → Firestore**: [GARMIN_INTEGRATION.md](GARMIN_INTEGRATION.md)  
-> **Architettura dati**: [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md)
+> **Sincronizzazione (endpoint, Firestore, Flutter, deprecazioni)**: [sync-architecture](../architecture/sync-architecture.md)  
+> **Server Garmin, rete, schema API → Firestore**: [garmin](garmin.md)  
+> **Architettura dati**: [data-architecture](../architecture/data-architecture.md)
 
 Questo file resta focalizzato su **UI**, **contesto AI (LongevityEngine)** e **troubleshooting** che non sono ripetuti altrove.
 
@@ -30,7 +30,7 @@ Questo file resta focalizzato su **UI**, **contesto AI (LongevityEngine)** e **t
 
 ## AI Memory – contesto Gemini (LongevityEngine)
 
-**Struttura tipica del prompt** (`buildGeminiHomeContext`, `buildLongevityPlanPrompt`):
+**Struttura tipica del prompt** (`buildGeminiHomeContext`, `buildUnifiedPromptFromContext`):
 
 1. Profilo utente (onboarding)  
 2. Riassunto periodo lungo (medie settimanali: km, workout, passi, sonno, VO2Max, Fitness Age)  

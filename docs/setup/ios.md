@@ -19,19 +19,19 @@ Guida per far funzionare l'app su iPhone (oltre a Windows).
 
 ### 1. Strava API – Redirect URI
 
-Configurazione completa (Callback Domain, errori comuni, server): **[SYNC_ARCHITECTURE.md](SYNC_ARCHITECTURE.md)** — sezione **8. Strava OAuth (app)**.
+Configurazione completa (Callback Domain, errori comuni, server): **[sync-architecture](../architecture/sync-architecture.md)** — sezione **8. Strava OAuth (app)**.
 
 In sintesi: su [strava.com/settings/api](https://www.strava.com/settings/api) imposta **Authorization Callback Domain** (`strava` o `myhealthsync`); redirect dell’app: `myhealthsync://strava/callback`.
 
 ### 2. Firebase Console
 
 - Progetto **fit-ai-analyzer** con app iOS registrata (bundle ID: `com.fitai.fitaiAnalyzer`)
-- **Authentication** → Sign-in method come da app (es. **Email/Password**; vedi [FIREBASE_SETUP.md](FIREBASE_SETUP.md))
+- **Authentication** → Sign-in method come da app (es. **Email/Password**; vedi [firebase](firebase.md))
 - **Firestore** creato e regole configurate
 
 ### 3. Build e installazione
 
-Segui **GITHUB_IOS_BUILD.md** per:
+Segui **[ios-github-build](ios-github-build.md)** per:
 
 1. Build tramite GitHub Actions
 2. Download dell’IPA

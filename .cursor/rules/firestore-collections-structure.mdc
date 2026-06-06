@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Struttura Firestore - Collezioni Aggiornate
 
-**OBBLIGATORIO**: Prima di scrivere su Firestore, rispetta questa struttura. Per l'architettura completa vedi `docs/DATA_ARCHITECTURE.md`.
+**OBBLIGATORIO**: Prima di scrivere su Firestore, rispetta questa struttura. Per l'architettura completa vedi `docs/architecture/data-architecture.md`.
 
 ---
 
@@ -24,6 +24,8 @@ users/{uid}/
   activities/{id}        ← FitnessData (Garmin + Strava unificati)
 
   daily_health/{date}    ← Biometrici Garmin (SOLO garmin-sync-server)
+
+  sync_status/{docId}    ← Stato backfill sync (status, progress, message) – SOLO server (Admin SDK)
 
   rolling_10days/
     current              ← Rolling10DaysModel
@@ -108,7 +110,8 @@ users/{uid}/
 |-----------|-----------|
 | `garmin_tokens` | Server (Admin SDK) |
 | `daily_health` | Server (Admin SDK) |
-| `activities` | Server + FitAI (StravaService) |
+| `sync_status` | Server (Admin SDK) |
+| `activities` | Server (garmin-sync-server; Strava via OAuth registrato sul server) |
 | `profile/profile` | FitAI (UserProfileNotifier) |
 | `profile/baseline` | FitAI (AggregationService, NutritionCalculatorService) |
 | `profile/diary` | FitAI (LongevityEngine) |

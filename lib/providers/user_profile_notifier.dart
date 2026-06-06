@@ -142,26 +142,12 @@ class UserProfileNotifier extends Notifier<UserProfileState> {
     }
 
     state = state.copyWith(isLoading: true, error: null);
+    // `copyWith` preserva tutti gli altri campi (inclusi quelli specifici per
+    // obiettivo): mai ricostruire il profilo a mano qui.
+    final toSave = NutritionCalculatorService.profileWithComputedCalorieTarget(
+      current.copyWith(nutritionGoal: goal),
+    );
     try {
-      final merged = UserProfile(
-        mainGoal: current.mainGoal,
-        age: current.age,
-        gender: current.gender,
-        heightCm: current.heightCm,
-        weightKg: current.weightKg,
-        trainingDaysPerWeek: current.trainingDaysPerWeek,
-        equipment: current.equipment,
-        takesMedications: current.takesMedications,
-        medicationsList: current.medicationsList,
-        healthConditions: current.healthConditions,
-        avgSleepHours: current.avgSleepHours,
-        sleepImportance: current.sleepImportance,
-        trainingGoal: current.trainingGoal,
-        nutritionGoal: goal,
-      );
-      final toSave =
-          NutritionCalculatorService.profileWithComputedCalorieTarget(merged);
-
       await FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
@@ -170,14 +156,6 @@ class UserProfileNotifier extends Notifier<UserProfileState> {
           .update({
             'nutrition_goal': toSave.nutritionGoal!.toJson(),
           });
-
-      await NutritionCalculatorService.syncNutritionFieldsToBaseline(
-        firestore: FirebaseFirestore.instance,
-        uid: uid,
-        profile: toSave,
-      );
-
-      await ref.read(aggregationServiceProvider).updateRolling10DaysAndBaseline(uid);
 
       state = state.copyWith(
         profile: toSave,
@@ -190,6 +168,71 @@ class UserProfileNotifier extends Notifier<UserProfileState> {
         error: e.toString(),
       );
       rethrow;
+    }
+
+    // Lavoro derivato NON critico: la fonte di verità è già salvata.
+    await _refreshDerived(uid, toSave);
+  }
+
+  /// Salvataggio combinato (Impostazioni → Modifica onboarding): profilo principale
+  /// + obiettivo nutrizione in **una sola scrittura atomica** su `profile/profile`.
+  ///
+  /// Evita il bug del salvataggio parziale: la fonte di verità viene scritta una
+  /// volta sola; baseline/aggregati sono ricalcolati dopo, in best-effort, senza
+  /// far fallire il salvataggio se uno step pesante lancia un'eccezione.
+  Future<void> saveCombinedOnboarding(UserProfile profile) async {
+    final uid = _uid;
+    if (uid == null) {
+      state = state.copyWith(error: 'Utente non autenticato');
+      throw StateError('Utente non autenticato');
+    }
+
+    state = state.copyWith(isLoading: true, error: null);
+    final toSave = profile.nutritionGoal != null
+        ? NutritionCalculatorService.profileWithComputedCalorieTarget(profile)
+        : profile;
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('profile')
+          .doc('profile')
+          .set(toSave.toJson(), SetOptions(merge: true));
+
+      state = state.copyWith(
+        profile: toSave,
+        isLoading: false,
+        error: null,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: e.toString(),
+      );
+      rethrow;
+    }
+
+    await _refreshDerived(uid, toSave);
+  }
+
+  /// Ricalcoli derivati (baseline nutrizione + rolling/baseline aggregati).
+  /// **Best-effort**: un fallimento qui non deve invalidare il salvataggio del
+  /// profilo (verranno ricalcolati al prossimo trigger di sync/analisi).
+  Future<void> _refreshDerived(String uid, UserProfile profile) async {
+    try {
+      if (profile.nutritionGoal != null) {
+        await NutritionCalculatorService.syncNutritionFieldsToBaseline(
+          firestore: FirebaseFirestore.instance,
+          uid: uid,
+          profile: profile,
+        );
+      }
+      await ref
+          .read(aggregationServiceProvider)
+          .updateRolling10DaysAndBaseline(uid);
+    } catch (_) {
+      // Ignora: profile/profile è già persistito; baseline e rolling_10days
+      // sono dati derivati e verranno rigenerati.
     }
   }
 

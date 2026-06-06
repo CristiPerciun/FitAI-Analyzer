@@ -9,8 +9,8 @@ Il backend **garmin-sync-server** è un **repository separato** da FitAI Analyze
 
 ## App Flutter (questo repo)
 
-- **URL server**: variabile **`GARMIN_SERVER_URL`** in `.env` (es. `http://IP_PI_LAN:8080`). Vedi `lib/services/garmin_service.dart` e `docs/GARMIN_INTEGRATION.md`.
-- **Fallback** senza `.env`: `http://127.0.0.1:8080` (solo sviluppo locale); su dispositivo reale va sempre impostato l’IP del Pi o un tunnel.
+- **URL server**: variabile **`GARMIN_SERVER_URL`** in `.env` (es. `http://IP_PI_LAN:8080`). Vedi `lib/services/garmin_service.dart` e `docs/integrations/garmin.md`.
+- **Fallback** senza `.env` (default in `garmin_service.dart`): LAN → `http://192.168.1.200` (`GARMIN_SERVER_URL_LAN`), REMOTE → `https://myrasberrysyncgar.duckdns.org` (`GARMIN_SERVER_URL_REMOTE`). Per usare localhost imposta esplicitamente `GARMIN_SERVER_URL` nel `.env`.
 - Le credenziali **Firebase Admin SDK** stanno **solo sul server** / variabili ambiente Pi, **mai** nel progetto Flutter.
 
 ## Raspberry / Ubuntu (repo garmin-sync-server)
@@ -22,7 +22,7 @@ Il backend **garmin-sync-server** è un **repository separato** da FitAI Analyze
 
 ## Riferimenti in FitAI Analyzer
 
-- `docs/GARMIN_INTEGRATION.md` — endpoint API, Firestore, flusso Connect Garmin dall’app.
-- `docs/FIREBASE_SETUP.md` — allineamento Firebase app vs service account sul server.
+- `docs/integrations/garmin.md` — endpoint API, Firestore, flusso Connect Garmin dall’app.
+- `docs/setup/firebase.md` — allineamento Firebase app vs service account sul server.
 
 Quando suggerisci deploy o debug Garmin, distingui sempre **client Flutter** (`.env`, `GarminService`) da **server Python** (repo `garmin-sync-server`, systemd sul Pi).

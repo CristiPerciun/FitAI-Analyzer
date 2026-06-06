@@ -9,7 +9,7 @@ Documento unico che descrive **app Flutter** (`FitAI Analyzer`) e **server** (`g
 | App | `FitAI Analyzer` |
 | Server | `garmin-sync-server` (clone locale o [GitHub](https://github.com/CristiPerciun/garmin-sync-server)) |
 
-**Documenti correlati**: [GARMIN_INTEGRATION.md](GARMIN_INTEGRATION.md) (rete, `.env`, schema API, deploy Pi), [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md) (chi legge/scrive le collezioni), [FIREBASE_SETUP.md](FIREBASE_SETUP.md) (Firebase).
+**Documenti correlati**: [garmin](../integrations/garmin.md) (rete, `.env`, schema API, deploy Pi), [data-architecture](data-architecture.md) (chi legge/scrive le collezioni), [firebase](../setup/firebase.md) (Firebase).
 
 ---
 
@@ -59,7 +59,8 @@ File principali: **`main.py`**, **`strava_sync.py`** (solo HTTP Strava), **`fire
 
 | Metodo | Path | Body | Comportamento |
 |--------|------|------|----------------|
-| POST | `/strava/register-tokens` | `uid`, `access_token`, `refresh_token`, `expires_at?` | Salva in `strava_tokens`, thread **`_strava_backfill_worker`** |
+| POST | `/strava/exchange-oauth-code` | `uid`, `code`, `redirect_uri`, `client_id?` | Scambia il codice OAuth con i token Strava lato server (se `client_id` presente, legge `client_secret` per-utente da `users/{uid}/app_sync/strava_oauth`) |
+| POST | `/strava/register-tokens` | `uid`, `access_token`, `refresh_token`, `expires_at?`, `client_id?` | Salva in `strava_tokens`, thread **`_strava_backfill_worker`** |
 | POST | `/strava/disconnect` | `uid` | Elimina `strava_tokens` |
 
 Richiede env **`STRAVA_CLIENT_ID`** e **`STRAVA_CLIENT_SECRET`** (stessi dell’app OAuth per il refresh lato server).

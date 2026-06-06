@@ -3,7 +3,9 @@ import 'package:fitai_analyzer/providers/user_profile_notifier.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:fitai_analyzer/ui/onboarding/nutrition_goal_screen.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
+import 'package:fitai_analyzer/ui/widgets/multi_select_chip.dart';
 import 'package:fitai_analyzer/utils/goal_options.dart';
+import 'package:fitai_analyzer/utils/onboarding_questions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -60,6 +62,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   double _avgSleepHours = 7.0;
   int _sleepImportance = 3;
 
+  // Campi specifici per obiettivo (condizionali, vedi onboarding_questions.dart).
+  String? _dailyActivityLevel;
+  final _targetWeightController = TextEditingController();
+  String? _trainingExperience;
+  String? _trainingFocus;
+  final _zone2Controller = TextEditingController();
+  final Set<String> _longevityPriorities = {};
+
   // Non chiamare loadProfile in initState: _LoggedInGate l'ha già fatto.
   // Richiamarlo metterebbe isLoading=true e causerebbe flickering.
 
@@ -70,12 +80,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     _weightController.dispose();
     _medicationsController.dispose();
     _healthConditionsController.dispose();
+    _targetWeightController.dispose();
+    _zone2Controller.dispose();
     super.dispose();
   }
 
   double get _progress => (_pageIndex + 1) / 4;
 
   UserProfile _buildProfileWithDefaults() {
+    final vis = visibilityForGoal(_mainGoal);
     return UserProfile(
       mainGoal: _mainGoal ?? 'longevity',
       age: int.tryParse(_ageController.text.trim()) ?? 30,
@@ -89,26 +102,26 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       healthConditions: _healthConditionsController.text.trim(),
       avgSleepHours: _avgSleepHours,
       sleepImportance: _sleepImportance,
+      // Campi specifici: valorizzati SOLO se pertinenti all'obiettivo scelto.
+      dailyActivityLevel: _dailyActivityLevel,
+      targetWeightKg: vis.showTargetWeight
+          ? double.tryParse(_targetWeightController.text.trim())
+          : null,
+      trainingExperience: vis.showTrainingExperience ? _trainingExperience : null,
+      trainingFocus: vis.showTrainingExperience ? _trainingFocus : null,
+      zone2MinutesTarget: vis.showLongevityPriorities
+          ? int.tryParse(_zone2Controller.text.trim())
+          : null,
+      longevityPriorities: vis.showLongevityPriorities
+          ? _longevityPriorities.toList()
+          : const [],
     );
   }
 
   /// Preserva nutrition_goal e training_goal già salvati (modifica profilo da Impostazioni).
   UserProfile _mergedProfileForSave() {
-    final b = _buildProfileWithDefaults();
     final cur = ref.read(userProfileNotifierProvider).profile;
-    return UserProfile(
-      mainGoal: b.mainGoal,
-      age: b.age,
-      gender: b.gender,
-      heightCm: b.heightCm,
-      weightKg: b.weightKg,
-      trainingDaysPerWeek: b.trainingDaysPerWeek,
-      equipment: b.equipment,
-      takesMedications: b.takesMedications,
-      medicationsList: b.medicationsList,
-      healthConditions: b.healthConditions,
-      avgSleepHours: b.avgSleepHours,
-      sleepImportance: b.sleepImportance,
+    return _buildProfileWithDefaults().copyWith(
       nutritionGoal: cur?.nutritionGoal,
       trainingGoal: cur?.trainingGoal,
     );
@@ -303,6 +316,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   Widget _buildPage2() {
+    final vis = visibilityForGoal(_mainGoal);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -371,11 +385,28 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           ],
           validator: _validateWeight,
         ),
+        if (vis.showTargetWeight) ...[
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _targetWeightController,
+            decoration: const InputDecoration(
+              labelText: 'Peso obiettivo (kg)',
+              hintText: 'Es. 68',
+              border: OutlineInputBorder(),
+            ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+              LengthLimitingTextInputFormatter(5),
+            ],
+          ),
+        ],
       ],
     );
   }
 
   Widget _buildPage3() {
+    final vis = visibilityForGoal(_mainGoal);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -412,6 +443,77 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               .toList(),
           onChanged: (v) => setState(() => _equipment = v),
         ),
+        const SizedBox(height: 16),
+        DropdownButtonFormField<String>(
+          key: ValueKey('dailyActivity_$_dailyActivityLevel'),
+          initialValue: _dailyActivityLevel,
+          isExpanded: true,
+          decoration: const InputDecoration(
+            labelText: 'Attività quotidiana (fuori allenamento)',
+            border: OutlineInputBorder(),
+          ),
+          items: dailyActivityOptions
+              .map((e) => DropdownMenuItem(value: e.$1, child: Text(e.$2)))
+              .toList(),
+          onChanged: (v) => setState(() => _dailyActivityLevel = v),
+        ),
+        if (vis.showTrainingExperience) ...[
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            key: ValueKey('trainingExperience_$_trainingExperience'),
+            initialValue: _trainingExperience,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Esperienza di allenamento',
+              border: OutlineInputBorder(),
+            ),
+            items: trainingExperienceOptions
+                .map((e) => DropdownMenuItem(value: e.$1, child: Text(e.$2)))
+                .toList(),
+            onChanged: (v) => setState(() => _trainingExperience = v),
+          ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            key: ValueKey('trainingFocus_$_trainingFocus'),
+            initialValue: _trainingFocus,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Focus allenamento',
+              border: OutlineInputBorder(),
+            ),
+            items: trainingFocusOptions
+                .map((e) => DropdownMenuItem(value: e.$1, child: Text(e.$2)))
+                .toList(),
+            onChanged: (v) => setState(() => _trainingFocus = v),
+          ),
+        ],
+        if (vis.showLongevityPriorities) ...[
+          const SizedBox(height: 24),
+          MultiSelectChipGroup(
+            title: 'Priorità di longevità (puoi sceglierne più di una)',
+            options: longevityPriorityOptions
+                .map((e) => MultiSelectOption(id: e.$1, label: e.$2))
+                .toList(),
+            selected: _longevityPriorities,
+            onChanged: (s) => setState(() => _longevityPriorities
+              ..clear()
+              ..addAll(s)),
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _zone2Controller,
+            decoration: const InputDecoration(
+              labelText: 'Target Zone 2 (minuti / settimana)',
+              hintText: 'Es. 150',
+              border: OutlineInputBorder(),
+            ),
+            keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(3),
+            ],
+          ),
+        ],
       ],
     );
   }

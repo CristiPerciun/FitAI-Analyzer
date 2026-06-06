@@ -66,6 +66,16 @@ UserProfile _$UserProfileFromJson(Map<String, dynamic> json) => UserProfile(
   healthConditions: json['health_conditions'] as String,
   avgSleepHours: (json['avg_sleep_hours'] as num).toDouble(),
   sleepImportance: (json['sleep_importance'] as num).toInt(),
+  dailyActivityLevel: json['daily_activity_level'] as String?,
+  targetWeightKg: (json['target_weight_kg'] as num?)?.toDouble(),
+  trainingExperience: json['training_experience'] as String?,
+  trainingFocus: json['training_focus'] as String?,
+  zone2MinutesTarget: (json['zone2_minutes_target'] as num?)?.toInt(),
+  longevityPriorities:
+      (json['longevity_priorities'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList() ??
+      const [],
   trainingGoal: json['training_goal'] == null
       ? null
       : TrainingGoal.fromJson(json['training_goal'] as Map<String, dynamic>),
@@ -88,6 +98,12 @@ Map<String, dynamic> _$UserProfileToJson(UserProfile instance) =>
       'health_conditions': instance.healthConditions,
       'avg_sleep_hours': instance.avgSleepHours,
       'sleep_importance': instance.sleepImportance,
-      'training_goal': instance.trainingGoal?.toJson(),
-      'nutrition_goal': instance.nutritionGoal?.toJson(),
+      'daily_activity_level': ?instance.dailyActivityLevel,
+      'target_weight_kg': ?instance.targetWeightKg,
+      'training_experience': ?instance.trainingExperience,
+      'training_focus': ?instance.trainingFocus,
+      'zone2_minutes_target': ?instance.zone2MinutesTarget,
+      'longevity_priorities': instance.longevityPriorities,
+      'training_goal': ?instance.trainingGoal?.toJson(),
+      'nutrition_goal': ?instance.nutritionGoal?.toJson(),
     };

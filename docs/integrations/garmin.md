@@ -31,12 +31,12 @@ In `.env` Flutter imposti **un solo** `GARMIN_SERVER_URL` coerente con come ti c
 
 Repository server: [garmin-sync-server](https://github.com/CristiPerciun/garmin-sync-server); deploy Pi: `RPI_DEPLOY.md` in quel repo.
 
-Se proteggi l’API con un reverse proxy (Bearer), imposta opzionalmente **`GARMIN_SERVER_BEARER_TOKEN`** in `.env`: l’app invia `Authorization: Bearer …` su connect / disconnect / sync-vitals.
+Se proteggi l’API con un reverse proxy (Bearer), imposta opzionalmente **`GARMIN_SERVER_BEARER_TOKEN`** in `.env`: l’app invia `Authorization: Bearer …` su **tutte** le richieste HTTP al server (connect, sync-today, delta, disconnect, ecc.).
 
-> **Stesso progetto Firebase** (app + server): [FIREBASE_SETUP.md](FIREBASE_SETUP.md)  
-> **Architettura dati completa**: [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md)  
-> **Sync unificata (endpoint, Firestore, Flutter)**: [SYNC_ARCHITECTURE.md](SYNC_ARCHITECTURE.md)  
-> **Flussi Garmin e AI**: [FLUSSI_GARMIN_AI.md](FLUSSI_GARMIN_AI.md)
+> **Stesso progetto Firebase** (app + server): [firebase](../setup/firebase.md)  
+> **Architettura dati completa**: [data-architecture](../architecture/data-architecture.md)  
+> **Sync unificata (endpoint, Firestore, Flutter)**: [sync-architecture](../architecture/sync-architecture.md)  
+> **Flussi Garmin e AI**: [garmin-ai-flows](garmin-ai-flows.md)
 
 ---
 
@@ -145,7 +145,7 @@ Implementazione: repository **`garmin-sync-server`** (locale es. `Custom_WorkSpa
 | `POST /garmin/connect` | `{ uid, email, password }` | Login Garmin, salva token, **`backfillQueued: true`**: storico (es. 60 gg) in **background** (HTTP risponde subito) |
 | `POST /garmin/sync` | `{ uid }` | (Legacy / scheduler) sync ampia se ancora esposta |
 | `POST /garmin/sync-today` | `{ uid }` | Sync leggera: oggi + ieri `daily_health` + attività recenti |
-| `POST /garmin/sync-vitals` | `{ uid }` | **Compat**: stesso comportamento di `sync-today` |
+| `POST /garmin/sync-vitals` | `{ uid }` | **Compat** (server): stesso comportamento di `sync-today`; **non usato dall'app Flutter** (l'app chiama solo `sync-today`) |
 | `POST /sync/delta` | `{ uid, lastSuccessfulSync?, sources? }` | Delta all’avvio app: range da ultimo sync + Strava (lista `after` + dettaglio ultime 5 attività) |
 | `POST /garmin/disconnect` | `{ uid }` | Scollega Garmin: elimina token, `garmin_linked=false` |
 | `POST /strava/exchange-oauth-code` | `{ uid, code, redirect_uri, client_id? }` | Scambia il codice OAuth Strava lato server. Se `client_id` è presente, il server legge `users/{uid}/app_sync/strava_oauth.client_secret` e usa le credenziali per-utente |

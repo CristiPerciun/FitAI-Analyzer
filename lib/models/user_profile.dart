@@ -164,7 +164,12 @@ class NutritionGoal {
 }
 
 /// Profilo utente: gerarchia **main goal (4 vie)** → **training goal** → **nutrition goal**.
-@JsonSerializable(explicitToJson: true)
+///
+/// `includeIfNull: false` è **vincolante**: i rami opzionali ([trainingGoal],
+/// [nutritionGoal]) e i campi specifici per obiettivo NON devono essere serializzati
+/// come `null`, altrimenti un `set(merge: true)` su Firestore li sovrascriverebbe
+/// cancellando i dati già salvati (vedi bug salvataggio onboarding da Impostazioni).
+@JsonSerializable(explicitToJson: true, includeIfNull: false)
 class UserProfile {
   /// Obiettivo principale app (sole 4 vie): `weight_loss`, `muscle_gain`, `longevity`, `strength`.
   @JsonKey(name: 'main_goal')
@@ -202,6 +207,38 @@ class UserProfile {
   @JsonKey(name: 'sleep_importance')
   final int sleepImportance;
 
+  // ── Campi specifici per obiettivo (condizionali nell'onboarding) ───────────
+  // Tutti opzionali e raccolti SOLO se pertinenti al [mainGoal] scelto, così da
+  // dare all'AI un contesto più chiaro senza domande inutili.
+
+  /// Livello di attività quotidiana (NEAT, fuori allenamento) — tutti gli obiettivi.
+  /// `sedentario` | `leggero` | `moderato` | `attivo` | `molto_attivo`.
+  @JsonKey(name: 'daily_activity_level')
+  final String? dailyActivityLevel;
+
+  /// Peso obiettivo (kg) — per `weight_loss` (e ricomposizione).
+  @JsonKey(name: 'target_weight_kg')
+  final double? targetWeightKg;
+
+  /// Livello esperienza allenamento — per `muscle_gain` / `strength`.
+  /// `principiante` | `intermedio` | `avanzato`.
+  @JsonKey(name: 'training_experience')
+  final String? trainingExperience;
+
+  /// Focus allenamento — per `muscle_gain` / `strength`.
+  /// es. `ipertrofia_generale`, `forza_massimale`, `parte_superiore`, `parte_inferiore`.
+  @JsonKey(name: 'training_focus')
+  final String? trainingFocus;
+
+  /// Target minuti Zone 2 / settimana — per `longevity` (framework Attia).
+  @JsonKey(name: 'zone2_minutes_target')
+  final int? zone2MinutesTarget;
+
+  /// Priorità di longevità (Attia) — per `longevity`.
+  /// es. `zone2`, `vo2max`, `forza`, `stabilita`, `mobilita`.
+  @JsonKey(name: 'longevity_priorities')
+  final List<String> longevityPriorities;
+
   /// Ramo obiettivi allenamento (separato da [mainGoal] e da [nutritionGoal]).
   @JsonKey(name: 'training_goal')
   final TrainingGoal? trainingGoal;
@@ -223,6 +260,12 @@ class UserProfile {
     required this.healthConditions,
     required this.avgSleepHours,
     required this.sleepImportance,
+    this.dailyActivityLevel,
+    this.targetWeightKg,
+    this.trainingExperience,
+    this.trainingFocus,
+    this.zone2MinutesTarget,
+    this.longevityPriorities = const [],
     this.trainingGoal,
     this.nutritionGoal,
   });
@@ -243,6 +286,19 @@ class UserProfile {
       healthConditions: (m['health_conditions'] as String?) ?? '',
       avgSleepHours: _toDouble(m['avg_sleep_hours'], fallback: 7.0),
       sleepImportance: _toInt(m['sleep_importance'], fallback: 3),
+      dailyActivityLevel: (m['daily_activity_level'] as String?),
+      targetWeightKg:
+          m['target_weight_kg'] == null ? null : _toDouble(m['target_weight_kg']),
+      trainingExperience: (m['training_experience'] as String?),
+      trainingFocus: (m['training_focus'] as String?),
+      zone2MinutesTarget: m['zone2_minutes_target'] == null
+          ? null
+          : _toInt(m['zone2_minutes_target']),
+      longevityPriorities: (m['longevity_priorities'] as List<dynamic>?)
+              ?.map((e) => e?.toString() ?? '')
+              .where((s) => s.isNotEmpty)
+              .toList() ??
+          const [],
       trainingGoal: m['training_goal'] == null
           ? null
           : TrainingGoal.fromJson(
@@ -257,4 +313,52 @@ class UserProfile {
   }
 
   Map<String, dynamic> toJson() => _$UserProfileToJson(this);
+
+  /// Copia con override. **Usare sempre questo** invece di ricostruire a mano il
+  /// profilo campo-per-campo (evita di perdere campi nuovi durante save/ricalcoli).
+  UserProfile copyWith({
+    String? mainGoal,
+    int? age,
+    String? gender,
+    double? heightCm,
+    double? weightKg,
+    int? trainingDaysPerWeek,
+    String? equipment,
+    bool? takesMedications,
+    String? medicationsList,
+    String? healthConditions,
+    double? avgSleepHours,
+    int? sleepImportance,
+    String? dailyActivityLevel,
+    double? targetWeightKg,
+    String? trainingExperience,
+    String? trainingFocus,
+    int? zone2MinutesTarget,
+    List<String>? longevityPriorities,
+    TrainingGoal? trainingGoal,
+    NutritionGoal? nutritionGoal,
+  }) {
+    return UserProfile(
+      mainGoal: mainGoal ?? this.mainGoal,
+      age: age ?? this.age,
+      gender: gender ?? this.gender,
+      heightCm: heightCm ?? this.heightCm,
+      weightKg: weightKg ?? this.weightKg,
+      trainingDaysPerWeek: trainingDaysPerWeek ?? this.trainingDaysPerWeek,
+      equipment: equipment ?? this.equipment,
+      takesMedications: takesMedications ?? this.takesMedications,
+      medicationsList: medicationsList ?? this.medicationsList,
+      healthConditions: healthConditions ?? this.healthConditions,
+      avgSleepHours: avgSleepHours ?? this.avgSleepHours,
+      sleepImportance: sleepImportance ?? this.sleepImportance,
+      dailyActivityLevel: dailyActivityLevel ?? this.dailyActivityLevel,
+      targetWeightKg: targetWeightKg ?? this.targetWeightKg,
+      trainingExperience: trainingExperience ?? this.trainingExperience,
+      trainingFocus: trainingFocus ?? this.trainingFocus,
+      zone2MinutesTarget: zone2MinutesTarget ?? this.zone2MinutesTarget,
+      longevityPriorities: longevityPriorities ?? this.longevityPriorities,
+      trainingGoal: trainingGoal ?? this.trainingGoal,
+      nutritionGoal: nutritionGoal ?? this.nutritionGoal,
+    );
+  }
 }

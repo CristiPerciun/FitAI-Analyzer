@@ -6,6 +6,7 @@ import '../models/baseline_profile_model.dart';
 import '../models/daily_log_model.dart';
 import '../models/rolling_10days_model.dart';
 import '../models/user_profile.dart';
+import '../utils/onboarding_questions.dart';
 import 'nutrition_calculator_service.dart';
 
 final aiPromptServiceProvider = Provider<AiPromptService>(
@@ -109,6 +110,7 @@ Genera piano settimanale rispettando CREA 2018 + evidenze ISSN/SINS.
     final healthNote = profile.healthConditions.trim().isEmpty
         ? 'nessuna'
         : profile.healthConditions.trim();
+    final goalCtx = goalSpecificContextLine(profile);
 
     return '''
 Sei un nutrizionista senior specializzato in:
@@ -122,6 +124,7 @@ DATI UTENTE (usa SOLO questi numeri e testi; non inventare misure antropometrich
 - Obiettivo nutrizione (Obiettivo Mangiare): ${ng.nutritionObjective}
 - Età: ${profile.age} | Sesso: ${profile.gender} | Peso: ${profile.weightKg} kg | Altezza: ${profile.heightCm} cm
 - Giorni allenamento/settimana: ${profile.trainingDaysPerWeek} (TDEE stimato: ${tdee.toStringAsFixed(0)} kcal/giorno da fattore attività)
+- Dati specifici obiettivo: ${goalCtx.isEmpty ? 'nessuno' : goalCtx}
 - Farmaci (info utente, non sostituire il medico): $medsNote
 - Condizioni di salute segnalate: $healthNote
 
