@@ -11,6 +11,47 @@ class ActivityHrPoint {
   final double bpm;
 }
 
+/// Geometria pre-calcolata del grafico FC: punti ridotti + estremi assi.
+/// Calcolata una sola volta (vedi [buildHrChartGeometry]) per evitare di
+/// rifare downsample + min/max ad ogni `build` del grafico.
+class HrChartGeometry {
+  const HrChartGeometry({
+    required this.points,
+    required this.minX,
+    required this.maxX,
+    required this.minY,
+    required this.maxY,
+  });
+
+  final List<ActivityHrPoint> points;
+  final double minX;
+  final double maxX;
+  final double minY;
+  final double maxY;
+}
+
+/// Costruisce la [HrChartGeometry] (downsample + estremi) da una serie FC.
+HrChartGeometry buildHrChartGeometry(List<ActivityHrPoint> data) {
+  final chartPoints = downsampleHrSeries(data);
+  final maxSec = chartPoints.map((p) => p.elapsedSeconds).reduce(math.max);
+  final minSec = chartPoints.map((p) => p.elapsedSeconds).reduce(math.min);
+  final maxBpm = chartPoints.map((p) => p.bpm).reduce(math.max);
+  final minBpm = chartPoints.map((p) => p.bpm).reduce(math.min);
+
+  final minX = minSec / 60.0;
+  final maxX = math.max(maxSec / 60.0, minX + 1e-3);
+  final minY = math.max(35.0, (minBpm - 8).floorToDouble());
+  final maxY = math.max(minY + 10, (maxBpm + 12).ceilToDouble());
+
+  return HrChartGeometry(
+    points: chartPoints,
+    minX: minX,
+    maxX: maxX,
+    minY: minY,
+    maxY: maxY,
+  );
+}
+
 /// Riduce i punti per il rendering (fl_chart resta leggero).
 List<ActivityHrPoint> downsampleHrSeries(
   List<ActivityHrPoint> data, {

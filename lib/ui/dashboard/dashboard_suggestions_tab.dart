@@ -5,6 +5,7 @@ import 'package:fitai_analyzer/providers/dashboard_activity_providers.dart';
 import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/ui/widgets/anim_progress_ring.dart';
+import 'package:fitai_analyzer/ui/widgets/design/design.dart';
 import 'package:fitai_analyzer/utils/workout_goal_progress.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -30,11 +31,8 @@ class DashboardSuggestionsTab extends ConsumerWidget {
     final uid = ref.watch(authNotifierProvider).user?.uid;
 
     return RefreshIndicator(
-      onRefresh: () => refreshGarminSync(
-        ref,
-        uid,
-        trigger: 'allenamenti_pull_to_refresh',
-      ),
+      onRefresh: () =>
+          refreshGarminSync(ref, uid, trigger: 'allenamenti_pull_to_refresh'),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -53,59 +51,49 @@ class DashboardSuggestionsTab extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 16),
-          Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-              side: BorderSide(
-                color: theme.colorScheme.outline.withValues(alpha: 0.2),
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.local_fire_department_outlined,
-                        color: theme.colorScheme.primary,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Oggi in movimento',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    todayActs.isEmpty
-                        ? 'Nessuna attività registrata per oggi. Collega Strava o attendi la sync Garmin.'
-                        : '${todayActs.length} attività · ${kcalToday.toStringAsFixed(0)} kcal bruciate (stima da dispositivo / Strava)',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+          FitSoftCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.local_fire_department_outlined,
+                      color: theme.colorScheme.primary,
                     ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Oggi in movimento',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  todayActs.isEmpty
+                      ? 'Nessuna attività registrata per oggi. Collega Strava o attendi la sync Garmin.'
+                      : '${todayActs.length} attività · ${kcalToday.toStringAsFixed(0)} kcal bruciate (stima da dispositivo / Strava)',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
-                  if (todayActs.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    ...todayActs.take(4).map((a) => _TodayActivityRow(data: a)),
-                    if (todayActs.length > 4)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text(
-                          '+ altre ${todayActs.length - 4} nel tab Progressi',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.colorScheme.primary,
-                          ),
+                ),
+                if (todayActs.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  ...todayActs.take(4).map((a) => _TodayActivityRow(data: a)),
+                  if (todayActs.length > 4)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        '+ altre ${todayActs.length - 4} nel tab Progressi',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.primary,
                         ),
                       ),
-                  ],
+                    ),
                 ],
-              ),
+              ],
             ),
           ),
           const SizedBox(height: 16),
@@ -168,8 +156,9 @@ class _TodayActivityRow extends StatelessWidget {
     final theme = Theme.of(context);
     final name = data.stravaActivityName ?? data.stravaActivityType;
     final dur = data.stravaElapsedMinutes;
-    final durStr =
-        dur >= 60 ? '${(dur / 60).floor()}h ${(dur % 60).round()}m' : '${dur.round()} min';
+    final durStr = dur >= 60
+        ? '${(dur / 60).floor()}h ${(dur % 60).round()}m'
+        : '${dur.round()} min';
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -204,10 +193,7 @@ class _TodayActivityRow extends StatelessWidget {
 /// Card che mostra l'obiettivo di allenamento giornaliero generato dal prompt AI unificato.
 /// I dati arrivano da `ai_current/allenamenti` via [aiCurrentAllenamentiStreamProvider].
 class _WorkoutObjectiveCard extends StatelessWidget {
-  const _WorkoutObjectiveCard({
-    this.obiettivo,
-    required this.todayActivities,
-  });
+  const _WorkoutObjectiveCard({this.obiettivo, required this.todayActivities});
 
   final AiCurrentAllenamentiModel? obiettivo;
   final List<FitnessData> todayActivities;
@@ -217,8 +203,9 @@ class _WorkoutObjectiveCard extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final hasData = obiettivo != null && obiettivo!.hasContent;
-    final ringTrack =
-        theme.colorScheme.onSurface.withValues(alpha: isDark ? 0.05 : 0.10);
+    final ringTrack = theme.colorScheme.onSurface.withValues(
+      alpha: isDark ? 0.05 : 0.10,
+    );
 
     double? progressDisplay;
     if (hasData) {
@@ -230,184 +217,163 @@ class _WorkoutObjectiveCard extends StatelessWidget {
 
     final ack = obiettivo?.doneTodaySummary.trim() ?? '';
 
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: theme.colorScheme.primary.withValues(alpha: 0.3),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.fitness_center_outlined,
+    return FitSoftCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.fitness_center_outlined,
+                color: theme.colorScheme.primary,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Obiettivo allenamento di oggi',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
                   color: theme.colorScheme.primary,
-                  size: 20,
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  'Obiettivo allenamento di oggi',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.primary,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (!hasData)
+            Text(
+              'Nessun obiettivo AI per oggi. Premi "Analisi" in Home per generarlo.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            )
+          else ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    AnimProgressRing(
+                      progress: progressDisplay ?? 0,
+                      size: 100,
+                      strokeWidth: 8,
+                      accentColor: theme.colorScheme.primary,
+                      trackColor: ringTrack,
+                    ),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${((progressDisplay ?? 0) * 100).round()}',
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          '% obiettivo',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (obiettivo!.tipo.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: FitBadgePill(
+                            label: obiettivo!.tipo,
+                            variant: FitBadgeVariant.solid,
+                          ),
+                        ),
+                      Text(
+                        obiettivo!.descrizione,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          height: 1.4,
+                        ),
+                      ),
+                      if (obiettivo!.durataMins > 0 ||
+                          obiettivo!.intensita.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            if (obiettivo!.durataMins > 0) ...[
+                              Icon(
+                                Icons.timer_outlined,
+                                size: 14,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${obiettivo!.durataMins} min',
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                            ],
+                            if (obiettivo!.intensita.isNotEmpty) ...[
+                              Icon(
+                                Icons.speed_outlined,
+                                size: 14,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                obiettivo!.intensita,
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            if (!hasData)
-              Text(
-                'Nessun obiettivo AI per oggi. Premi "Analisi" in Home per generarlo.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+            if (ack.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.6,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-              )
-            else ...[
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      AnimProgressRing(
-                        progress: progressDisplay ?? 0,
-                        size: 100,
-                        strokeWidth: 8,
-                        accentColor: theme.colorScheme.primary,
-                        trackColor: ringTrack,
-                      ),
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            '${((progressDisplay ?? 0) * 100).round()}',
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            '% obiettivo',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (obiettivo!.tipo.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.primaryContainer,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                obiettivo!.tipo,
-                                style: theme.textTheme.labelMedium?.copyWith(
-                                  color: theme.colorScheme.onPrimaryContainer,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-                        Text(
-                          obiettivo!.descrizione,
-                          style:
-                              theme.textTheme.bodyMedium?.copyWith(height: 1.4),
-                        ),
-                        if (obiettivo!.durataMins > 0 ||
-                            obiettivo!.intensita.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              if (obiettivo!.durataMins > 0) ...[
-                                Icon(
-                                  Icons.timer_outlined,
-                                  size: 14,
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '${obiettivo!.durataMins} min',
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                              ],
-                              if (obiettivo!.intensita.isNotEmpty) ...[
-                                Icon(
-                                  Icons.speed_outlined,
-                                  size: 14,
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  obiettivo!.intensita,
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ],
-                      ],
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.check_circle_outline,
+                      size: 18,
+                      color: theme.colorScheme.primary,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        ack,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              if (ack.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primaryContainer.withValues(
-                      alpha: 0.45,
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.check_circle_outline,
-                        size: 18,
-                        color: theme.colorScheme.primary,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          ack,
-                          style:
-                              theme.textTheme.bodySmall?.copyWith(height: 1.35),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
             ],
           ],
-        ),
+        ],
       ),
     );
   }
@@ -427,44 +393,34 @@ class _SuggestionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: theme.colorScheme.outline.withValues(alpha: 0.15),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: theme.colorScheme.primary, size: 22),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+    return FitSoftCard(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          FitIconBadge(icon: icon),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    body,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                      height: 1.35,
-                    ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  body,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    height: 1.35,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

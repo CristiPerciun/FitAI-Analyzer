@@ -1,12 +1,14 @@
-import 'dart:math' as math;
-
 import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:fitai_analyzer/utils/activity_hr_series.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 /// Grafico lineare FC (bpm) nel tempo durante l’attività.
-class ActivityHeartRateChartCard extends StatelessWidget {
+///
+/// La geometria (downsample + estremi + `FlSpot`) è calcolata una sola volta e
+/// ricalcolata solo quando cambia l'identità della lista [points], evitando il
+/// lavoro pesante ad ogni rebuild (fl_chart ridisegna spesso).
+class ActivityHeartRateChartCard extends StatefulWidget {
   const ActivityHeartRateChartCard({
     super.key,
     required this.points,
@@ -17,28 +19,53 @@ class ActivityHeartRateChartCard extends StatelessWidget {
   final String? sourceLabel;
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    if (points.length < 2) return const SizedBox.shrink();
+  State<ActivityHeartRateChartCard> createState() =>
+      _ActivityHeartRateChartCardState();
+}
 
-    final chartPoints = downsampleHrSeries(points);
-    final maxSec = chartPoints
-        .map((p) => p.elapsedSeconds)
-        .reduce(math.max);
-    final minSec = chartPoints
-        .map((p) => p.elapsedSeconds)
-        .reduce(math.min);
-    final maxBpm = chartPoints.map((p) => p.bpm).reduce(math.max);
-    final minBpm = chartPoints.map((p) => p.bpm).reduce(math.min);
+class _ActivityHeartRateChartCardState
+    extends State<ActivityHeartRateChartCard> {
+  HrChartGeometry? _geometry;
+  List<FlSpot>? _spots;
 
-    final minX = (minSec / 60.0);
-    final maxX = math.max(maxSec / 60.0, minX + 1e-3);
-    final minY = math.max(35, (minBpm - 8).floorToDouble());
-    final maxY = math.max(minY + 10, (maxBpm + 12).ceilToDouble());
+  @override
+  void initState() {
+    super.initState();
+    _recompute();
+  }
 
-    final spots = chartPoints
+  @override
+  void didUpdateWidget(covariant ActivityHeartRateChartCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.points, widget.points)) {
+      _recompute();
+    }
+  }
+
+  void _recompute() {
+    if (widget.points.length < 2) {
+      _geometry = null;
+      _spots = null;
+      return;
+    }
+    final geo = buildHrChartGeometry(widget.points);
+    _geometry = geo;
+    _spots = geo.points
         .map((p) => FlSpot(p.elapsedSeconds / 60.0, p.bpm))
         .toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final geo = _geometry;
+    final spots = _spots;
+    if (geo == null || spots == null) return const SizedBox.shrink();
+
+    final minX = geo.minX;
+    final maxX = geo.maxX;
+    final minY = geo.minY;
+    final maxY = geo.maxY;
 
     final hrColor = AppColors.garminBlue;
 
@@ -61,10 +88,11 @@ class ActivityHeartRateChartCard extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            if (sourceLabel != null && sourceLabel!.isNotEmpty) ...[
+            if (widget.sourceLabel != null &&
+                widget.sourceLabel!.isNotEmpty) ...[
               const SizedBox(height: 2),
               Text(
-                sourceLabel!,
+                widget.sourceLabel!,
                 style: theme.textTheme.labelSmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),

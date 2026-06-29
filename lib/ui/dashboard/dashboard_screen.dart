@@ -48,53 +48,71 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       );
     });
 
-    ref.listen<GarminSyncState>(
-      garminSyncNotifierProvider,
-      (prev, next) {
-        if (!context.mounted) return;
-        final prevErr = prev?.error;
-        final nextErr = next.error;
-        if (nextErr != null && nextErr != prevErr) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Sync Garmin non riuscita: $nextErr'),
-              backgroundColor: Theme.of(context).colorScheme.error,
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-        } else if (prev != null &&
-            prev.isSyncing &&
-            !next.isSyncing &&
-            next.error == null &&
-            (next.trigger == 'dashboard_pull_to_refresh' ||
-                next.trigger == 'allenamenti_pull_to_refresh')) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Dati Garmin aggiornati'),
-              behavior: SnackBarBehavior.floating,
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-      },
-    );
+    ref.listen<GarminSyncState>(garminSyncNotifierProvider, (prev, next) {
+      if (!context.mounted) return;
+      final prevErr = prev?.error;
+      final nextErr = next.error;
+      if (nextErr != null && nextErr != prevErr) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Sync Garmin non riuscita: $nextErr'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      } else if (prev != null &&
+          prev.isSyncing &&
+          !next.isSyncing &&
+          next.error == null &&
+          (next.trigger == 'dashboard_pull_to_refresh' ||
+              next.trigger == 'allenamenti_pull_to_refresh')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Dati Garmin aggiornati'),
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    });
 
+    final theme = Theme.of(context);
     return Scaffold(
-          appBar: AppBar(
+      appBar: AppBar(
         title: const Text('Allenamenti'),
-        bottom: TabBar(
-          controller: _tabController,
-          // 1. Disabilita lo scroll (questo permette ai tab di espandersi)
-          isScrollable: false, 
-          
-          // 2. Rimuovi o imposta TabAlignment.fill (default se isScrollable è false)
-          tabAlignment: TabAlignment.fill, 
-          
-          tabs: const [
-            Tab(text: 'Suggerimenti e oggi'),
-            Tab(text: 'Attività e progressi'),
-          ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(56),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: Container(
+              height: 44,
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: TabBar(
+                controller: _tabController,
+                isScrollable: false,
+                tabAlignment: TabAlignment.fill,
+                dividerColor: Colors.transparent,
+                indicatorSize: TabBarIndicatorSize.tab,
+                splashBorderRadius: BorderRadius.circular(999),
+                indicator: BoxDecoration(
+                  color: theme.colorScheme.primary,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                labelColor: theme.colorScheme.onPrimary,
+                unselectedLabelColor: theme.colorScheme.onSurfaceVariant,
+                labelStyle: const TextStyle(fontWeight: FontWeight.w600),
+                tabs: const [
+                  Tab(text: 'Suggerimenti e oggi'),
+                  Tab(text: 'Attività e progressi'),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
       body: SafeArea(

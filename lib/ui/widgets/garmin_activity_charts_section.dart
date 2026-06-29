@@ -10,7 +10,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 /// Grafici da `garmin_raw` (formato Garmin Connect `get_activity` / `get_activity_details` via python-garminconnect sul server).
-class GarminActivityChartsSection extends StatelessWidget {
+class GarminActivityChartsSection extends StatefulWidget {
   const GarminActivityChartsSection({
     super.key,
     required this.activity,
@@ -19,19 +19,78 @@ class GarminActivityChartsSection extends StatelessWidget {
   final FitnessData activity;
 
   @override
+  State<GarminActivityChartsSection> createState() =>
+      _GarminActivityChartsSectionState();
+}
+
+/// Serie/segmenti estratti una sola volta da `garmin_raw`. Il parsing è
+/// ricorsivo e costoso: viene ricalcolato solo quando cambia l'attività,
+/// non ad ogni rebuild.
+class _GarminChartsData {
+  const _GarminChartsData({
+    required this.hr,
+    required this.hrPoints,
+    required this.speed,
+    required this.elev,
+    required this.zones,
+    required this.lapsWithHr,
+  });
+
+  final List<GarminChartPoint> hr;
+  final List<ActivityHrPoint> hrPoints;
+  final List<GarminChartPoint> speed;
+  final List<GarminChartPoint> elev;
+  final List<GarminHrZoneSegment> zones;
+  final List<GarminLapSummary> lapsWithHr;
+}
+
+class _GarminActivityChartsSectionState
+    extends State<GarminActivityChartsSection> {
+  late _GarminChartsData _data;
+
+  @override
+  void initState() {
+    super.initState();
+    _data = _parse(widget.activity);
+  }
+
+  @override
+  void didUpdateWidget(covariant GarminActivityChartsSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.activity, widget.activity)) {
+      _data = _parse(widget.activity);
+    }
+  }
+
+  static _GarminChartsData _parse(FitnessData activity) {
+    // Spesso i numeri utili sono su FitnessData anche se `garmin_raw` è vuoto o minimale.
+    final raw = activity.garminRaw ?? const <String, dynamic>{};
+    final hr = extractGarminHeartRateSeries(raw);
+    final laps = extractGarminLaps(raw);
+    return _GarminChartsData(
+      hr: hr,
+      hrPoints:
+          hr.map((p) => ActivityHrPoint(p.elapsedSeconds, p.value)).toList(),
+      speed: extractGarminSpeedSeriesKmh(raw),
+      elev: extractGarminElevationSeriesM(raw),
+      zones: extractGarminHrZoneSegments(raw),
+      lapsWithHr: laps
+          .where((l) => l.avgHeartRate != null && l.avgHeartRate! > 0)
+          .toList(),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cardExt = theme.extension<AppCardTheme>();
-    // Spesso i numeri utili sono su FitnessData anche se `garmin_raw` è vuoto o minimale.
-    final raw = activity.garminRaw ?? {};
+    final activity = widget.activity;
 
-    final hr = extractGarminHeartRateSeries(raw);
-    final speed = extractGarminSpeedSeriesKmh(raw);
-    final elev = extractGarminElevationSeriesM(raw);
-    final zones = extractGarminHrZoneSegments(raw);
-    final laps = extractGarminLaps(raw);
-    final lapsWithHr =
-        laps.where((l) => l.avgHeartRate != null && l.avgHeartRate! > 0).toList();
+    final hr = _data.hr;
+    final speed = _data.speed;
+    final elev = _data.elev;
+    final zones = _data.zones;
+    final lapsWithHr = _data.lapsWithHr;
 
     final hasTimeSeries = hr.length >= 2 ||
         speed.length >= 2 ||
@@ -75,9 +134,7 @@ class GarminActivityChartsSection extends StatelessWidget {
     if (hr.length >= 2) {
       chartCards.add(
         ActivityHeartRateChartCard(
-          points: hr
-              .map((p) => ActivityHrPoint(p.elapsedSeconds, p.value))
-              .toList(),
+          points: _data.hrPoints,
           sourceLabel: 'Serie temporale (garmin_raw)',
         ),
       );

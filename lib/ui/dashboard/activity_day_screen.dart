@@ -5,10 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class ActivityDayScreen extends ConsumerWidget {
-  const ActivityDayScreen({
-    super.key,
-    required this.dateKey,
-  });
+  const ActivityDayScreen({super.key, required this.dateKey});
 
   final String dateKey;
 
@@ -19,9 +16,7 @@ class ActivityDayScreen extends ConsumerWidget {
     final title = formatDateForDisplay(dateKey);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Attivita $title'),
-      ),
+      appBar: AppBar(title: Text('Attivita $title')),
       body: activities.isEmpty
           ? Center(
               child: Text(
@@ -39,7 +34,8 @@ class ActivityDayScreen extends ConsumerWidget {
                   onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => ActivityDetailScreen(activity: activity),
+                        builder: (_) =>
+                            ActivityDetailScreen(activity: activity),
                       ),
                     );
                   },

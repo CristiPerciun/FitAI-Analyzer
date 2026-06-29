@@ -1,4 +1,5 @@
 import 'package:fitai_analyzer/models/fitness_data.dart';
+import 'package:fitai_analyzer/providers/activity_detail_providers.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:fitai_analyzer/ui/widgets/activity_heart_rate_chart_card.dart';
@@ -10,98 +11,50 @@ import 'package:fitai_analyzer/utils/garmin_activity_chart_parsers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class ActivityDetailScreen extends ConsumerStatefulWidget {
-  const ActivityDetailScreen({
-    super.key,
-    required this.activity,
-  });
+class ActivityDetailScreen extends ConsumerWidget {
+  const ActivityDetailScreen({super.key, required this.activity});
 
   final FitnessData activity;
 
   @override
-  ConsumerState<ActivityDetailScreen> createState() => _ActivityDetailScreenState();
-}
-
-class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
-  StravaActivity? _stravaDetailed;
-  String? _stravaError;
-  bool _isLoadingStrava = false;
-
-  List<ActivityHrPoint>? _hrPoints;
-  String? _hrSourceLabel;
-  bool _isLoadingHr = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadStravaDetailIfNeeded();
-    _loadHeartRateSeries();
-  }
-
-  Future<void> _loadStravaDetailIfNeeded() async {
-    final detailId = widget.activity.detailActivityId;
-    if (detailId == null || detailId <= 0) return;
-
-    setState(() => _isLoadingStrava = true);
-    try {
-      final detailed = await ref.read(stravaServiceProvider).getDetailedActivity(detailId);
-      if (!mounted) return;
-      setState(() => _stravaDetailed = detailed);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _stravaError = e.toString());
-    } finally {
-      if (mounted) {
-        setState(() => _isLoadingStrava = false);
-      }
-    }
-  }
-
-  /// Strava Streams solo se in garmin_raw non c’è già una serie FC (evita doppio grafico: quella Garmin è in [GarminActivityChartsSection]).
-  Future<void> _loadHeartRateSeries() async {
-    if (extractGarminHeartRateSeries(widget.activity.garminRaw).length >= 2) {
-      return;
-    }
-    final detailId = widget.activity.detailActivityId;
-    if (detailId == null || detailId <= 0) return;
-
-    if (mounted) setState(() => _isLoadingHr = true);
-    try {
-      final svc = ref.read(stravaServiceProvider);
-      if (await svc.isConnected()) {
-        final pts = await svc.fetchHeartRateSeries(detailId);
-        if (!mounted) return;
-        if (pts != null && pts.length >= 2) {
-          setState(() {
-            _hrPoints = pts;
-            _hrSourceLabel = 'Serie da Strava (API Streams)';
-            _isLoadingHr = false;
-          });
-          return;
-        }
-      }
-    } catch (_) {}
-    if (mounted) setState(() => _isLoadingHr = false);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final activity = widget.activity;
+  Widget build(BuildContext context, WidgetRef ref) {
     final title = activity.stravaActivityName?.trim().isNotEmpty == true
         ? activity.stravaActivityName!.trim()
         : 'Dettaglio attivita';
-    final hasGarminData = activity.source == 'garmin' ||
+    final hasGarminData =
+        activity.source == 'garmin' ||
         activity.source == 'dual' ||
         activity.hasGarmin ||
         activity.garminRaw != null;
     final detailId = activity.detailActivityId;
     final showStravaSection = detailId != null && detailId > 0;
+
+    // Dettaglio Strava (provider keyed per detailId).
+    final stravaAsync = showStravaSection
+        ? ref.watch(stravaDetailedActivityProvider(detailId))
+        : const AsyncValue<StravaActivity?>.data(null);
+
+    // Serie FC da Strava Streams: solo se garmin_raw non ha già una serie FC
+    // (evita doppio grafico con [GarminActivityChartsSection]).
+    final needHr =
+        extractGarminHeartRateSeries(activity.garminRaw).length < 2 &&
+            showStravaSection;
+    final hrAsync = needHr
+        ? ref.watch(stravaHeartRateSeriesProvider(detailId))
+        : const AsyncValue<List<ActivityHrPoint>?>.data(null);
+
+    final stravaDetailed = stravaAsync.valueOrNull;
+    final isLoadingStrava = stravaAsync.isLoading;
+    final stravaError = stravaAsync.hasError ? stravaAsync.error : null;
+    final isLoadingHr = hrAsync.isLoading;
+    final hrPoints = hrAsync.valueOrNull;
+    final hasHr = hrPoints != null && hrPoints.length >= 2;
+
     final fallbackStrava = StravaActivity.fromFitnessData(activity);
-    final stravaCardData = _stravaDetailed ?? fallbackStrava;
-    final laps = _stravaDetailed?.laps ?? const [];
-    final showMiSummary = activity.containsMiFitnessData &&
-        !showStravaSection &&
-        !hasGarminData;
+    final stravaCardData = stravaDetailed ?? fallbackStrava;
+    final laps = stravaDetailed?.laps ?? const [];
+    final showMiSummary =
+        activity.containsMiFitnessData && !showStravaSection && !hasGarminData;
 
     return Scaffold(
       appBar: AppBar(title: Text(title)),
@@ -109,46 +62,50 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
           if (showStravaSection) ...[
-            Text('Dettaglio Strava', style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              'Dettaglio Strava',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 8),
             StravaActivityCard(activity: stravaCardData),
-            if (_isLoadingStrava)
+            if (isLoadingStrava)
               const Padding(
                 padding: EdgeInsets.only(top: 8),
                 child: LinearProgressIndicator(minHeight: 2),
               ),
-            if (_stravaError != null)
+            if (stravaError != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  'Dettaglio completo Strava non disponibile: $_stravaError',
+                  'Dettaglio completo Strava non disponibile: $stravaError',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
+                    color: Theme.of(context).colorScheme.error,
+                  ),
                 ),
               ),
           ],
-          if (_isLoadingHr) ...[
+          if (isLoadingHr) ...[
             const SizedBox(height: 12),
             const LinearProgressIndicator(minHeight: 2),
           ],
-          if (_hrPoints != null && _hrPoints!.length >= 2) ...[
+          if (hasHr) ...[
             const SizedBox(height: 16),
             ActivityHeartRateChartCard(
-              points: _hrPoints!,
-              sourceLabel: _hrSourceLabel,
+              points: hrPoints,
+              sourceLabel: 'Serie da Strava (API Streams)',
             ),
           ],
           if (showMiSummary) ...[
-            if (showStravaSection ||
-                _isLoadingHr ||
-                (_hrPoints != null && _hrPoints!.length >= 2))
+            if (showStravaSection || isLoadingHr || hasHr)
               const SizedBox(height: 16),
             _MiFitnessSummaryCard(activity: activity),
           ],
           if (hasGarminData) ...[
             const SizedBox(height: 16),
-            Text('Dettaglio Garmin', style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              'Dettaglio Garmin',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 8),
             GarminActivityDetailCard(activity: activity),
           ],
@@ -244,8 +201,13 @@ class _LapsChartCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final lapRows = laps.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
-    final values = lapRows.map((m) => ((m['average_speed'] as num?)?.toDouble() ?? 0)).toList();
+    final lapRows = laps
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+    final values = lapRows
+        .map((m) => ((m['average_speed'] as num?)?.toDouble() ?? 0))
+        .toList();
     final maxSpeed = values.fold<double>(0, (p, e) => e > p ? e : p);
 
     return Card(
@@ -302,10 +264,7 @@ class _LapBarRow extends StatelessWidget {
         Expanded(
           child: ClipRRect(
             borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-              value: ratio,
-              minHeight: 10,
-            ),
+            child: LinearProgressIndicator(value: ratio, minHeight: 10),
           ),
         ),
         const SizedBox(width: 10),

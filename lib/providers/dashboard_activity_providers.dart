@@ -1,15 +1,13 @@
 import 'package:fitai_analyzer/models/fitness_data.dart';
 import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
+import 'package:fitai_analyzer/utils/date_utils.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Filtro data elenco allenamenti: null = oggi, dateFilterAll = tutti, altrimenti YYYY-MM-DD.
 final selectedDateFilterProvider = StateProvider<String?>((ref) => null);
 
-String activityDateKey(DateTime d) {
-  final m = d.month.toString().padLeft(2, '0');
-  final day = d.day.toString().padLeft(2, '0');
-  return '${d.year}-$m-$day';
-}
+/// Alias di dominio per [dateKey] (chiave calendario locale delle attività).
+String activityDateKey(DateTime d) => dateKey(d);
 
 enum ActivityBurnChartMode { week, month }
 
