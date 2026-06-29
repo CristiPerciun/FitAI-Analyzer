@@ -14,6 +14,7 @@ import 'package:fitai_analyzer/routes/app_router.dart';
 import 'package:fitai_analyzer/services/strava_oauth_callback.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
+import 'package:fitai_analyzer/ui/widgets/nature_gradient_background.dart';
 import 'package:fitai_analyzer/utils/ios_pwa_chrome.dart';
 import 'package:fitai_analyzer/utils/strava_error_messages.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
@@ -373,6 +374,10 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       darkTheme: appDarkTheme,
       themeMode: themeMode,
       routerConfig: router,
+      // Gradiente naturale unico dietro ogni schermata; gli scaffold sono
+      // trasparenti, quindi questo sfondo traspare e il glassmorphism lo smeriglia.
+      builder: (context, child) =>
+          NatureGradientBackground(child: child ?? const SizedBox.shrink()),
     );
   }
 }
