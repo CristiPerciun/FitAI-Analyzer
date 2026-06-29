@@ -1,9 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitai_analyzer/app.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
-import 'package:fitai_analyzer/providers/caloric_deficit_chart_provider.dart';
 import 'package:fitai_analyzer/providers/nutrition_chart_provider.dart';
 import 'package:fitai_analyzer/providers/nutrition_meal_edit_provider.dart';
 import 'package:fitai_analyzer/providers/pending_meal_analysis_provider.dart';
@@ -14,7 +12,9 @@ import 'package:fitai_analyzer/ui/alimentazione/nutrition_meal_analysis_screen.d
 import 'package:fitai_analyzer/ui/home/widgets/manual_entry_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/ai_backend_key_gate.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
+import 'package:fitai_analyzer/utils/image_picker_utils.dart';
 import 'package:fitai_analyzer/utils/meal_constants.dart';
+import 'package:fitai_analyzer/utils/nutrition_parsing_utils.dart';
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
@@ -43,10 +43,9 @@ Future<void> showAddMealSheet(
   String? mealLabel,
   String? dateStr,
 }) async {
-  final effectiveLabel =
-      (mealLabel != null && mealLabel.isNotEmpty)
-          ? mealLabel
-          : MealConstants.mealLabelForTime(DateTime.now());
+  final effectiveLabel = (mealLabel != null && mealLabel.isNotEmpty)
+      ? mealLabel
+      : MealConstants.mealLabelForTime(DateTime.now());
   final effectiveDate =
       dateStr ?? DateTime.now().toIso8601String().split('T')[0];
 
@@ -68,8 +67,9 @@ Future<void> showAddMealSheet(
             children: [
               Text(
                 'Aggiungi ${MealConstants.toMealType(effectiveLabel)}',
-                style: theme.textTheme.titleLarge
-                    ?.copyWith(fontWeight: FontWeight.bold),
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 24),
               if (_isCameraSupported)
@@ -175,10 +175,9 @@ Future<void> retryPendingMealAnalysis(
     }
 
     if (result.containsKey('error')) {
-      ref.read(pendingMealAnalysisProvider.notifier).finishWithError(
-            pending.id,
-            result['error']?.toString() ?? 'Errore',
-          );
+      ref
+          .read(pendingMealAnalysisProvider.notifier)
+          .finishWithError(pending.id, result['error']?.toString() ?? 'Errore');
       return;
     }
 
@@ -199,15 +198,12 @@ Future<void> retryPendingMealAnalysis(
 }
 
 /// Assicura un uid valido (firma anonima se necessario).
-Future<String?> ensureNutritionUid(
-  BuildContext context,
-  WidgetRef ref,
-) async {
-  var uid = FirebaseAuth.instance.currentUser?.uid;
+Future<String?> ensureNutritionUid(BuildContext context, WidgetRef ref) async {
+  var uid = ref.read(currentUidProvider);
   if (uid == null) {
     try {
       await ref.read(authNotifierProvider.notifier).signInAnonymously();
-      uid = FirebaseAuth.instance.currentUser?.uid;
+      uid = ref.read(currentUidProvider);
     } catch (e) {
       if (context.mounted) {
         showErrorDialog(context, 'Impossibile autenticarsi. Riprova. ($e)');
@@ -277,25 +273,6 @@ String get _galleryButtonLabel {
   }
 }
 
-String _mimeTypeForPickedImage(XFile file) {
-  final m = file.mimeType;
-  if (m != null && m.isNotEmpty) return m;
-  final p = file.path.toLowerCase();
-  if (p.endsWith('.png')) return 'image/png';
-  return 'image/jpeg';
-}
-
-String _nutritionAdviceString(dynamic v) {
-  if (v == null) return '';
-  if (v is String) return v;
-  return v.toString();
-}
-
-List<dynamic> _nutritionFoodsList(dynamic v) {
-  if (v is List) return List<dynamic>.from(v);
-  return [];
-}
-
 /// Analizza un pasto da fotocamera o galleria e apre la schermata di revisione
 /// (salvataggio dopo conferma utente).
 /// IMPORTANTE: `ImagePicker().pickImage` deve essere chiamato come PRIMA
@@ -330,19 +307,20 @@ Future<void> _analyzeMealFromPicker(
   if (xFile == null || !context.mounted) return;
 
   final bytes = await xFile.readAsBytes();
-  final mimeType = _mimeTypeForPickedImage(xFile);
+  final mimeType = mimeTypeForPickedImage(xFile);
 
   if (!context.mounted) return;
 
   final typeLabel = MealConstants.toMealType(mealLabel);
-  final pendingId =
-      ref.read(pendingMealAnalysisProvider.notifier).startAnalysis(
-            dateStr: dateStr,
-            mealTypeLabel: typeLabel,
-            mealLabelKey: mealLabel,
-            imageBytes: Uint8List.fromList(bytes),
-            mimeType: mimeType,
-          );
+  final pendingId = ref
+      .read(pendingMealAnalysisProvider.notifier)
+      .startAnalysis(
+        dateStr: dateStr,
+        mealTypeLabel: typeLabel,
+        mealLabelKey: mealLabel,
+        imageBytes: Uint8List.fromList(bytes),
+        mimeType: mimeType,
+      );
 
   try {
     final ai = ref.read(unifiedAiServiceProvider);
@@ -352,10 +330,9 @@ Future<void> _analyzeMealFromPicker(
     );
 
     if (result.containsKey('error')) {
-      ref.read(pendingMealAnalysisProvider.notifier).finishWithError(
-            pendingId,
-            result['error']?.toString() ?? 'Errore',
-          );
+      ref
+          .read(pendingMealAnalysisProvider.notifier)
+          .finishWithError(pendingId, result['error']?.toString() ?? 'Errore');
       return;
     }
 
@@ -384,23 +361,23 @@ Future<void> _analyzeMealFromManualText(
   required String dateStr,
 }) async {
   final typeLabel = MealConstants.toMealType(mealLabel);
-  final pendingId =
-      ref.read(pendingMealAnalysisProvider.notifier).startManualAnalysis(
-            dateStr: dateStr,
-            mealTypeLabel: typeLabel,
-            mealLabelKey: mealLabel,
-            description: text,
-          );
+  final pendingId = ref
+      .read(pendingMealAnalysisProvider.notifier)
+      .startManualAnalysis(
+        dateStr: dateStr,
+        mealTypeLabel: typeLabel,
+        mealLabelKey: mealLabel,
+        description: text,
+      );
 
   try {
     final ai = ref.read(unifiedAiServiceProvider);
     final result = await ai.getFoodInfoFromText(text);
 
     if (result.containsKey('error')) {
-      ref.read(pendingMealAnalysisProvider.notifier).finishWithError(
-            pendingId,
-            result['error']?.toString() ?? 'Errore',
-          );
+      ref
+          .read(pendingMealAnalysisProvider.notifier)
+          .finishWithError(pendingId, result['error']?.toString() ?? 'Errore');
       return;
     }
 
@@ -431,8 +408,8 @@ void _pushNutritionMealReviewFromRoot(
   Future<void> Function()? onDelete,
 }) {
   final nav = rootNavigatorKey.currentState;
-  final advice = _nutritionAdviceString(nut['advice']);
-  final foods = _nutritionFoodsList(nut['foods']);
+  final advice = nutritionAdviceString(nut['advice']);
+  final foods = nutritionFoodsList(nut['foods']);
 
   if (nav == null) {
     scaffoldMessengerKey.currentState?.showSnackBar(
@@ -448,39 +425,43 @@ void _pushNutritionMealReviewFromRoot(
 
   nav
       .push<void>(
-    MaterialPageRoute<void>(
-      builder: (ctx) => NutritionMealAnalysisScreen(
-        advice: advice,
-        foods: foods,
-        onSave: (modifiedNut) async {
-          try {
-            await ref.read(nutritionServiceProvider).saveToFirestore(
-                  uid,
-                  modifiedNut,
-                  mealLabel: mealLabel,
-                  date: dateStr != null ? DateTime.parse(dateStr) : null,
-                  existingMealId: existingMealId,
-                  mealPhotoBytes: mealPhotoBytes,
+        MaterialPageRoute<void>(
+          builder: (ctx) => NutritionMealAnalysisScreen(
+            advice: advice,
+            foods: foods,
+            onSave: (modifiedNut) async {
+              try {
+                await ref
+                    .read(nutritionServiceProvider)
+                    .saveToFirestore(
+                      uid,
+                      modifiedNut,
+                      mealLabel: mealLabel,
+                      date: dateStr != null ? DateTime.parse(dateStr) : null,
+                      existingMealId: existingMealId,
+                      mealPhotoBytes: mealPhotoBytes,
+                    );
+                refreshNutritionAfterMealChange(ref);
+                scaffoldMessengerKey.currentState?.showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      existingMealId != null
+                          ? 'Pasto aggiornato'
+                          : 'Analisi salvata',
+                    ),
+                  ),
                 );
-            refreshNutritionAfterMealChange(ref);
-            scaffoldMessengerKey.currentState?.showSnackBar(
-              SnackBar(
-                content: Text(
-                  existingMealId != null ? 'Pasto aggiornato' : 'Analisi salvata',
-                ),
-              ),
-            );
-          } catch (e) {
-            if (ctx.mounted) showErrorDialog(ctx, e.toString());
-          }
-        },
-        onDelete: onDelete,
-      ),
-    ),
-  )
+              } catch (e) {
+                if (ctx.mounted) showErrorDialog(ctx, e.toString());
+              }
+            },
+            onDelete: onDelete,
+          ),
+        ),
+      )
       .then((_) {
-    ref.read(nutritionMealEditProvider.notifier).clear();
-  });
+        ref.read(nutritionMealEditProvider.notifier).clear();
+      });
 }
 
 void _showNutritionDialog(
@@ -493,45 +474,49 @@ void _showNutritionDialog(
   String? existingMealId,
   Future<void> Function()? onDelete,
 }) {
-  final advice = _nutritionAdviceString(nut['advice']);
-  final foods = _nutritionFoodsList(nut['foods']);
+  final advice = nutritionAdviceString(nut['advice']);
+  final foods = nutritionFoodsList(nut['foods']);
 
   ref.read(nutritionMealEditProvider.notifier).beginFrom(nut);
 
-  Navigator.of(context).push<void>(
-    MaterialPageRoute<void>(
-      builder: (ctx) => NutritionMealAnalysisScreen(
-        advice: advice,
-        foods: foods,
-        onSave: (modifiedNut) async {
-          try {
-            await ref.read(nutritionServiceProvider).saveToFirestore(
-                  uid,
-                  modifiedNut,
-                  mealLabel: mealLabel,
-                  date: dateStr != null ? DateTime.parse(dateStr) : null,
-                  existingMealId: existingMealId,
-                );
-            refreshNutritionAfterMealChange(ref);
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    existingMealId != null
-                        ? 'Pasto aggiornato'
-                        : 'Analisi salvata',
-                  ),
-                ),
-              );
-            }
-          } catch (e) {
-            if (context.mounted) showErrorDialog(context, e.toString());
-          }
-        },
-        onDelete: onDelete,
-      ),
-    ),
-  ).then((_) {
-    ref.read(nutritionMealEditProvider.notifier).clear();
-  });
+  Navigator.of(context)
+      .push<void>(
+        MaterialPageRoute<void>(
+          builder: (ctx) => NutritionMealAnalysisScreen(
+            advice: advice,
+            foods: foods,
+            onSave: (modifiedNut) async {
+              try {
+                await ref
+                    .read(nutritionServiceProvider)
+                    .saveToFirestore(
+                      uid,
+                      modifiedNut,
+                      mealLabel: mealLabel,
+                      date: dateStr != null ? DateTime.parse(dateStr) : null,
+                      existingMealId: existingMealId,
+                    );
+                refreshNutritionAfterMealChange(ref);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        existingMealId != null
+                            ? 'Pasto aggiornato'
+                            : 'Analisi salvata',
+                      ),
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) showErrorDialog(context, e.toString());
+              }
+            },
+            onDelete: onDelete,
+          ),
+        ),
+      )
+      .then((_) {
+        ref.read(nutritionMealEditProvider.notifier).clear();
+      });
 }

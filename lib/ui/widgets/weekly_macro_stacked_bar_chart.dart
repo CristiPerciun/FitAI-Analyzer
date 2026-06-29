@@ -1,4 +1,5 @@
 import 'package:fitai_analyzer/providers/nutrition_chart_provider.dart';
+import 'package:fitai_analyzer/ui/widgets/design/design.dart';
 import 'package:fitai_analyzer/utils/nutrition_macro_colors.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
@@ -24,17 +25,16 @@ class WeeklyMacroStackedBarChartCard extends ConsumerWidget {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
-    Widget shell(Widget child) => Card(
-          elevation: 0,
-          color: cs.surfaceContainerHighest.withValues(alpha: 0.55),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: child,
-        );
+    Widget shell(Widget child) =>
+        FitSoftCard(padding: EdgeInsets.zero, child: child);
 
     return chartAsync.when(
       skipLoadingOnReload: true,
       data: (data) {
-        final totalKcal = data.caloriesData.fold<double>(0, (a, e) => a + e.value);
+        final totalKcal = data.caloriesData.fold<double>(
+          0,
+          (a, e) => a + e.value,
+        );
         final dailyAvgKcal = totalKcal / 7.0;
         const mc = _MacroColors(
           protein: NutritionMacroColors.protein,
@@ -45,13 +45,22 @@ class WeeklyMacroStackedBarChartCard extends ConsumerWidget {
         // Max grams across the 7 days (used for Y axis scale)
         double maxGrams = 10.0;
         for (int i = 0; i < 7; i++) {
-          final t = data.proteinData[i].value +
+          final t =
+              data.proteinData[i].value +
               data.carbsData[i].value +
               data.fatData[i].value;
           if (t > maxGrams) maxGrams = t;
         }
         final chartMax = maxGrams * 1.22;
         final gridInterval = (chartMax / 4).ceilToDouble();
+
+        // Totali settimanali per la barra di distribuzione macro.
+        double totProtein = 0, totCarbs = 0, totFat = 0;
+        for (int i = 0; i < 7; i++) {
+          totProtein += data.proteinData[i].value;
+          totCarbs += data.carbsData[i].value;
+          totFat += data.fatData[i].value;
+        }
 
         // Build stacked bar groups: fat (bottom) → carbs → protein (top)
         final groups = List.generate(7, (i) {
@@ -64,7 +73,7 @@ class WeeklyMacroStackedBarChartCard extends ConsumerWidget {
             barRods: [
               BarChartRodData(
                 toY: total <= 0 ? 0.0 : total,
-                width: 22,
+                width: 14,
                 color: Colors.transparent,
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(7),
@@ -91,75 +100,102 @@ class WeeklyMacroStackedBarChartCard extends ConsumerWidget {
                 // ── Week navigation ──────────────────────────────────────
                 SizedBox(
                   height: 44,
-                  child: Row(children: [
-                    SizedBox(
-                      width: 44,
-                      height: 44,
-                      child: weekOffset < _maxWeeksBack
-                          ? IconButton(
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Settimana precedente',
-                              icon: Icon(Icons.chevron_left, color: cs.primary),
-                              onPressed: () => ref
-                                  .read(nutritionDiaryWeekOffsetProvider
-                                      .notifier)
-                                  .setWeeksAgo(weekOffset + 1),
-                            )
-                          : const SizedBox.shrink(),
-                    ),
-                    Expanded(
-                      child: Text(
-                        _weekTitle(weekOffset),
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: cs.onSurface,
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 44,
+                        height: 44,
+                        child: weekOffset < _maxWeeksBack
+                            ? FitCircleIconButton(
+                                icon: Icons.chevron_left,
+                                tooltip: 'Settimana precedente',
+                                iconColor: cs.primary,
+                                onPressed: () => ref
+                                    .read(
+                                      nutritionDiaryWeekOffsetProvider.notifier,
+                                    )
+                                    .setWeeksAgo(weekOffset + 1),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                      Expanded(
+                        child: Text(
+                          _weekTitle(weekOffset),
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurface,
+                          ),
                         ),
                       ),
-                    ),
-                    SizedBox(
-                      width: 44,
-                      height: 44,
-                      child: weekOffset > 0
-                          ? IconButton(
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Settimana successiva',
-                              icon:
-                                  Icon(Icons.chevron_right, color: cs.primary),
-                              onPressed: () => ref
-                                  .read(nutritionDiaryWeekOffsetProvider
-                                      .notifier)
-                                  .setWeeksAgo(weekOffset - 1),
-                            )
-                          : const SizedBox.shrink(),
-                    ),
-                  ]),
+                      SizedBox(
+                        width: 44,
+                        height: 44,
+                        child: weekOffset > 0
+                            ? FitCircleIconButton(
+                                icon: Icons.chevron_right,
+                                tooltip: 'Settimana successiva',
+                                iconColor: cs.primary,
+                                onPressed: () => ref
+                                    .read(
+                                      nutritionDiaryWeekOffsetProvider.notifier,
+                                    )
+                                    .setWeeksAgo(weekOffset - 1),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 16),
 
                 // ── Summary stats ─────────────────────────────────────────
-                Row(children: [
-                  Expanded(
-                    child: _StatBlock(
-                      value: totalKcal.round().toString(),
-                      caption: 'Calorie totali',
-                      theme: theme,
+                Row(
+                  children: [
+                    Expanded(
+                      child: _StatBlock(
+                        value: totalKcal.round().toString(),
+                        caption: 'Calorie totali',
+                        theme: theme,
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    child: _StatBlock(
-                      value: dailyAvgKcal.round().toString(),
-                      caption: 'Media giornaliera',
-                      theme: theme,
-                      alignEnd: true,
+                    Expanded(
+                      child: _StatBlock(
+                        value: dailyAvgKcal.round().toString(),
+                        caption: 'Media giornaliera',
+                        theme: theme,
+                        alignEnd: true,
+                      ),
                     ),
-                  ),
-                ]),
+                  ],
+                ),
                 const SizedBox(height: 20),
 
-                // ── fl_chart BarChart ─────────────────────────────────────
+                // ── Distribuzione macro settimanale (barra segmentata) ─────
+                if (totProtein + totCarbs + totFat > 0) ...[
+                  Text(
+                    'Distribuzione macro',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  FitSegmentedProgressBar(
+                    height: 16,
+                    colors: [mc.protein, mc.carbs, mc.fat],
+                    segments: [
+                      FitBarSegment(totProtein, 'Proteine'),
+                      FitBarSegment(totCarbs, 'Carboidrati'),
+                      FitBarSegment(totFat, 'Grassi'),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                ],
+
+                // ── Grafico giornaliero (barre slim) ──────────────────────
                 SizedBox(
                   height: 210,
                   child: BarChart(
@@ -171,8 +207,10 @@ class WeeklyMacroStackedBarChartCard extends ConsumerWidget {
                           getTooltipColor: (_) =>
                               cs.inverseSurface.withValues(alpha: 0.92),
                           tooltipPadding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 8),
-                          getTooltipItem: (group, _, rod, __) {
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                          getTooltipItem: (group, _, rod, _) {
                             final i = group.x;
                             final p = data.proteinData[i].value;
                             final c = data.carbsData[i].value;
@@ -215,11 +253,14 @@ class WeeklyMacroStackedBarChartCard extends ConsumerWidget {
                           ),
                         ),
                         leftTitles: const AxisTitles(
-                            sideTitles: SideTitles(showTitles: false)),
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
                         topTitles: const AxisTitles(
-                            sideTitles: SideTitles(showTitles: false)),
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
                         rightTitles: const AxisTitles(
-                            sideTitles: SideTitles(showTitles: false)),
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
                       ),
                       gridData: FlGridData(
                         show: true,
@@ -237,10 +278,6 @@ class WeeklyMacroStackedBarChartCard extends ConsumerWidget {
                     curve: Curves.easeOutCubic,
                   ),
                 ),
-                const SizedBox(height: 14),
-
-                // ── Color legend ──────────────────────────────────────────
-                _LegendRow(theme: theme, macroColors: mc),
               ],
             ),
           ),
@@ -258,8 +295,7 @@ class WeeklyMacroStackedBarChartCard extends ConsumerWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Text('Errore grafico: $e',
-              style: theme.textTheme.bodySmall),
+          child: Text('Errore grafico: $e', style: theme.textTheme.bodySmall),
         ),
       ),
     );
@@ -271,8 +307,11 @@ class WeeklyMacroStackedBarChartCard extends ConsumerWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _MacroColors {
-  const _MacroColors(
-      {required this.protein, required this.carbs, required this.fat});
+  const _MacroColors({
+    required this.protein,
+    required this.carbs,
+    required this.fat,
+  });
 
   final Color protein;
   final Color carbs;
@@ -300,8 +339,9 @@ class _StatBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = theme.colorScheme;
     return Column(
-      crossAxisAlignment:
-          alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      crossAxisAlignment: alignEnd
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
       children: [
         Text(
           value,
@@ -314,65 +354,6 @@ class _StatBlock extends StatelessWidget {
           caption,
           style: theme.textTheme.labelMedium?.copyWith(
             color: cs.onSurfaceVariant,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _LegendRow extends StatelessWidget {
-  const _LegendRow({required this.theme, required this.macroColors});
-
-  final ThemeData theme;
-  final _MacroColors macroColors;
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 16,
-      runSpacing: 8,
-      children: [
-        _LegendItem(
-            color: macroColors.protein, label: 'Proteine', theme: theme),
-        _LegendItem(
-            color: macroColors.carbs, label: 'Carboidrati', theme: theme),
-        _LegendItem(color: macroColors.fat, label: 'Grassi', theme: theme),
-      ],
-    );
-  }
-}
-
-class _LegendItem extends StatelessWidget {
-  const _LegendItem({
-    required this.color,
-    required this.label,
-    required this.theme,
-  });
-
-  final Color color;
-  final String label;
-  final ThemeData theme;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 10,
-          height: 10,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(3),
-          ),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          label,
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w500,
           ),
         ),
       ],

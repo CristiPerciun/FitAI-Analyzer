@@ -2,25 +2,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fitai_analyzer/models/daily_log_model.dart';
 import 'package:fitai_analyzer/models/meal_model.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
+import 'package:fitai_analyzer/utils/date_utils.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 String _italianWeekdayShort(int weekday) {
   const labels = ['Lu', 'Ma', 'Me', 'Gio', 'Ve', 'Sa', 'Do'];
   return labels[weekday - 1];
-}
-
-String _dateKey(DateTime d) {
-  final m = d.month.toString().padLeft(2, '0');
-  final day = d.day.toString().padLeft(2, '0');
-  return '${d.year}-$m-$day';
-}
-
-DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
-
-/// Lunedì della settimana ISO che contiene [day] (weekday Dart: 1 = lun … 7 = dom).
-DateTime _mondayOfWeekContaining(DateTime day) {
-  final d = _dateOnly(day);
-  return d.subtract(Duration(days: d.weekday - 1));
 }
 
 /// Indice settimana nel diario alimentazione: 0 = settimana calendario corrente (lun–dom), 1 = precedente, ecc.
@@ -45,12 +32,12 @@ Future<NutritionChartData> _fetchNutritionChartWindow(
 ) async {
   final firestore = FirebaseFirestore.instance;
   final now = DateTime.now();
-  final today = _dateOnly(now);
-  final thisWeekMonday = _mondayOfWeekContaining(today);
+  final today = dateOnly(now);
+  final thisWeekMonday = mondayOfWeekContaining(today);
   final weekMonday = thisWeekMonday.subtract(Duration(days: 7 * weekOffset));
   final weekSunday = weekMonday.add(const Duration(days: 6));
-  final startKey = _dateKey(weekMonday);
-  final endKey = _dateKey(weekSunday);
+  final startKey = dateKey(weekMonday);
+  final endKey = dateKey(weekSunday);
 
   final snapshot = await firestore
       .collection('users')
@@ -72,7 +59,7 @@ Future<NutritionChartData> _fetchNutritionChartWindow(
 
   for (var i = 0; i < 7; i++) {
     final d = weekMonday.add(Duration(days: i));
-    final key = _dateKey(d);
+    final key = dateKey(d);
     final log = byDate[key];
     final label = _italianWeekdayShort(d.weekday);
     caloriesData.add(DailyNutrient(label, log?.totalKcal ?? 0));
@@ -123,8 +110,8 @@ class NutritionChartData {
 
   factory NutritionChartData.empty({int weekOffset = 0}) {
     final now = DateTime.now();
-    final today = _dateOnly(now);
-    final thisWeekMonday = _mondayOfWeekContaining(today);
+    final today = dateOnly(now);
+    final thisWeekMonday = mondayOfWeekContaining(today);
     final weekMonday = thisWeekMonday.subtract(Duration(days: 7 * weekOffset));
     DailyNutrient z(int i) {
       final d = weekMonday.add(Duration(days: i));

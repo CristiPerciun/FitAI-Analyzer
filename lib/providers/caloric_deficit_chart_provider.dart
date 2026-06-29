@@ -6,26 +6,8 @@ import 'package:fitai_analyzer/providers/providers.dart'
     show nutritionMealPlanAiStreamProvider;
 import 'package:fitai_analyzer/providers/user_profile_notifier.dart';
 import 'package:fitai_analyzer/services/nutrition_calculator_service.dart';
+import 'package:fitai_analyzer/utils/date_utils.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-String _dateKey(DateTime d) {
-  final m = d.month.toString().padLeft(2, '0');
-  final day = d.day.toString().padLeft(2, '0');
-  return '${d.year}-$m-$day';
-}
-
-DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
-
-DateTime _mondayOfWeekContaining(DateTime day) {
-  final d = _dateOnly(day);
-  return d.subtract(Duration(days: d.weekday - 1));
-}
-
-DateTime _weekMondayForOffset(int weekOffset) {
-  final today = _dateOnly(DateTime.now());
-  final thisWeekMonday = _mondayOfWeekContaining(today);
-  return thisWeekMonday.subtract(Duration(days: 7 * weekOffset));
-}
 
 double _sumActivityKcal(List<FitnessData> list) {
   return list.fold<double>(0, (s, a) => s + (a.calories ?? 0));
@@ -95,12 +77,12 @@ class CaloricDeficitWeekChartData {
   final String? todayStatusText;
 
   factory CaloricDeficitWeekChartData.empty({int weekOffset = 0}) {
-    final weekMonday = _weekMondayForOffset(weekOffset);
+    final weekMonday = weekMondayForOffset(weekOffset);
     const labels = ['Lu', 'Ma', 'Me', 'Gio', 'Ve', 'Sa', 'Do'];
-    final todayKey = _dateKey(_dateOnly(DateTime.now()));
+    final todayKey = dateKey(dateOnly(DateTime.now()));
     final points = List.generate(7, (i) {
       final d = weekMonday.add(Duration(days: i));
-      final key = _dateKey(d);
+      final key = dateKey(d);
       return CaloricDeficitDayPoint(
         label: labels[i],
         dateKey: key,
@@ -152,13 +134,13 @@ CaloricDeficitWeekChartData _buildFromInputs({
   final deficitKcal =
       ng == null ? 0.0 : (staticTdee - calorieTarget).clamp(0.0, double.infinity);
 
-  final weekMonday = _weekMondayForOffset(weekOffset);
-  final todayKey = _dateKey(_dateOnly(DateTime.now()));
+  final weekMonday = weekMondayForOffset(weekOffset);
+  final todayKey = dateKey(dateOnly(DateTime.now()));
   final points = <CaloricDeficitDayPoint>[];
 
   for (var i = 0; i < 7; i++) {
     final d = weekMonday.add(Duration(days: i));
-    final key = _dateKey(d);
+    final key = dateKey(d);
     final intake = chartData.caloriesData[i].value;
     final burn = _sumActivityKcal(activitiesByDate[key] ?? []);
     final dynamicTdee = NutritionCalculatorService.dynamicTdeeKcal(

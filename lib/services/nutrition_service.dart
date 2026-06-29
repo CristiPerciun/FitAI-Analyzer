@@ -48,6 +48,27 @@ class NutritionService {
     return base64Encode(raw);
   }
 
+  /// Mappa un [MealModel] nel formato "edit" atteso da Gemini/dalla schermata di
+  /// revisione pasto. È l'inverso di [saveToFirestore]: tienili allineati.
+  static Map<String, dynamic> mealModelToGeminiEditMap(MealModel meal) {
+    final portion = meal.portionGrams;
+    return {
+      'dish_name': meal.displayTitle,
+      'total_calories': meal.calories,
+      'calories': meal.calories,
+      'protein_g': meal.proteinG.round(),
+      'carbs_g': meal.carbsG.round(),
+      'fat_g': meal.fatG.round(),
+      'sugar_g': 0,
+      if (portion != null && portion > 0) 'estimated_portion_grams': portion,
+      if (portion != null && portion > 0) 'portion_grams': portion,
+      'advice': meal.rawAiAnalysis,
+      'foods': meal.ingredients
+          .map((name) => <String, dynamic>{'name': name})
+          .toList(),
+    };
+  }
+
   /// Fonte di verità: somma calorie e macro da tutti i [MealModel] del giorno.
   /// Evita desincronizzazioni tra sottocollezione `meals` e `nutrition_summary` (grafici / rolling).
   static Map<String, dynamic> _nutritionSummaryFromMeals(

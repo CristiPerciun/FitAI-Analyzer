@@ -2,6 +2,7 @@ import 'package:fitai_analyzer/models/nutrition_meal_plan_ai.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
+import 'package:fitai_analyzer/ui/widgets/design/design.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -18,11 +19,8 @@ class AlimentazioneObjectivesTab extends ConsumerWidget {
     final uid = ref.watch(authNotifierProvider).user?.uid;
 
     return RefreshIndicator(
-      onRefresh: () => refreshGarminSync(
-        ref,
-        uid,
-        trigger: 'alimentazione_pull_to_refresh',
-      ),
+      onRefresh: () =>
+          refreshGarminSync(ref, uid, trigger: 'alimentazione_pull_to_refresh'),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -107,82 +105,62 @@ class _DailyMacroObjectiveCard extends StatelessWidget {
     final hasExtras = hasNote || score != null;
     final hasContent = hasMacro || hasExtras;
 
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: theme.colorScheme.primary.withValues(alpha: 0.3),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.pie_chart_outline,
-                  color: theme.colorScheme.primary,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Target nutrizionali (oggi)',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.primary,
-                    ),
+    return FitSoftCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.pie_chart_outline,
+                color: theme.colorScheme.primary,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Target nutrizionali (oggi)',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.primary,
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            if (!hasContent)
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (!hasContent)
+            Text(
+              'Nessun target da AI per oggi. Premi "Analisi" in Home per generarlo.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            )
+          else ...[
+            if (hasMacro)
               Text(
-                'Nessun target da AI per oggi. Premi "Analisi" in Home per generarlo.',
+                macroLine,
+                style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
+              ),
+            if (score != null) ...[
+              if (hasMacro) const SizedBox(height: 8),
+              FitBadgePill(
+                label: 'Aderenza stimata: $score/100',
+                variant: FitBadgeVariant.solid,
+              ),
+            ],
+            if (hasNote) ...[
+              if (hasMacro || score != null) const SizedBox(height: 10),
+              Text(
+                note,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
+                  height: 1.35,
                 ),
-              )
-            else ...[
-              if (hasMacro)
-                Text(
-                  macroLine,
-                  style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
-                ),
-              if (score != null) ...[
-                if (hasMacro) const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    'Aderenza stimata: $score/100',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: theme.colorScheme.onPrimaryContainer,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-              if (hasNote) ...[
-                if (hasMacro || score != null) const SizedBox(height: 10),
-                Text(
-                  note,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    height: 1.35,
-                  ),
-                ),
-              ],
+              ),
             ],
           ],
-        ),
+        ],
       ),
     );
   }
@@ -198,52 +176,42 @@ class _MealObjectivesSummaryCard extends StatelessWidget {
     final theme = Theme.of(context);
     final hasMeals = plan != null && plan!.hasAnyObjective;
 
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: theme.colorScheme.outline.withValues(alpha: 0.2),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.restaurant_menu_outlined,
-                  color: theme.colorScheme.primary,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Obiettivi per pasto',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+    return FitSoftCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.restaurant_menu_outlined,
+                color: theme.colorScheme.primary,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Obiettivi per pasto',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            if (!hasMeals)
-              Text(
-                'Nessun obiettivo pasto da AI. Premi "Analisi" in Home per generarlo.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              )
-            else ...[
-              _PastoSection(title: 'Colazione', items: plan!.obiettiviColazione),
-              _PastoSection(title: 'Pranzo', items: plan!.obiettiviPranzo),
-              _PastoSection(title: 'Cena', items: plan!.obiettiviCena),
+              ),
             ],
+          ),
+          const SizedBox(height: 10),
+          if (!hasMeals)
+            Text(
+              'Nessun obiettivo pasto da AI. Premi "Analisi" in Home per generarlo.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            )
+          else ...[
+            _PastoSection(title: 'Colazione', items: plan!.obiettiviColazione),
+            _PastoSection(title: 'Pranzo', items: plan!.obiettiviPranzo),
+            _PastoSection(title: 'Cena', items: plan!.obiettiviCena),
           ],
-        ),
+        ],
       ),
     );
   }

@@ -20,10 +20,12 @@ class NutritionMealAnalysisScreen extends ConsumerStatefulWidget {
   final Future<void> Function()? onDelete;
 
   @override
-  ConsumerState<NutritionMealAnalysisScreen> createState() => _NutritionMealAnalysisScreenState();
+  ConsumerState<NutritionMealAnalysisScreen> createState() =>
+      _NutritionMealAnalysisScreenState();
 }
 
-class _NutritionMealAnalysisScreenState extends ConsumerState<NutritionMealAnalysisScreen> {
+class _NutritionMealAnalysisScreenState
+    extends ConsumerState<NutritionMealAnalysisScreen> {
   /// Evita più `pop` programmati se `draft` diventa null e il widget si ribuilda più volte.
   bool _scheduledExitForNullDraft = false;
 
@@ -43,9 +45,14 @@ class _NutritionMealAnalysisScreenState extends ConsumerState<NutritionMealAnaly
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Eliminare il pasto?'),
-        content: const Text('Verrà rimosso dal diario e i totali del giorno verranno aggiornati.'),
+        content: const Text(
+          'Verrà rimosso dal diario e i totali del giorno verranno aggiornati.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(c).pop(false), child: const Text('Annulla')),
+          TextButton(
+            onPressed: () => Navigator.of(c).pop(false),
+            child: const Text('Annulla'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(c).colorScheme.error,
@@ -111,23 +118,41 @@ class _NutritionMealAnalysisScreenState extends ConsumerState<NutritionMealAnaly
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
         children: [
           if (dishName != null && dishName.isNotEmpty) ...[
-            Text(dishName, style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
+            Text(
+              dishName,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             const SizedBox(height: 16),
           ],
           if (widget.foods.isNotEmpty) ...[
-            Text('Alimenti', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+            Text(
+              'Alimenti',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             const SizedBox(height: 8),
             ...widget.foods.take(12).map((e) {
               if (e is! Map) return const Text('• ?');
               return Padding(
                 padding: const EdgeInsets.only(bottom: 4),
-                child: Text('• ${e['name'] ?? '?'}', style: theme.textTheme.bodyMedium),
+                child: Text(
+                  '• ${e['name'] ?? '?'}',
+                  style: theme.textTheme.bodyMedium,
+                ),
               );
             }),
           ],
           if (widget.advice.isNotEmpty) ...[
             if (widget.foods.isNotEmpty) const SizedBox(height: 16),
-            Text('Consiglio', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+            Text(
+              'Consiglio',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             const SizedBox(height: 8),
             Text(widget.advice, style: theme.textTheme.bodyMedium),
           ],
@@ -136,24 +161,42 @@ class _NutritionMealAnalysisScreenState extends ConsumerState<NutritionMealAnaly
           const SizedBox(height: 16),
           Text(
             'Porzione e valori nutrizionali',
-            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
           ),
           const SizedBox(height: 8),
           Text(
             'Modifica i grammi totali stimati: calorie e macro si aggiornano in proporzione all’analisi iniziale. Usa ±3 g o tocca il numero per inserire la quantità esatta.',
-            style: theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 20),
           _PortionRow(
             portionGrams: draft.portionGrams,
             basePortionGrams: draft.basePortionGrams,
-            onDelta: (d) => ref.read(nutritionMealEditProvider.notifier).adjustPortionBy(d),
-            onSetPortion: (g) => ref.read(nutritionMealEditProvider.notifier).setPortionGrams(g),
+            onDelta: (d) =>
+                ref.read(nutritionMealEditProvider.notifier).adjustPortionBy(d),
+            onSetPortion: (g) =>
+                ref.read(nutritionMealEditProvider.notifier).setPortionGrams(g),
           ),
           const SizedBox(height: 24),
-          _NutrientTile(label: 'Calorie', value: '${draft.calories}', unit: 'kcal'),
-          _NutrientTile(label: 'Proteine', value: '${draft.protein}', unit: 'g'),
-          _NutrientTile(label: 'Carboidrati', value: '${draft.carbs}', unit: 'g'),
+          _NutrientTile(
+            label: 'Calorie',
+            value: '${draft.calories}',
+            unit: 'kcal',
+          ),
+          _NutrientTile(
+            label: 'Proteine',
+            value: '${draft.protein}',
+            unit: 'g',
+          ),
+          _NutrientTile(
+            label: 'Carboidrati',
+            value: '${draft.carbs}',
+            unit: 'g',
+          ),
           _NutrientTile(label: 'Grassi', value: '${draft.fat}', unit: 'g'),
           _NutrientTile(label: 'Zuccheri', value: '${draft.sugar}', unit: 'g'),
         ],
@@ -248,12 +291,16 @@ class _PortionRowState extends State<_PortionRow> {
           children: [
             Text(
               'Quantità stimata (porzione totale)',
-              style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
             ),
             const SizedBox(height: 4),
             Text(
               'Riferimento IA: ${widget.basePortionGrams.round()} g',
-              style: theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: cs.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 12),
             Row(
@@ -266,16 +313,20 @@ class _PortionRowState extends State<_PortionRow> {
                   icon: const Icon(Icons.remove),
                 ),
                 Expanded(
-                  child: Center( 
-                        child: SizedBox(
-                      width: 160, 
+                  child: Center(
+                    child: SizedBox(
+                      width: 160,
                       child: TextField(
                         controller: _controller,
                         focusNode: _focus,
                         keyboardType: TextInputType.number,
                         textAlign: TextAlign.center,
-                        style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
                         decoration: InputDecoration(
                           suffixText: 'g',
                           suffixStyle: theme.textTheme.titleMedium?.copyWith(
@@ -284,12 +335,20 @@ class _PortionRowState extends State<_PortionRow> {
                           ),
                           isDense: true,
                           enabledBorder: UnderlineInputBorder(
-                            borderSide: BorderSide(color: cs.outlineVariant, width: 1),
+                            borderSide: BorderSide(
+                              color: cs.outlineVariant,
+                              width: 1,
+                            ),
                           ),
                           focusedBorder: UnderlineInputBorder(
                             borderSide: BorderSide(color: cs.primary, width: 2),
                           ),
-                          contentPadding: const EdgeInsets.only(left: 4, right: 4, top: 6, bottom: 8),
+                          contentPadding: const EdgeInsets.only(
+                            left: 4,
+                            right: 4,
+                            top: 6,
+                            bottom: 8,
+                          ),
                         ),
                         textInputAction: TextInputAction.done,
                         onSubmitted: (_) {

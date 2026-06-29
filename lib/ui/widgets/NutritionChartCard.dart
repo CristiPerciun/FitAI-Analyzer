@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:fitai_analyzer/models/meal_model.dart';
 import 'package:fitai_analyzer/providers/today_longevity_metrics_provider.dart';
+import 'package:fitai_analyzer/theme/app_card_theme.dart';
 import 'package:fitai_analyzer/ui/widgets/anim_progress_ring.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,7 +27,6 @@ class NutritionChartCard extends ConsumerStatefulWidget {
 
 class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
   final PageController _pageController = PageController();
-  int _currentPage = 0;
   final Set<String> _macroFullNotified = {};
   bool _macroCheckScheduled = false;
 
@@ -44,18 +44,21 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    // Colori card adattativi al tema corrente.
-    final cardBg = isDark
-        ? const Color(0xFF1A1A1A)
-        : theme.colorScheme.surfaceContainerHighest;
+    // Colori card adattativi al tema corrente (container natura in entrambi i temi).
+    final cardBg = theme.colorScheme.surfaceContainerHighest;
     final cardBorder = isDark
         ? Colors.white.withValues(alpha: 0.05)
         : theme.colorScheme.outline.withValues(alpha: 0.15);
     final onCard = theme.colorScheme.onSurface;
     final onCardMuted = theme.colorScheme.onSurfaceVariant;
-    final ringTrack = theme.colorScheme.onSurface.withValues(alpha: isDark ? 0.05 : 0.10);
+    final ringTrack = theme.colorScheme.onSurface.withValues(
+      alpha: isDark ? 0.05 : 0.10,
+    );
     final dotActive = theme.colorScheme.primary;
-    final dotInactive = theme.colorScheme.onSurface.withValues(alpha: isDark ? 0.24 : 0.20);
+    final dotInactive = theme.colorScheme.onSurface.withValues(
+      alpha: isDark ? 0.24 : 0.20,
+    );
+    final softShadow = theme.extension<AppCardTheme>()?.softShadow;
 
     // ESTRAZIONE DATI REALI DAL PROGETTO
     final calGoal = _getGoalByTitle("Calorie");
@@ -80,6 +83,7 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
         color: cardBg,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: cardBorder),
+        boxShadow: softShadow,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -100,11 +104,6 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
                   clipBehavior: Clip.none,
                   controller: _pageController,
                   physics: const BouncingScrollPhysics(),
-                  onPageChanged: (int page) {
-                    setState(() {
-                      _currentPage = page;
-                    });
-                  },
                   children: [
                     _buildTodayPage(
                       remainingCal,
@@ -132,13 +131,22 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
 
           const SizedBox(height: 15),
 
-          // INDICATORE PUNTINI
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(
-              2,
-              (index) => _buildDot(index == _currentPage, dotActive, dotInactive),
-            ),
+          // INDICATORE PUNTINI (guidato dal PageController, senza setState)
+          AnimatedBuilder(
+            animation: _pageController,
+            builder: (context, _) {
+              final page =
+                  _pageController.hasClients && _pageController.page != null
+                  ? _pageController.page!.round()
+                  : 0;
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  2,
+                  (index) => _buildDot(index == page, dotActive, dotInactive),
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -160,7 +168,14 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Today', style: TextStyle(color: onCard, fontSize: 22, fontWeight: FontWeight.bold)),
+        Text(
+          'Today',
+          style: TextStyle(
+            color: onCard,
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         Text(
           'Remaining = Goal - Food + Exercise',
           style: TextStyle(color: onCardMuted, fontSize: 11),
@@ -196,19 +211,37 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
                       style: TextStyle(color: onCardMuted, fontSize: 12),
                     ),
                   ],
-                )
+                ),
               ],
             ),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _legendItem(Icons.flag, 'Base Goal', '${target.toInt()}', onCardMuted, onCard),
+                _legendItem(
+                  Icons.flag,
+                  'Base Goal',
+                  '${target.toInt()}',
+                  onCardMuted,
+                  onCard,
+                ),
                 const SizedBox(height: 16),
-                _legendItem(Icons.restaurant, 'Food', '${food.toInt()}', Colors.blueAccent, onCard),
+                _legendItem(
+                  Icons.restaurant,
+                  'Food',
+                  '${food.toInt()}',
+                  Colors.blueAccent,
+                  onCard,
+                ),
                 const SizedBox(height: 16),
-                _legendItem(Icons.local_fire_department, 'Exercise', '${ex.toInt()}', Colors.orangeAccent, onCard),
+                _legendItem(
+                  Icons.local_fire_department,
+                  'Exercise',
+                  '${ex.toInt()}',
+                  Colors.orangeAccent,
+                  onCard,
+                ),
               ],
-            )
+            ),
           ],
         ),
       ],
@@ -229,7 +262,11 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
         children: [
           Text(
             'Macros',
-            style: TextStyle(color: onCard, fontSize: 22, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: onCard,
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           const SizedBox(height: 32),
           const Spacer(),
@@ -237,9 +274,27 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              _macroCircle(carbs, 'Carbs', onCard: onCard, onCardMuted: onCardMuted, ringTrack: ringTrack),
-              _macroCircle(fats, 'Fats', onCard: onCard, onCardMuted: onCardMuted, ringTrack: ringTrack),
-              _macroCircle(proteins, 'Proteins', onCard: onCard, onCardMuted: onCardMuted, ringTrack: ringTrack),
+              _macroCircle(
+                carbs,
+                'Carbs',
+                onCard: onCard,
+                onCardMuted: onCardMuted,
+                ringTrack: ringTrack,
+              ),
+              _macroCircle(
+                fats,
+                'Fats',
+                onCard: onCard,
+                onCardMuted: onCardMuted,
+                ringTrack: ringTrack,
+              ),
+              _macroCircle(
+                proteins,
+                'Proteins',
+                onCard: onCard,
+                onCardMuted: onCardMuted,
+                ringTrack: ringTrack,
+              ),
             ],
           ),
           const Spacer(),
@@ -279,13 +334,27 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
             ),
             Text(
               '${consumed.toInt()}/${target.toInt()}',
-              style: TextStyle(color: onCard, fontSize: 11, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: onCard,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        Text(label, style: TextStyle(color: onCard, fontSize: 14, fontWeight: FontWeight.w600)),
-        Text('${left.toInt()}g left', style: TextStyle(color: onCardMuted, fontSize: 12)),
+        Text(
+          label,
+          style: TextStyle(
+            color: onCard,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        Text(
+          '${left.toInt()}g left',
+          style: TextStyle(color: onCardMuted, fontSize: 12),
+        ),
       ],
     );
   }
@@ -334,7 +403,13 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
     }
   }
 
-  Widget _legendItem(IconData icon, String label, String val, Color iconColor, Color valColor) {
+  Widget _legendItem(
+    IconData icon,
+    String label,
+    String val,
+    Color iconColor,
+    Color valColor,
+  ) {
     return Row(
       children: [
         Icon(icon, size: 22, color: iconColor),
@@ -342,10 +417,23 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: TextStyle(color: iconColor.withValues(alpha: 0.8), fontSize: 12)),
-            Text(val, style: TextStyle(color: valColor, fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(
+              label,
+              style: TextStyle(
+                color: iconColor.withValues(alpha: 0.8),
+                fontSize: 12,
+              ),
+            ),
+            Text(
+              val,
+              style: TextStyle(
+                color: valColor,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ],
-        )
+        ),
       ],
     );
   }

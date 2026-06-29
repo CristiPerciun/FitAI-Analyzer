@@ -1,6 +1,7 @@
 import 'package:fitai_analyzer/providers/caloric_deficit_chart_provider.dart';
 import 'package:fitai_analyzer/providers/nutrition_chart_provider.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
+import 'package:fitai_analyzer/ui/widgets/design/design.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -36,7 +37,10 @@ class CaloricDeficitBarChartCard extends ConsumerWidget {
     return m <= 0 ? 2000 : (m * 1.15).clamp(400, double.infinity);
   }
 
-  static void _showInfoDialog(BuildContext context, CaloricDeficitWeekChartData data) {
+  static void _showInfoDialog(
+    BuildContext context,
+    CaloricDeficitWeekChartData data,
+  ) {
     final deficitPct = data.staticTdeeKcal > 0
         ? ((data.deficitKcal / data.staticTdeeKcal) * 100).round()
         : 0;
@@ -97,45 +101,23 @@ class CaloricDeficitBarChartCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final cs = theme.colorScheme;
     final weekOffset = ref.watch(nutritionDiaryWeekOffsetProvider);
     final diaryAsync = ref.watch(nutritionDiaryWeekChartDataProvider);
     final data = ref.watch(caloricDeficitWeekChartProvider);
 
     if (diaryAsync.isLoading && !diaryAsync.hasValue) {
-      return Card(
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: cs.outline.withValues(alpha: 0.2)),
-        ),
-        child: const Padding(
-          padding: EdgeInsets.all(24),
-          child: Center(child: CircularProgressIndicator()),
-        ),
+      return const FitSoftCard(
+        padding: EdgeInsets.all(24),
+        child: Center(child: CircularProgressIndicator()),
       );
     }
 
     if (diaryAsync.hasError && !diaryAsync.hasValue) {
-      return Card(
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: cs.outline.withValues(alpha: 0.2)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Text('Errore grafico: ${diaryAsync.error}'),
-        ),
-      );
+      return FitSoftCard(child: Text('Errore grafico: ${diaryAsync.error}'));
     }
 
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: cs.outline.withValues(alpha: 0.2)),
-      ),
+    return FitSoftCard(
+      padding: EdgeInsets.zero,
       child: _ChartBody(
         data: data,
         weekOffset: weekOffset,
@@ -258,10 +240,10 @@ class _ChartBody extends ConsumerWidget {
                   width: 44,
                   height: 44,
                   child: weekOffset < CaloricDeficitBarChartCard._maxWeeksBack
-                      ? IconButton(
-                          padding: EdgeInsets.zero,
+                      ? FitCircleIconButton(
+                          icon: Icons.chevron_left,
                           tooltip: 'Settimana precedente',
-                          icon: Icon(Icons.chevron_left, color: cs.primary),
+                          iconColor: cs.primary,
                           onPressed: () => ref
                               .read(nutritionDiaryWeekOffsetProvider.notifier)
                               .setWeeksAgo(weekOffset + 1),
@@ -283,10 +265,10 @@ class _ChartBody extends ConsumerWidget {
                   width: 44,
                   height: 44,
                   child: weekOffset > 0
-                      ? IconButton(
-                          padding: EdgeInsets.zero,
+                      ? FitCircleIconButton(
+                          icon: Icons.chevron_right,
                           tooltip: 'Settimana successiva',
-                          icon: Icon(Icons.chevron_right, color: cs.primary),
+                          iconColor: cs.primary,
                           onPressed: () => ref
                               .read(nutritionDiaryWeekOffsetProvider.notifier)
                               .setWeeksAgo(weekOffset - 1),
@@ -317,11 +299,11 @@ class _ChartBody extends ConsumerWidget {
                           final status = p.isInDeficit
                               ? 'In deficit'
                               : (p.intakeKcal > 0
-                                  ? 'Sopra soglia'
-                                  : 'Nessun pasto');
+                                    ? 'Sopra soglia'
+                                    : 'Nessun pasto');
                           final bands = data.showDeficitBands
                               ? '\nModerato: ${p.moderateCeilingKcal.round()} · '
-                                  'Aggressivo: ${p.aggressiveCeilingKcal.round()}'
+                                    'Aggressivo: ${p.aggressiveCeilingKcal.round()}'
                               : '';
                           return BarTooltipItem(
                             '${p.label}\n'
@@ -456,11 +438,7 @@ class _ChartBody extends ConsumerWidget {
           final base = threshold.clamp(0.0, intake).toDouble();
           stackItems = [
             BarChartRodStackItem(0, base, AppColors.caloricIntakeBar),
-            BarChartRodStackItem(
-              base,
-              intake,
-              AppColors.caloricSurplusBar,
-            ),
+            BarChartRodStackItem(base, intake, AppColors.caloricSurplusBar),
           ];
         } else {
           stackItems = [
@@ -476,7 +454,10 @@ class _ChartBody extends ConsumerWidget {
             toY: rodToY,
             width: 14,
             color: Colors.transparent,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(7),
+              bottom: Radius.circular(3),
+            ),
             backDrawRodData: BackgroundBarChartRodData(
               show: threshold > 0,
               toY: threshold,
@@ -507,9 +488,7 @@ class _Legend extends StatelessWidget {
             SizedBox(
               width: 14,
               height: 2,
-              child: CustomPaint(
-                painter: _DashLinePainter(color: color),
-              ),
+              child: CustomPaint(painter: _DashLinePainter(color: color)),
             )
           else
             Container(
@@ -538,8 +517,11 @@ class _Legend extends StatelessWidget {
         item(theme.colorScheme.onSurface.withValues(alpha: 0.75), 'Spesa din.'),
         if (showDeficitBands) ...[
           item(AppColors.garminBlue, 'Moderato (15–20%)', dashed: true),
-          item(theme.colorScheme.error.withValues(alpha: 0.7), 'Aggressivo (25–30%)',
-              dashed: true),
+          item(
+            theme.colorScheme.error.withValues(alpha: 0.7),
+            'Aggressivo (25–30%)',
+            dashed: true,
+          ),
         ],
       ],
     );
