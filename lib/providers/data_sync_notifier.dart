@@ -2,20 +2,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fitai_analyzer/models/fitness_data.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/services/garmin_service.dart';
+import 'package:fitai_analyzer/utils/date_utils.dart';
 import 'package:fitai_analyzer/utils/platform_firestore_fix.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 export 'package:fitai_analyzer/utils/date_utils.dart' show formatDateForDisplay;
-
-/// Stato connessione Mi Fitness (Huami) da `users/{uid}.mi_fitness_linked`.
-final miFitnessConnectedProvider = StreamProvider.autoDispose<bool>((ref) {
-  final uid = ref.watch(authNotifierProvider).user?.uid;
-  if (uid == null) return Stream.value(false);
-  final docRef = FirebaseFirestore.instance.collection('users').doc(uid);
-  return documentSnapshotStream(
-    docRef,
-  ).map((doc) => doc.data()?['mi_fitness_linked'] == true);
-});
 
 /// Stream provider per attività unificate (`activities`) da Firestore.
 final activitiesStreamProvider = StreamProvider.autoDispose<List<FitnessData>>((
@@ -64,8 +55,7 @@ final activitiesByDateProvider =
 
       final byDate = <String, List<FitnessData>>{};
       for (final a in all) {
-        final key =
-            '${a.date.year}-${a.date.month.toString().padLeft(2, '0')}-${a.date.day.toString().padLeft(2, '0')}';
+        final key = dateKey(a.date);
         byDate.putIfAbsent(key, () => []).add(a);
       }
       for (final list in byDate.values) {

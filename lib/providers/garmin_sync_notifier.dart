@@ -56,7 +56,6 @@ class GarminSyncNotifier extends Notifier<GarminSyncState> {
       state = state.copyWith(isSyncing: true, error: null, trigger: trigger);
       final last = await service.getLastSuccessfulSync(uid);
       final garminLinked = await service.isConnected(uid);
-      final miLinked = await service.isMiFitnessConnected(uid);
 
       final sources = <String>[];
       if (garminLinked) {
@@ -65,7 +64,6 @@ class GarminSyncNotifier extends Notifier<GarminSyncState> {
         final stravaLocal = await ref.read(stravaServiceProvider).isConnected();
         if (stravaLocal) sources.add('strava');
       }
-      if (miLinked) sources.add('mi_fitness');
 
       if (sources.isEmpty) {
         state = state.copyWith(isSyncing: false, error: null, trigger: trigger);
@@ -81,10 +79,9 @@ class GarminSyncNotifier extends Notifier<GarminSyncState> {
     }
 
     final garminLinked = await service.isConnected(uid);
-    final miLinked = await service.isMiFitnessConnected(uid);
     if (!garminLinked) {
       final stravaLocal = await ref.read(stravaServiceProvider).isConnected();
-      if (!stravaLocal && !miLinked) {
+      if (!stravaLocal) {
         state = state.copyWith(error: null, trigger: trigger);
         return false;
       }
@@ -92,7 +89,6 @@ class GarminSyncNotifier extends Notifier<GarminSyncState> {
       final last = await service.getLastSuccessfulSync(uid);
       final sources = <String>[];
       if (stravaLocal) sources.add('strava');
-      if (miLinked) sources.add('mi_fitness');
       final result = await service.deltaSync(
         uid: uid,
         lastSuccessfulSync: last,
@@ -134,7 +130,6 @@ class GarminSyncNotifier extends Notifier<GarminSyncState> {
 
 void _invalidateGarminDependentProviders(Ref ref) {
   ref.invalidate(garminConnectedProvider);
-  ref.invalidate(miFitnessConnectedProvider);
   ref.invalidate(activitiesStreamProvider);
   ref.invalidate(dailyHealthStreamProvider);
   ref.invalidate(activitiesByDateProvider);

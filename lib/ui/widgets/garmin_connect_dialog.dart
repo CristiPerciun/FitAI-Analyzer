@@ -34,12 +34,40 @@ class _GarminConnectDialogBody extends ConsumerStatefulWidget {
       _GarminConnectDialogBodyState();
 }
 
+/// Stato (immutabile) del dialog Garmin. Locale alla modale, gestito via
+/// [ValueNotifier] invece che con `setState`.
+class _GarminBridgeState {
+  const _GarminBridgeState({
+    this.priming = false,
+    this.ready = false,
+    this.error,
+    this.submitting = false,
+  });
+
+  final bool priming;
+  final bool ready;
+  final String? error;
+  final bool submitting;
+
+  _GarminBridgeState copyWith({
+    bool? priming,
+    bool? ready,
+    String? error,
+    bool? submitting,
+  }) {
+    return _GarminBridgeState(
+      priming: priming ?? this.priming,
+      ready: ready ?? this.ready,
+      error: error ?? this.error,
+      submitting: submitting ?? this.submitting,
+    );
+  }
+}
+
 class _GarminConnectDialogBodyState
     extends ConsumerState<_GarminConnectDialogBody> {
-  final _submitting = <bool>[false];
-  bool _bridgePriming = false;
-  bool _bridgeReady = false;
-  String? _bridgeError;
+  final ValueNotifier<_GarminBridgeState> _state =
+      ValueNotifier<_GarminBridgeState>(const _GarminBridgeState());
 
   /// Su web usiamo SEMPRE il ponte `garmin_oauth_prepare.html`:
   /// è l'unico modo affidabile su iPhone/PWA e ci evita il doppio flusso popup → full-page.
@@ -49,11 +77,17 @@ class _GarminConnectDialogBodyState
   void initState() {
     super.initState();
     if (_useWebKitBridge) {
-      _bridgePriming = true;
+      _state.value = const _GarminBridgeState(priming: true);
       WidgetsBinding.instance.addPostFrameCallback((_) => _primeGarminBridge());
     } else {
-      _bridgeReady = true;
+      _state.value = const _GarminBridgeState(ready: true);
     }
+  }
+
+  @override
+  void dispose() {
+    _state.dispose();
+    super.dispose();
   }
 
   Future<void> _primeGarminBridge() async {
@@ -62,28 +96,19 @@ class _GarminConnectDialogBodyState
             uid: widget.uid,
       );
       if (!mounted) return;
-      setState(() {
-        _bridgePriming = false;
-        _bridgeReady = true;
-        _bridgeError = null;
-      });
+      _state.value = const _GarminBridgeState(ready: true);
     } on Object catch (e) {
       if (!mounted) return;
-      setState(() {
-        _bridgePriming = false;
-        _bridgeReady = false;
-        _bridgeError = e.toString();
-      });
+      _state.value = _GarminBridgeState(error: e.toString());
     }
   }
 
   Future<void> _onConnect() async {
-    if (_submitting[0]) return;
+    if (_state.value.submitting) return;
 
     if (_useWebKitBridge) {
-      if (!_bridgeReady || _bridgeError != null) return;
-      _submitting[0] = true;
-      if (mounted) setState(() {});
+      if (!_state.value.ready || _state.value.error != null) return;
+      _state.value = _state.value.copyWith(submitting: true);
       final apiBase = ref
           .read(garminServiceProvider)
           .lastResolvedServerBaseUrlForWebBridge;
@@ -95,8 +120,7 @@ class _GarminConnectDialogBodyState
       return;
     }
 
-    _submitting[0] = true;
-    if (mounted) setState(() {});
+    _state.value = _state.value.copyWith(submitting: true);
 
     late Map<String, dynamic> result;
     try {
@@ -122,8 +146,7 @@ class _GarminConnectDialogBodyState
     } on Object catch (e) {
       result = {'success': false, 'message': 'Errore: $e'};
     } finally {
-      _submitting[0] = false;
-      if (mounted) setState(() {});
+      if (mounted) _state.value = _state.value.copyWith(submitting: false);
     }
 
     if (!mounted) return;
@@ -146,69 +169,75 @@ class _GarminConnectDialogBodyState
 
   @override
   Widget build(BuildContext context) {
-    final bridgeLoading = _useWebKitBridge && (_bridgePriming || !_bridgeReady);
-    final canTapConnect = !_submitting[0] &&
-        (!_useWebKitBridge || (_bridgeReady && _bridgeError == null));
+    return ValueListenableBuilder<_GarminBridgeState>(
+      valueListenable: _state,
+      builder: (context, s, _) {
+        final bridgeLoading = _useWebKitBridge && (s.priming || !s.ready);
+        final canTapConnect = !s.submitting &&
+            (!_useWebKitBridge || (s.ready && s.error == null));
 
-    return AlertDialog(
-      title: const Text('Collega Garmin Connect'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            kIsWeb
-                ? 'Su telefono, PWA installata o localhost il browser apre una pagina intermedia, '
-                      'poi il login Garmin nella stessa scheda. '
-                      'Su altri desktop può aprirsi una seconda finestra.'
-                : "Si aprirà il browser con la pagina di login Garmin. "
-                      'Accedi con le tue credenziali Garmin Connect e '
-                      "la connessione avverrà automaticamente.",
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          if (_bridgeError != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              _bridgeError!,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
-            ),
-          ],
-          if (bridgeLoading || _submitting[0]) ...[
-            const SizedBox(height: 20),
-            const Center(child: CircularProgressIndicator()),
-            const SizedBox(height: 8),
-            Center(
-              child: Text(
-                _bridgePriming
-                    ? 'Preparazione connessione…'
-                    : 'Login in corso — attendi…',
-                style: Theme.of(context).textTheme.bodySmall,
+        return AlertDialog(
+          title: const Text('Collega Garmin Connect'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                kIsWeb
+                    ? 'Su telefono, PWA installata o localhost il browser apre una pagina intermedia, '
+                          'poi il login Garmin nella stessa scheda. '
+                          'Su altri desktop può aprirsi una seconda finestra.'
+                    : "Si aprirà il browser con la pagina di login Garmin. "
+                          'Accedi con le tue credenziali Garmin Connect e '
+                          "la connessione avverrà automaticamente.",
+                style: Theme.of(context).textTheme.bodyMedium,
               ),
+              if (s.error != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  s.error!,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                ),
+              ],
+              if (bridgeLoading || s.submitting) ...[
+                const SizedBox(height: 20),
+                const Center(child: CircularProgressIndicator()),
+                const SizedBox(height: 8),
+                Center(
+                  child: Text(
+                    s.priming
+                        ? 'Preparazione connessione…'
+                        : 'Login in corso — attendi…',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed:
+                  s.submitting ? null : () => Navigator.of(context).pop(null),
+              child: const Text('Annulla'),
+            ),
+            FilledButton(
+              onPressed: canTapConnect ? _onConnect : null,
+              child: s.submitting && !_useWebKitBridge
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Apri login Garmin'),
             ),
           ],
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: _submitting[0] ? null : () => Navigator.of(context).pop(null),
-          child: const Text('Annulla'),
-        ),
-        FilledButton(
-          onPressed: canTapConnect ? _onConnect : null,
-          child: _submitting[0] && !_useWebKitBridge
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : const Text('Apri login Garmin'),
-        ),
-      ],
+        );
+      },
     );
   }
 }

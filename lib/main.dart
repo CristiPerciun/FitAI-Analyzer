@@ -7,10 +7,23 @@ import 'package:fitai_analyzer/services/strava_oauth_callback.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+// Conditional import: no-op su web (stub), reale su desktop/mobile (dart:io).
+import 'package:fitai_analyzer/services/webview_subprocess_stub.dart'
+    if (dart.library.io) 'package:fitai_analyzer/services/webview_subprocess_io.dart';
 
-void main() async {
-  print('FitAI Analyzer: Inizializzazione main.dart per test completata.');
+void main(List<String> args) async {
+  // Su desktop l'OAuth (Garmin/Strava) apre una WebView2 in un sottoprocesso
+  // dello stesso .exe che ri-esegue main(): qui lo intercettiamo e usciamo
+  // PRIMA di toccare i binding/Firebase, evitando il channel-error che faceva
+  // crashare l'auth. Deve stare PRIMA di WidgetsFlutterBinding.ensureInitialized()
+  // perché runWebViewTitleBarWidget inizializza i binding nella propria zona
+  // (runZonedGuarded): chiamarlo dopo causerebbe "Zone mismatch". Negli altri
+  // processi è un no-op (ritorna subito false senza inizializzare i binding).
+  if (handleWebViewTitleBarSubprocess(args)) {
+    return;
+  }
   WidgetsFlutterBinding.ensureInitialized();
+  print('FitAI Analyzer: Inizializzazione main.dart per test completata.');
   try {
     await dotenv.load(fileName: '.env');
   } catch (_) {

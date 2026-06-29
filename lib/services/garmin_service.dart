@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:fitai_analyzer/utils/comm_fitai_server_json_detail.dart';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart'
     show debugPrint, kDebugMode, kIsWeb, visibleForTesting;
@@ -401,6 +399,13 @@ class GarminService {
     return remote;
   }
 
+  /// ID token Firebase dell'utente loggato, aggiornato da AuthNotifier
+  /// (stream auth). Inviato come header SEPARATO `X-Firebase-ID-Token` per non
+  /// collidere con `Authorization: Bearer <GARMIN_SERVER_BEARER_TOKEN>`.
+  /// Il server lo verifica (verify_firebase_uid) per legare la richiesta all'uid.
+  static String? _firebaseIdToken;
+  static void setFirebaseIdToken(String? token) => _firebaseIdToken = token;
+
   Map<String, String> get _jsonHeaders {
     final h = <String, String>{'Content-Type': 'application/json'};
     if (dotenv.isInitialized) {
@@ -408,6 +413,10 @@ class GarminService {
       if (token != null && token.isNotEmpty) {
         h['Authorization'] = 'Bearer $token';
       }
+    }
+    final idToken = _firebaseIdToken;
+    if (idToken != null && idToken.isNotEmpty) {
+      h['X-Firebase-ID-Token'] = idToken;
     }
     return h;
   }
@@ -764,115 +773,6 @@ class GarminService {
     return doc.data()?['garmin_linked'] == true;
   }
 
-  Future<bool> isMiFitnessConnected(String uid) async {
-    final doc = await _firestore.collection('users').doc(uid).get();
-    return doc.data()?['mi_fitness_linked'] == true;
-  }
-
-  /// Collega Mi Fitness (credenziali una tantum sul server → solo token su Firestore).
-  /// [region]: `eu` (default) usa prima cluster EU/Zepp EU2; `us` per account non europei.
-  Future<Map<String, dynamic>> connectMiFitness({
-    required String uid,
-    required String email,
-    required String password,
-    String region = 'eu',
-  }) async {
-    final baseUrl = await _resolveBaseUrl();
-    final uri = Uri.parse('$baseUrl/mi-fitness/connect');
-    try {
-      final sw = Stopwatch()..start();
-      final response = await _http
-          .post(
-            uri,
-            headers: _jsonHeaders,
-            body: jsonEncode({
-              'uid': uid,
-              'email': email.trim(),
-              'password': password,
-              'region': region,
-            }),
-          )
-          .timeout(const Duration(seconds: 90));
-      _garminTraceHttpResponse(
-        label: 'mi-fitness/connect',
-        uri: uri,
-        method: 'POST',
-        response: response,
-        elapsedMs: sw.elapsedMilliseconds,
-        requestHeaders: _jsonHeaders,
-        omitBody: true,
-      );
-      final st = response.statusCode;
-      final data = _tryDecodeJsonObject(response.body) ?? {};
-      if (st == 200 && data['success'] == true) {
-        return {
-          'success': true,
-          'message': data['message']?.toString() ?? 'Mi Fitness collegato.',
-        };
-      }
-      final detail = commFitaiServerDetailOrMessage(data);
-      if (detail.isNotEmpty) {
-        return {'success': false, 'message': detail};
-      }
-      return {
-        'success': false,
-        'message': _connectFailureUserMessage(
-          statusCode: st,
-          baseUrl: baseUrl,
-          body: response.body,
-          serverDetail: null,
-        ),
-      };
-    } on TimeoutException catch (e) {
-      _invalidateBaseUrlCacheOnNetworkFailure(e);
-      return {
-        'success': false,
-        'message': 'Timeout durante connessione Mi Fitness.',
-      };
-    } on Exception catch (e) {
-      _invalidateBaseUrlCacheOnNetworkFailure(e);
-      return {'success': false, 'message': 'Errore di rete: $e'};
-    }
-  }
-
-  Future<Map<String, dynamic>> disconnectMiFitness({
-    required String uid,
-  }) async {
-    final baseUrl = await _resolveBaseUrl();
-    final uri = Uri.parse('$baseUrl/mi-fitness/disconnect');
-    try {
-      final sw = Stopwatch()..start();
-      final response = await _http
-          .post(uri, headers: _jsonHeaders, body: jsonEncode({'uid': uid}))
-          .timeout(const Duration(seconds: 30));
-      _garminTraceHttpResponse(
-        label: 'mi-fitness/disconnect',
-        uri: uri,
-        method: 'POST',
-        response: response,
-        elapsedMs: sw.elapsedMilliseconds,
-        requestHeaders: _jsonHeaders,
-      );
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      if (response.statusCode == 200 && data['success'] == true) {
-        return {
-          'success': true,
-          'message': data['message']?.toString() ?? 'Mi Fitness scollegato.',
-        };
-      }
-      return {
-        'success': false,
-        'message': data['detail']?.toString() ?? 'Disconnessione non riuscita.',
-      };
-    } on TimeoutException catch (e) {
-      _invalidateBaseUrlCacheOnNetworkFailure(e);
-      return {'success': false, 'message': 'Server non risponde. Riprova.'};
-    } on Exception catch (e) {
-      _invalidateBaseUrlCacheOnNetworkFailure(e);
-      return {'success': false, 'message': 'Errore di rete: $e'};
-    }
-  }
-
   /// Ultimo sync completo lato server (per `POST /sync/delta`).
   Future<Timestamp?> getLastSuccessfulSync(String uid) async {
     final doc = await _firestore.collection('users').doc(uid).get();
@@ -1112,7 +1012,7 @@ class GarminService {
   Future<Map<String, dynamic>> deltaSync({
     required String uid,
     Timestamp? lastSuccessfulSync,
-    List<String> sources = const ['garmin', 'strava', 'mi_fitness'],
+    List<String> sources = const ['garmin', 'strava'],
   }) async {
     final body = <String, dynamic>{'uid': uid, 'sources': sources};
     if (lastSuccessfulSync != null) {
@@ -1392,6 +1292,30 @@ class GarminService {
       return {'success': false};
     } on Object catch (_) {
       return {'success': false};
+    }
+  }
+
+  /// Chiede al server un access token Strava fresco: il server fa il refresh con
+  /// il CLIENT_SECRET (che non transita mai dal client). Usato per le letture
+  /// dirette del dettaglio attivita'. POST /strava/access-token.
+  Future<String?> fetchStravaAccessTokenFromServer(String uid) async {
+    final baseUrl = await _resolveBaseUrl();
+    final uri = Uri.parse('$baseUrl/strava/access-token');
+    try {
+      final response = await _http
+          .post(uri, headers: _jsonHeaders, body: jsonEncode({'uid': uid}))
+          .timeout(const Duration(seconds: 30));
+      final data = _tryDecodeJsonObject(response.body);
+      if (response.statusCode == 200 &&
+          data != null &&
+          data['success'] == true) {
+        final t = data['access_token'];
+        return t is String && t.isNotEmpty ? t : null;
+      }
+      return null;
+    } on Object catch (e) {
+      _invalidateBaseUrlCacheOnNetworkFailure(e);
+      return null;
     }
   }
 
