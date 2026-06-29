@@ -1,5 +1,8 @@
 import 'package:fitai_analyzer/providers/today_longevity_metrics_provider.dart';
 import 'package:fitai_analyzer/theme/app_card_theme.dart';
+import 'package:fitai_analyzer/theme/app_theme.dart';
+import 'package:fitai_analyzer/ui/widgets/design/design.dart';
+import 'package:fitai_analyzer/ui/widgets/nature_icon.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -14,129 +17,85 @@ class LongevityHeader extends ConsumerWidget {
 
     final theme = Theme.of(context);
     final cardTheme = theme.extension<AppCardTheme>();
+    final muted =
+        cardTheme?.contentColorMuted ??
+        theme.colorScheme.onPrimary.withValues(alpha: 0.9);
 
-    return Container(
-      width: double.infinity,
-      decoration:
-          cardTheme?.gradientDecoration ??
-          BoxDecoration(
-            color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
-            borderRadius: BorderRadius.circular(16),
-          ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.today,
-                  color: cardTheme?.contentColor ?? theme.colorScheme.primary,
-                  size: 24,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Oggi',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color:
-                        cardTheme?.contentColor ?? theme.colorScheme.onSurface,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Carico di Longevità',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color:
-                    cardTheme?.contentColorMuted ??
-                    theme.colorScheme.onSurfaceVariant,
+    return FitHeroCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              NatureIcon(
+                NatureIcons.sun,
+                size: 22,
+                color: cardTheme?.contentColor ?? theme.colorScheme.onSurface,
+                glow: true,
               ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _MetricChip(
-                    icon: Icons.directions_walk,
-                    label: 'Passi',
-                    value: m.steps > 0 ? m.steps.toStringAsFixed(0) : '—',
-                    color: cardTheme?.contentColor ?? theme.colorScheme.primary,
-                  ),
+              const SizedBox(width: 8),
+              Text(
+                'OGGI',
+                style: AppText.sectionTitle(
+                  fontSize: 13,
+                  color: cardTheme?.contentColor ?? theme.colorScheme.onSurface,
                 ),
-                Expanded(
-                  child: _MetricChip(
-                    icon: Icons.local_fire_department,
-                    label: 'Bruciate',
-                    value: m.caloriesBurned > 0
-                        ? '${m.caloriesBurned.toStringAsFixed(0)} kcal'
-                        : '—',
-                    color: cardTheme?.contentColor ?? theme.colorScheme.primary,
-                  ),
+              ),
+              const Spacer(),
+              NatureIcon(
+                NatureIcons.percorso,
+                size: 54,
+                color: cardTheme?.contentColor ?? theme.colorScheme.onSurface,
+                glow: true,
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Carico di Longevità',
+            style: theme.textTheme.bodySmall?.copyWith(color: muted),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: FitMetricDisplay(
+                  align: CrossAxisAlignment.center,
+                  onHeroSurface: true,
+                  valueFontSize: 22,
+                  value: m.steps > 0 ? m.steps.toStringAsFixed(0) : '—',
+                  caption: 'Passi',
                 ),
-                Expanded(
-                  child: _MetricChip(
-                    icon: Icons.restaurant,
-                    label: 'Assunte',
-                    value: m.caloriesIntake > 0
-                        ? '${m.caloriesIntake.toStringAsFixed(0)} kcal'
-                        : '—',
-                    color: cardTheme?.contentColor ?? theme.colorScheme.primary,
-                  ),
+              ),
+              Expanded(
+                child: FitMetricDisplay(
+                  align: CrossAxisAlignment.center,
+                  onHeroSurface: true,
+                  valueFontSize: 22,
+                  value: m.caloriesBurned > 0
+                      ? m.caloriesBurned.toStringAsFixed(0)
+                      : '—',
+                  unit: m.caloriesBurned > 0 ? 'kcal' : null,
+                  caption: 'Bruciate',
                 ),
-              ],
-            ),
-          ],
-        ),
+              ),
+              Expanded(
+                child: FitMetricDisplay(
+                  align: CrossAxisAlignment.center,
+                  onHeroSurface: true,
+                  valueFontSize: 22,
+                  value: m.caloriesIntake > 0
+                      ? m.caloriesIntake.toStringAsFixed(0)
+                      : '—',
+                  unit: m.caloriesIntake > 0 ? 'kcal' : null,
+                  caption: 'Assunte',
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
-    );
-  }
-}
-
-class _MetricChip extends StatelessWidget {
-  const _MetricChip({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 16, color: color),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: color.withValues(alpha: 0.9),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w600,
-            color: color,
-          ),
-        ),
-      ],
     );
   }
 }

@@ -18,9 +18,7 @@ Future<String?> showManualEntryDialog(BuildContext context) {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(ctx).bottom,
-        ),
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
         child: const _ManualEntryWidget(
           presentation: _ManualEntryPresentation.sheet,
         ),
@@ -124,7 +122,9 @@ class _ManualEntryWidgetState extends State<_ManualEntryWidget> {
           onPressed: _submit,
           style: ElevatedButton.styleFrom(
             backgroundColor: Theme.of(context).primaryColor,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
             padding: const EdgeInsets.symmetric(horizontal: 20),
           ),
           child: const Text('Analizza', style: TextStyle(color: Colors.white)),
@@ -172,7 +172,9 @@ class _ManualEntryWidgetState extends State<_ManualEntryWidget> {
           onPressed: _submit,
           style: ElevatedButton.styleFrom(
             backgroundColor: Theme.of(context).primaryColor,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
             padding: const EdgeInsets.symmetric(horizontal: 20),
           ),
           child: const Text('Analizza', style: TextStyle(color: Colors.white)),

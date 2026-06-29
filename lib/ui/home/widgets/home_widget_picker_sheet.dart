@@ -12,7 +12,9 @@ Future<void> showHomeWidgetPickerSheet(BuildContext context, WidgetRef ref) {
       return SafeArea(
         child: Consumer(
           builder: (context, ref, _) {
-            final selected = ref.watch(homeWidgetPreferenceProvider).valueOrNull;
+            final selected = ref
+                .watch(homeWidgetPreferenceProvider)
+                .valueOrNull;
             final maxListHeight = MediaQuery.sizeOf(context).height * 0.45;
 
             return Padding(
@@ -24,15 +26,15 @@ Future<void> showHomeWidgetPickerSheet(BuildContext context, WidgetRef ref) {
                   Text(
                     'Widget in Home',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     'Scegli quale grafico o calendario mostrare sotto gli obiettivi giornalieri.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                   if (selected != null) ...[
                     const SizedBox(height: 12),
@@ -50,10 +52,9 @@ Future<void> showHomeWidgetPickerSheet(BuildContext context, WidgetRef ref) {
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Theme.of(context).colorScheme.error,
                         side: BorderSide(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .error
-                              .withValues(alpha: 0.5),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.error.withValues(alpha: 0.5),
                         ),
                       ),
                     ),

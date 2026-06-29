@@ -54,7 +54,9 @@ class HomeWidgetAddCard extends StatelessWidget {
     return HomeActionCard(
       onTap: onTap,
       icon: hasSelection ? Icons.swap_horiz : Icons.add,
-      semanticLabel: hasSelection ? 'Cambia widget Home' : 'Aggiungi widget Home',
+      semanticLabel: hasSelection
+          ? 'Cambia widget Home'
+          : 'Aggiungi widget Home',
       trailing: trailing,
     );
   }

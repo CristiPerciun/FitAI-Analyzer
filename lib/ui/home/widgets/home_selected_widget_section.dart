@@ -7,6 +7,7 @@ import 'package:fitai_analyzer/ui/alimentazione/widgets/caloric_deficit_bar_char
 import 'package:fitai_analyzer/ui/dashboard/widgets/activity_burn_bar_chart_card.dart';
 import 'package:fitai_analyzer/ui/dashboard/widgets/activity_calendar_card.dart';
 import 'package:fitai_analyzer/ui/widgets/NutritionChartCard.dart';
+import 'package:fitai_analyzer/ui/widgets/design/design.dart';
 import 'package:fitai_analyzer/ui/widgets/weekly_macro_stacked_bar_chart.dart';
 import 'package:fitai_analyzer/utils/nutrition_macro_colors.dart';
 import 'package:flutter/material.dart';
@@ -90,15 +91,17 @@ class _HomeNutritionChartSection extends ConsumerWidget {
     if (nutritionGoal == null) {
       return _HomeWidgetPlaceholder(
         icon: HomeWidgetType.nutritionRings.icon,
-        message: 'Configura l\'obiettivo nutrizione in Alimentazione per vedere questo grafico.',
+        message:
+            'Configura l\'obiettivo nutrizione in Alimentazione per vedere questo grafico.',
       );
     }
 
     final planAi = ref.watch(nutritionMealPlanAiStreamProvider).valueOrNull;
     final aiMacroGiornalieri = planAi?.macroGiornalieri;
-    final obiettivoKcal = (_macroNum(aiMacroGiornalieri, ['kcal', 'calories']) ??
-            nutritionGoal.calorieTarget)
-        .round();
+    final obiettivoKcal =
+        (_macroNum(aiMacroGiornalieri, ['kcal', 'calories']) ??
+                nutritionGoal.calorieTarget)
+            .round();
     final chartAsync = ref.watch(nutritionChartDataProvider);
     final profile = ref.watch(userProfileNotifierProvider).profile;
 
@@ -116,22 +119,28 @@ class _HomeNutritionChartSection extends ConsumerWidget {
           NutrientGoal(
             title: 'Carboidrati',
             unit: 'g',
-            target: _macroNum(aiMacroGiornalieri, ['carboidrati_g', 'carbs_g']) ?? 250.0,
+            target:
+                _macroNum(aiMacroGiornalieri, ['carboidrati_g', 'carbs_g']) ??
+                250.0,
             color: NutritionMacroColors.carbs,
             weeklyData: chartData.carbsData,
           ),
           NutrientGoal(
             title: 'Proteine',
             unit: 'g',
-            target: _macroNum(aiMacroGiornalieri, ['proteine_g', 'protein_g']) ??
-                (profile != null ? nutritionGoal.proteinGPerKg * profile.weightKg : 150.0),
+            target:
+                _macroNum(aiMacroGiornalieri, ['proteine_g', 'protein_g']) ??
+                (profile != null
+                    ? nutritionGoal.proteinGPerKg * profile.weightKg
+                    : 150.0),
             color: NutritionMacroColors.protein,
             weeklyData: chartData.proteinData,
           ),
           NutrientGoal(
             title: 'Grassi',
             unit: 'g',
-            target: _macroNum(aiMacroGiornalieri, ['grassi_g', 'fat_g']) ?? 70.0,
+            target:
+                _macroNum(aiMacroGiornalieri, ['grassi_g', 'fat_g']) ?? 70.0,
             color: NutritionMacroColors.fat,
             weeklyData: chartData.fatData,
           ),
@@ -152,10 +161,7 @@ class _HomeNutritionChartSection extends ConsumerWidget {
 }
 
 class _HomeWidgetPlaceholder extends StatelessWidget {
-  const _HomeWidgetPlaceholder({
-    required this.icon,
-    required this.message,
-  });
+  const _HomeWidgetPlaceholder({required this.icon, required this.message});
 
   final IconData icon;
   final String message;
@@ -164,33 +170,21 @@ class _HomeWidgetPlaceholder extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Material(
-      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: theme.colorScheme.outline.withValues(alpha: 0.25),
-          ),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: theme.colorScheme.primary),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                message,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+    return FitSoftCard(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: theme.colorScheme.primary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              message,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

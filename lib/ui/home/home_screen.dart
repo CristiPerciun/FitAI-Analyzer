@@ -1,12 +1,13 @@
 import 'package:fitai_analyzer/models/longevity_home_package.dart';
-import 'package:fitai_analyzer/models/home_longevity_plan_day.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/garmin_sync_notifier.dart'
     show GarminSyncState, garminSyncNotifierProvider;
 import 'package:fitai_analyzer/providers/home_widget_preference_provider.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/services/nutrition_service.dart';
+import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:fitai_analyzer/utils/boot_log.dart';
+import 'package:fitai_analyzer/utils/date_utils.dart';
 import 'package:fitai_analyzer/utils/meal_constants.dart';
 import 'package:fitai_analyzer/ui/alimentazione/meal_capture_flow.dart';
 import 'package:fitai_analyzer/ui/home/widgets/garmin_daily_stats.dart';
@@ -20,6 +21,7 @@ import 'package:fitai_analyzer/ui/home/widgets/pillar_grid.dart';
 import 'package:fitai_analyzer/ui/home/widgets/weekly_sprint_card.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/ai_backend_key_gate.dart';
+import 'package:fitai_analyzer/ui/widgets/nature_icon.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -47,50 +49,47 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<AsyncValue<LongevityHomePackage>>(
-      longevityHomePackageProvider,
-      (prev, next) {
-        final n =
-            'loading=${next.isLoading} data=${next.hasValue} err=${next.hasError}';
-        if (_lastPkgListenSig == n) return;
-        _lastPkgListenSig = n;
-        final p = prev == null
-            ? 'null'
-            : 'loading=${prev.isLoading} data=${prev.hasValue} err=${prev.hasError}';
-        bootLog('HomeScreen: listener pacchetto $p → $n');
-      },
-    );
+    ref.listen<AsyncValue<LongevityHomePackage>>(longevityHomePackageProvider, (
+      prev,
+      next,
+    ) {
+      final n =
+          'loading=${next.isLoading} data=${next.hasValue} err=${next.hasError}';
+      if (_lastPkgListenSig == n) return;
+      _lastPkgListenSig = n;
+      final p = prev == null
+          ? 'null'
+          : 'loading=${prev.isLoading} data=${prev.hasValue} err=${prev.hasError}';
+      bootLog('HomeScreen: listener pacchetto $p → $n');
+    });
 
-    ref.listen<GarminSyncState>(
-      garminSyncNotifierProvider,
-      (prev, next) {
-        if (!context.mounted) return;
-        final prevErr = prev?.error;
-        final nextErr = next.error;
-        if (nextErr != null && nextErr != prevErr) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Sync Garmin non riuscita: $nextErr'),
-              backgroundColor: Theme.of(context).colorScheme.error,
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-        } else if (prev != null &&
-            prev.isSyncing &&
-            !next.isSyncing &&
-            next.error == null &&
-            (next.trigger == 'home_pull_to_refresh')) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Dati Garmin aggiornati'),
-              behavior: SnackBarBehavior.floating,
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-      },
-    );
+    ref.listen<GarminSyncState>(garminSyncNotifierProvider, (prev, next) {
+      if (!context.mounted) return;
+      final prevErr = prev?.error;
+      final nextErr = next.error;
+      if (nextErr != null && nextErr != prevErr) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Sync Garmin non riuscita: $nextErr'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      } else if (prev != null &&
+          prev.isSyncing &&
+          !next.isSyncing &&
+          next.error == null &&
+          (next.trigger == 'home_pull_to_refresh')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Dati Garmin aggiornati'),
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    });
 
     final uid = ref.watch(authNotifierProvider).user?.uid;
     final packageAsync = ref.watch(longevityHomePackageProvider);
@@ -100,8 +99,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final weeklySprint = planDay?.weeklySprint;
     final strategicAdvice = planDay?.strategicAdvice;
     final isLoadingPlan = ref.watch(_longevityPlanLoadingProvider);
-    final isGarminSyncing =
-        ref.watch(garminSyncNotifierProvider.select((s) => s.isSyncing));
+    final isGarminSyncing = ref.watch(
+      garminSyncNotifierProvider.select((s) => s.isSyncing),
+    );
     final homeWidgetAsync = ref.watch(homeWidgetPreferenceProvider);
     final homeWidgetType = homeWidgetAsync.valueOrNull;
     final homeWidgetReady = !homeWidgetAsync.isLoading;
@@ -128,95 +128,141 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     'UI elenco — dati pacchetto longevità (no spinner centrale)',
                   );
                   return CustomScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  slivers: [
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            const LongevityHeader(),
-                            const SizedBox(height: 24),
-                            Text(
-                              'Obiettivi giornalieri',
-                              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                            ),
-                            if (uid != null &&
-                                MealConstants.isMainMealWindow(DateTime.now()) &&
-                                !_hasMealForCurrentSlot(ref, localCalendarDateKey())) ...[
-                              const SizedBox(height: 10),
-                              HomeActionCard(
-                                onTap: () => _onAddMealFromHome(context),
-                                label: 'Aggiungi pasto',
-                                semanticLabel: 'Aggiungi pasto',
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    slivers: [
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const LongevityHeader(),
+                              const SizedBox(height: 24),
+                              Text(
+                                'Obiettivi giornalieri',
+                                style: Theme.of(context).textTheme.titleSmall
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                               ),
-                            ],
-                            const SizedBox(height: 12),
-                            const Text(
-                              'ciao cristian',
-                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 12),
-                            PillarGrid(
-                              isLoading: isLoadingPlan,
-                              pillarContents: dailyGoals.isEmpty ? null : dailyGoals,
-                              pillarCompletion: pillarCompletion,
-                              onGenerateTap: () => _onGeneratePlan(context),
-                              onPillarCompletionAnswer: (pillar, completed) =>
-                                  _onPillarCompletion(context, ref, pillar, completed),
-                            ),
-                            if (homeWidgetReady && homeWidgetType != null) ...[
+                              if (uid != null &&
+                                  MealConstants.isMainMealWindow(
+                                    DateTime.now(),
+                                  ) &&
+                                  !_hasMealForCurrentSlot(ref, dateKey())) ...[
+                                const SizedBox(height: 10),
+                                HomeActionCard(
+                                  onTap: () => _onAddMealFromHome(context),
+                                  label: 'Aggiungi pasto',
+                                  semanticLabel: 'Aggiungi pasto',
+                                ),
+                              ],
                               const SizedBox(height: 12),
-                              HomeSelectedWidgetSection(
-                                type: homeWidgetType,
-                                onRemove: () => ref
-                                    .read(homeWidgetPreferenceProvider.notifier)
-                                    .clearWidget(),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      'ciao cristian',
+                                      style: AppText.script(
+                                        fontSize: 30,
+                                        fontWeight: FontWeight.w600,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.primary,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  NatureIcon(
+                                    NatureIcons.sun,
+                                    size: 22,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.secondary,
+                                    glow: true,
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              PillarGrid(
+                                isLoading: isLoadingPlan,
+                                pillarContents: dailyGoals.isEmpty
+                                    ? null
+                                    : dailyGoals,
+                                pillarCompletion: pillarCompletion,
+                                onGenerateTap: () => _onGeneratePlan(context),
+                                onPillarCompletionAnswer: (pillar, completed) =>
+                                    _onPillarCompletion(
+                                      context,
+                                      ref,
+                                      pillar,
+                                      completed,
+                                    ),
+                              ),
+                              if (homeWidgetReady &&
+                                  homeWidgetType != null) ...[
+                                const SizedBox(height: 12),
+                                HomeSelectedWidgetSection(
+                                  type: homeWidgetType,
+                                  onRemove: () => ref
+                                      .read(
+                                        homeWidgetPreferenceProvider.notifier,
+                                      )
+                                      .clearWidget(),
+                                ),
+                              ],
+                              const SizedBox(height: 12),
+                              HomeWidgetAddCard(
+                                hasSelection:
+                                    homeWidgetReady && homeWidgetType != null,
+                                onTap: () =>
+                                    showHomeWidgetPickerSheet(context, ref),
+                                onRemove:
+                                    homeWidgetReady && homeWidgetType != null
+                                    ? () => ref
+                                          .read(
+                                            homeWidgetPreferenceProvider
+                                                .notifier,
+                                          )
+                                          .clearWidget()
+                                    : null,
+                              ),
+                              const SizedBox(height: 16),
+                              const GarminDailyStats(),
+                              const SizedBox(height: 24),
+                              Text(
+                                'Weekly & Long-Term',
+                                style: Theme.of(context).textTheme.titleSmall
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                              const SizedBox(height: 12),
+                              WeeklySprintCard(
+                                content: weeklySprint,
+                                isLoading: isLoadingPlan,
+                                onGenerateTap: () => _onGeneratePlan(context),
+                              ),
+                              const SizedBox(height: 24),
+                              LongevityPathSection(
+                                baseline: package.baseline,
+                                strategicAdvice: strategicAdvice,
+                                isLoading: isLoadingPlan,
+                                onGenerateTap: () => _onGeneratePlan(context),
                               ),
                             ],
-                            const SizedBox(height: 12),
-                            HomeWidgetAddCard(
-                              hasSelection: homeWidgetReady && homeWidgetType != null,
-                              onTap: () => showHomeWidgetPickerSheet(context, ref),
-                              onRemove: homeWidgetReady && homeWidgetType != null
-                                  ? () => ref
-                                      .read(homeWidgetPreferenceProvider.notifier)
-                                      .clearWidget()
-                                  : null,
-                            ),
-                            const SizedBox(height: 16),
-                            const GarminDailyStats(),
-                            const SizedBox(height: 24),
-                            Text(
-                              'Weekly & Long-Term',
-                              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                            ),
-                            const SizedBox(height: 12),
-                            WeeklySprintCard(
-                              content: weeklySprint,
-                              isLoading: isLoadingPlan,
-                              onGenerateTap: () => _onGeneratePlan(context),
-                            ),
-                            const SizedBox(height: 24),
-                            LongevityPathSection(
-                              baseline: package.baseline,
-                              strategicAdvice: strategicAdvice,
-                              isLoading: isLoadingPlan,
-                              onGenerateTap: () => _onGeneratePlan(context),
-                            ),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                );
+                    ],
+                  );
                 },
                 loading: () {
                   _traceHomeUi(
@@ -224,39 +270,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     '(può comparire dopo il Launch se il FutureProvider si è reinizializzato)',
                   );
                   return ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  children: const [
-                    SizedBox(height: 220),
-                    Center(child: CircularProgressIndicator()),
-                  ],
-                );
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: const [
+                      SizedBox(height: 220),
+                      Center(child: CircularProgressIndicator()),
+                    ],
+                  );
                 },
                 error: (e, _) {
                   _traceHomeUi('UI errore pacchetto: $e');
                   return ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        children: [
-                          const SizedBox(height: 120),
-                          Icon(
-                            Icons.error_outline,
-                            size: 48,
-                            color: Theme.of(context).colorScheme.error,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            e.toString(),
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                        ],
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          children: [
+                            const SizedBox(height: 120),
+                            Icon(
+                              Icons.error_outline,
+                              size: 48,
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              e.toString(),
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                );
+                    ],
+                  );
                 },
               ),
             ),
@@ -289,9 +335,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
     if (!context.mounted) return;
 
-    final today = localCalendarDateKey();
-    final hasRecorded =
-        await ref.read(nutritionServiceProvider).hasAnyPillarGoalCompletion(uid, today);
+    final today = dateKey();
+    final hasRecorded = await ref
+        .read(nutritionServiceProvider)
+        .hasAnyPillarGoalCompletion(uid, today);
     if (hasRecorded && context.mounted) {
       final confirm = await showDialog<bool>(
         context: context,
@@ -336,14 +383,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   ) async {
     final uid = ref.read(authNotifierProvider).user?.uid;
     if (uid == null) return;
-    final dateStr = localCalendarDateKey();
+    final dateStr = dateKey();
     try {
-      await ref.read(nutritionServiceProvider).setPillarGoalCompletion(
-            uid,
-            dateStr,
-            pillar.name,
-            completed,
-          );
+      await ref
+          .read(nutritionServiceProvider)
+          .setPillarGoalCompletion(uid, dateStr, pillar.name, completed);
     } catch (e) {
       if (context.mounted) {
         showErrorDialog(context, 'Salvataggio non riuscito: $e');

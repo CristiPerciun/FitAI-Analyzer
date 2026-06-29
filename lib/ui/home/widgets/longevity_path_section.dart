@@ -1,4 +1,5 @@
 import 'package:fitai_analyzer/models/baseline_profile_model.dart';
+import 'package:fitai_analyzer/ui/widgets/design/design.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
@@ -13,34 +14,45 @@ class LongevityPathSection extends StatelessWidget {
   });
 
   final BaselineProfileModel? baseline;
+
   /// Consiglio strategico a lungo termine generato dall'AI.
   final String? strategicAdvice;
   final bool isLoading;
   final VoidCallback? onGenerateTap;
 
   static const _monthLabels = [
-    'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu',
-    'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic',
+    'Gen',
+    'Feb',
+    'Mar',
+    'Apr',
+    'Mag',
+    'Giu',
+    'Lug',
+    'Ago',
+    'Set',
+    'Ott',
+    'Nov',
+    'Dic',
   ];
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final trends = baseline?.monthlyTrends ?? [];
-    final hasData = trends.any((m) =>
-        ((m['total_km'] as num?)?.toDouble() ?? 0) > 0 ||
-        (m['workouts'] as int? ?? 0) > 0);
+    final hasData = trends.any(
+      (m) =>
+          ((m['total_km'] as num?)?.toDouble() ?? 0) > 0 ||
+          (m['workouts'] as int? ?? 0) > 0,
+    );
+    final hasAdvice =
+        strategicAdvice != null && strategicAdvice!.trim().isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Icon(
-              Icons.trending_up,
-              size: 20,
-              color: theme.colorScheme.primary,
-            ),
+            Icon(Icons.trending_up, size: 20, color: theme.colorScheme.primary),
             const SizedBox(width: 8),
             Text(
               'Longevity Path',
@@ -60,12 +72,7 @@ class LongevityPathSection extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         if (isLoading)
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(12),
-            ),
+          FitSoftCard(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -87,17 +94,8 @@ class LongevityPathSection extends StatelessWidget {
               ],
             ),
           )
-        else if (strategicAdvice != null && strategicAdvice!.trim().isNotEmpty) ...[
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primaryContainer.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: theme.colorScheme.primary.withValues(alpha: 0.3),
-              ),
-            ),
+        else if (hasAdvice)
+          FitSoftCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -109,220 +107,132 @@ class LongevityPathSection extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  strategicAdvice!,
-                  style: theme.textTheme.bodyMedium,
-                ),
+                Text(strategicAdvice!, style: theme.textTheme.bodyMedium),
+                if (hasData) ...[
+                  const SizedBox(height: 20),
+                  Text(
+                    'Trend mensile',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(height: 140, child: _buildTrendChart(theme, trends)),
+                ],
               ],
             ),
-          ),
-          if (hasData) ...[
-            const SizedBox(height: 16),
-            Text(
-              'Trend mensile',
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 140,
-              child: BarChart(
-                BarChartData(
-                  alignment: BarChartAlignment.spaceAround,
-                  maxY: _maxY(trends),
-                  barTouchData: BarTouchData(enabled: false),
-                  titlesData: FlTitlesData(
-                    show: true,
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        getTitlesWidget: (value, meta) {
-                          final i = value.toInt();
-                          if (i >= 0 && i < trends.length) {
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                _monthLabels[i % 12],
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                  fontSize: 10,
-                                ),
-                              ),
-                            );
-                          }
-                          return const SizedBox.shrink();
-                        },
-                        reservedSize: 24,
-                        interval: 1,
-                      ),
-                    ),
-                    leftTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        getTitlesWidget: (value, meta) => Text(
-                          value.toInt().toString(),
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                            fontSize: 9,
-                          ),
-                        ),
-                        reservedSize: 24,
-                        interval: _maxY(trends) / 4,
-                      ),
-                    ),
-                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  ),
-                  gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: false,
-                    horizontalInterval: _maxY(trends) / 4,
-                    getDrawingHorizontalLine: (value) => FlLine(
-                      color: theme.colorScheme.outline.withValues(alpha: 0.2),
-                      strokeWidth: 1,
-                    ),
-                  ),
-                  borderData: FlBorderData(show: false),
-                  barGroups: trends.asMap().entries.map((e) {
-                    final km = (e.value['total_km'] as num?)?.toDouble() ?? 0;
-                    final workouts = e.value['workouts'] as int? ?? 0;
-                    final y = km > 0 ? km : (workouts * 5.0);
-                    return BarChartGroupData(
-                      x: e.key,
-                      barRods: [
-                        BarChartRodData(
-                          toY: y,
-                          color: theme.colorScheme.primary.withValues(alpha: 0.7),
-                          width: 10,
-                          borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
-                        ),
-                      ],
-                      showingTooltipIndicators: [],
-                    );
-                  }).toList(),
-                ),
-                duration: const Duration(milliseconds: 300),
-              ),
-            ),
-          ],
-        ]
+          )
         else if (!hasData)
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: InkWell(
-              onTap: onGenerateTap,
-              borderRadius: BorderRadius.circular(12),
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    onGenerateTap != null
-                        ? 'Tocca per generare il piano di longevità'
-                        : 'Sincronizza Strava e registra pasti per vedere il trend annuale.',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                      fontStyle: onGenerateTap != null ? FontStyle.italic : null,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
+          FitSoftCard(
+            onTap: onGenerateTap,
+            child: Center(
+              child: Text(
+                onGenerateTap != null
+                    ? 'Tocca per generare il piano di longevità'
+                    : 'Sincronizza Strava e registra pasti per vedere il trend annuale.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontStyle: onGenerateTap != null ? FontStyle.italic : null,
                 ),
+                textAlign: TextAlign.center,
               ),
             ),
           )
         else
-          SizedBox(
-            height: 160,
-            child: BarChart(
-              BarChartData(
-                alignment: BarChartAlignment.spaceAround,
-                maxY: _maxY(trends),
-                barTouchData: BarTouchData(enabled: false),
-                titlesData: FlTitlesData(
-                  show: true,
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      getTitlesWidget: (value, meta) {
-                        final i = value.toInt();
-                        if (i >= 0 && i < trends.length) {
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Text(
-                              _monthLabels[i % 12],
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          );
-                        }
-                        return const SizedBox.shrink();
-                      },
-                      reservedSize: 28,
-                      interval: 1,
-                    ),
-                  ),
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      getTitlesWidget: (value, meta) {
-                        return Text(
-                          value.toInt().toString(),
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                            fontSize: 10,
-                          ),
-                        );
-                      },
-                      reservedSize: 28,
-                      interval: _maxY(trends) / 4,
-                    ),
-                  ),
-                  topTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  rightTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                ),
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  horizontalInterval: _maxY(trends) / 4,
-                  getDrawingHorizontalLine: (value) => FlLine(
-                    color: theme.colorScheme.outline.withValues(alpha: 0.2),
-                    strokeWidth: 1,
-                  ),
-                ),
-                borderData: FlBorderData(show: false),
-                barGroups: trends.asMap().entries.map((e) {
-                  final km = (e.value['total_km'] as num?)?.toDouble() ?? 0;
-                  final workouts = e.value['workouts'] as int? ?? 0;
-                  final y = km > 0 ? km : (workouts * 5.0); // fallback: 5 per workout
-                  return BarChartGroupData(
-                    x: e.key,
-                    barRods: [
-                      BarChartRodData(
-                        toY: y,
-                        color: theme.colorScheme.primary.withValues(alpha: 0.7),
-                        width: 12,
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(4),
-                        ),
-                      ),
-                    ],
-                    showingTooltipIndicators: [],
-                  );
-                }).toList(),
-              ),
-              duration: const Duration(milliseconds: 300),
+          FitSoftCard(
+            child: SizedBox(
+              height: 160,
+              child: _buildTrendChart(theme, trends),
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildTrendChart(ThemeData theme, List<Map<String, dynamic>> trends) {
+    final maxY = _maxY(trends);
+    return BarChart(
+      BarChartData(
+        alignment: BarChartAlignment.spaceAround,
+        maxY: maxY,
+        barTouchData: BarTouchData(enabled: false),
+        titlesData: FlTitlesData(
+          show: true,
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              getTitlesWidget: (value, meta) {
+                final i = value.toInt();
+                if (i >= 0 && i < trends.length) {
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      _monthLabels[i % 12],
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontSize: 10,
+                      ),
+                    ),
+                  );
+                }
+                return const SizedBox.shrink();
+              },
+              reservedSize: 24,
+              interval: 1,
+            ),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              getTitlesWidget: (value, meta) => Text(
+                value.toInt().toString(),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontSize: 9,
+                ),
+              ),
+              reservedSize: 24,
+              interval: maxY / 4,
+            ),
+          ),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+        ),
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: maxY / 4,
+          getDrawingHorizontalLine: (value) => FlLine(
+            color: theme.colorScheme.outline.withValues(alpha: 0.2),
+            strokeWidth: 1,
+          ),
+        ),
+        borderData: FlBorderData(show: false),
+        barGroups: trends.asMap().entries.map((e) {
+          final km = (e.value['total_km'] as num?)?.toDouble() ?? 0;
+          final workouts = e.value['workouts'] as int? ?? 0;
+          final y = km > 0 ? km : (workouts * 5.0);
+          return BarChartGroupData(
+            x: e.key,
+            barRods: [
+              BarChartRodData(
+                toY: y,
+                color: theme.colorScheme.primary.withValues(alpha: 0.7),
+                width: 12,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(4),
+                ),
+              ),
+            ],
+            showingTooltipIndicators: [],
+          );
+        }).toList(),
+      ),
+      duration: const Duration(milliseconds: 300),
     );
   }
 

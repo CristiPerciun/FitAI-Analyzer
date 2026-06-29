@@ -1,18 +1,56 @@
+import 'package:fitai_analyzer/theme/app_theme.dart';
+import 'package:fitai_analyzer/ui/widgets/design/design.dart';
+import 'package:fitai_analyzer/ui/widgets/nature_icon.dart';
 import 'package:flutter/material.dart';
 
 /// Griglia AI 2x2 con i 4 quadranti della longevità (Peter Attia).
 enum LongevityPillar {
-  cuore('Cuore', 'Zona 2 / VO2 Max', Icons.favorite, Color(0xFFE53935)),
-  forza('Forza', 'Resistenza muscolare', Icons.fitness_center, Color(0xFF7B1FA2)),
-  alimentazione('Alimentazione', 'Analisi pasti Gemini', Icons.restaurant, Color(0xFF388E3C)),
-  recupero('Recupero', 'HRV e Sonno', Icons.bedtime, Color(0xFF1976D2));
+  // Toni natura NaturaVita: distinti tra loro e con buon glow in tema scuro.
+  // [asset] = icona SVG line-art (stile foto), sostituisce l'icona Material.
+  cuore(
+    'Cuore',
+    'Zona 2 / VO2 Max',
+    Icons.favorite,
+    Color(0xFFE5736B), // coral
+    NatureIcons.heart,
+  ),
+  forza(
+    'Forza',
+    'Resistenza muscolare',
+    Icons.fitness_center,
+    Color(0xFFC9A227), // amber-gold
+    NatureIcons.strength,
+  ),
+  alimentazione(
+    'Alimentazione',
+    'Analisi pasti Gemini',
+    Icons.restaurant,
+    Color(0xFF6FB36F), // leaf green
+    NatureIcons.nutrition,
+  ),
+  recupero(
+    'Recupero',
+    'HRV e Sonno',
+    Icons.bedtime,
+    Color(0xFF5FB6C9), // lagoon teal
+    NatureIcons.recovery,
+  );
 
-  const LongevityPillar(this.title, this.subtitle, this.icon, this.color);
+  const LongevityPillar(
+    this.title,
+    this.subtitle,
+    this.icon,
+    this.color,
+    this.asset,
+  );
 
   final String title;
   final String subtitle;
   final IconData icon;
   final Color color;
+
+  /// Asset SVG line-art (stile NaturaVita).
+  final String asset;
 }
 
 /// Griglia 2x2 delle card pilastro.
@@ -40,7 +78,7 @@ class PillarGrid extends StatelessWidget {
 
   /// Dopo Sì/No nel dialog (solo se `hasContent`).
   final Future<void> Function(LongevityPillar pillar, bool completed)?
-      onPillarCompletionAnswer;
+  onPillarCompletionAnswer;
 
   @override
   Widget build(BuildContext context) {
@@ -81,7 +119,7 @@ class _PillarCard extends StatelessWidget {
   final bool isLoading;
   final VoidCallback? onEmptyTap;
   final Future<void> Function(LongevityPillar pillar, bool completed)?
-      onPillarCompletionAnswer;
+  onPillarCompletionAnswer;
 
   bool get _hasContent => content != null && content!.trim().isNotEmpty;
 
@@ -136,7 +174,7 @@ class _PillarCard extends StatelessWidget {
       return Stack(
         clipBehavior: Clip.none,
         children: [
-          Icon(pillar.icon, color: pillar.color, size: 24),
+          NatureIcon(pillar.asset, color: pillar.color, size: 24, glow: true),
           Positioned(
             right: -4,
             bottom: -4,
@@ -150,13 +188,13 @@ class _PillarCard extends StatelessWidget {
       );
     }
     if (completion == false) {
-      return Icon(
-        pillar.icon,
+      return NatureIcon(
+        pillar.asset,
         color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.65),
         size: 24,
       );
     }
-    return Icon(pillar.icon, color: pillar.color, size: 24);
+    return NatureIcon(pillar.asset, color: pillar.color, size: 24, glow: true);
   }
 
   @override
@@ -169,98 +207,84 @@ class _PillarCard extends StatelessWidget {
       child: _iconChild(theme),
     );
 
-    return Material(
-      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: () {
-          if (!_hasContent) {
-            onEmptyTap?.call();
-            return;
-          }
-          _showCompletionQuestion(context);
-        },
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: pillar.color.withValues(alpha: 0.3),
-              width: 1,
-            ),
-          ),
-          child: Column(
+    return FitSoftCard(
+      padding: const EdgeInsets.all(16),
+      onTap: () {
+        if (!_hasContent) {
+          onEmptyTap?.call();
+          return;
+        }
+        _showCompletionQuestion(context);
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  iconBox,
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          pillar.title,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: pillar.color,
-                          ),
-                        ),
-                        Text(
-                          pillar.subtitle,
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              if (isLoading)
-                Row(
+              iconBox,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
+                    Text(
+                      pillar.title.toUpperCase(),
+                      style: AppText.sectionTitle(
+                        fontSize: 12,
                         color: pillar.color,
                       ),
                     ),
-                    const SizedBox(width: 8),
                     Text(
-                      'Generazione obiettivi...',
+                      pillar.subtitle,
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
-                )
-              else if (_hasContent)
-                Text(
-                  content!,
-                  style: theme.textTheme.bodySmall,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                )
-              else
-                Text(
-                  'Tocca per generare obiettivi',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    fontStyle: FontStyle.italic,
-                  ),
                 ),
+              ),
             ],
           ),
-        ),
+          const Spacer(),
+          if (isLoading)
+            Row(
+              children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: pillar.color,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Generazione obiettivi...',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            )
+          else if (_hasContent)
+            Text(
+              content!,
+              style: theme.textTheme.bodySmall,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+            )
+          else
+            Text(
+              'Tocca per generare obiettivi',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+        ],
       ),
     );
   }
