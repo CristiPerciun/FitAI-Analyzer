@@ -1,6 +1,6 @@
-import 'package:fitai_analyzer/models/home_longevity_plan_day.dart';
 import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
+import 'package:fitai_analyzer/utils/date_utils.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Metriche del giorno corrente condivise tra Home, Alimentazione e altre schermate.
@@ -19,15 +19,13 @@ class TodayLongevityMetrics {
 /// Passi da `daily_health`, calorie bruciate da `activities` con fallback su
 /// `daily_logs.total_burned` (pacchetto Home), calorie assunte da `nutritionForAi`.
 final todayLongevityMetricsProvider = Provider<TodayLongevityMetrics>((ref) {
-  final todayStr = localCalendarDateKey();
+  final todayStr = dateKey();
   final package = ref.watch(longevityHomePackageProvider).valueOrNull;
   final activities = ref.watch(activitiesStreamProvider).valueOrNull ?? [];
   final dailyHealth = ref.watch(dailyHealthStreamProvider).valueOrNull ?? [];
 
   final todayActivities = activities.where((d) {
-    final key =
-        '${d.date.year}-${d.date.month.toString().padLeft(2, '0')}-${d.date.day.toString().padLeft(2, '0')}';
-    return key == todayStr;
+    return dateKey(d.date) == todayStr;
   }).toList();
 
   double steps = 0;

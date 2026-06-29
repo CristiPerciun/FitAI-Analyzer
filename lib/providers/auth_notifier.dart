@@ -8,7 +8,6 @@ import 'package:fitai_analyzer/providers/strava_sync_status_notifier.dart';
 import 'package:fitai_analyzer/services/aggregation_service.dart';
 import 'package:fitai_analyzer/services/gemini_api_key_service.dart';
 import 'package:fitai_analyzer/services/garmin_service.dart';
-import 'package:fitai_analyzer/services/strava_oauth_credentials_service.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
 import 'package:fitai_analyzer/services/user_ai_settings_sync_service.dart';
 import 'package:fitai_analyzer/utils/strava_error_messages.dart';
@@ -65,6 +64,7 @@ class AuthNotifier extends Notifier<AuthState> {
         if (state.user != user) {
           state = state.copyWith(user: user);
         }
+        unawaited(_forwardFirebaseIdToken(user));
         final uid = user?.uid;
         if (uid == null) {
           _aiSettingsHydratedUid = null;
@@ -88,6 +88,20 @@ class AuthNotifier extends Notifier<AuthState> {
       ref.invalidate(aiBackendSettingsProvider);
       invalidateAiRouting(ref);
     } catch (_) {}
+  }
+
+  /// Inoltra l'ID token Firebase a [GarminService] (header X-Firebase-ID-Token)
+  /// per la verifica per-utente lato server. Usa lo stream auth gia' attivo
+  /// (Windows-safe). NB: in sessioni lunghe il token puo' scadere (~1h); se il
+  /// server applica l'enforcement, valutare getIdToken(true) prima delle call.
+  Future<void> _forwardFirebaseIdToken(User? user) async {
+    try {
+      GarminService.setFirebaseIdToken(
+        user == null ? null : await user.getIdToken(),
+      );
+    } catch (_) {
+      GarminService.setFirebaseIdToken(null);
+    }
   }
 
   /// Avvia OAuth per il servizio specificato.
@@ -151,14 +165,6 @@ class AuthNotifier extends Notifier<AuthState> {
 
       final statusNotifier = ref.read(stravaSyncStatusProvider.notifier);
       statusNotifier.reset();
-      final credentials = await ref
-          .read(stravaOAuthCredentialsServiceProvider)
-          .read(uid);
-      if (credentials == null) {
-        throw StateError(
-          'Client ID/Secret Strava mancanti. Inseriscili dalle Impostazioni prima di collegare Strava.',
-        );
-      }
 
       statusNotifier.setPhase(
         StravaSyncPhase.connecting,
@@ -173,7 +179,6 @@ class AuthNotifier extends Notifier<AuthState> {
         await ref
             .read(stravaServiceProvider)
             .authenticate(
-              credentials: credentials,
               garminService: ref.read(garminServiceProvider),
               uid: uid,
             );
@@ -198,7 +203,6 @@ class AuthNotifier extends Notifier<AuthState> {
             await ref
                 .read(stravaServiceProvider)
                 .authenticate(
-                  credentials: credentials,
                   garminService: ref.read(garminServiceProvider),
                   uid: uid,
                 );
@@ -231,7 +235,6 @@ class AuthNotifier extends Notifier<AuthState> {
             accessToken: tokens.access,
             refreshToken: tokens.refresh,
             expiresAtMs: tokens.expiresAtMs,
-            clientId: credentials.clientId,
           );
       if (reg['success'] != true) {
         throw Exception(
@@ -271,9 +274,6 @@ class AuthNotifier extends Notifier<AuthState> {
 
     final tokens = await ref.read(stravaServiceProvider).getTokensForServer();
     if (tokens == null) return;
-    final credentials = await ref
-        .read(stravaOAuthCredentialsServiceProvider)
-        .read(uid);
 
     final statusNotifier = ref.read(stravaSyncStatusProvider.notifier);
     statusNotifier.setPhase(
@@ -288,7 +288,6 @@ class AuthNotifier extends Notifier<AuthState> {
           accessToken: tokens.access,
           refreshToken: tokens.refresh,
           expiresAtMs: tokens.expiresAtMs,
-          clientId: credentials?.clientId,
         );
     if (reg['success'] != true) {
       statusNotifier.reset();
@@ -582,4 +581,10 @@ class AuthNotifier extends Notifier<AuthState> {
 
 final authNotifierProvider = NotifierProvider<AuthNotifier, AuthState>(
   AuthNotifier.new,
+);
+
+/// Selettore dell'uid utente corrente (null se non autenticato).
+/// Da usare nel layer UI invece di `FirebaseAuth.instance.currentUser`.
+final currentUidProvider = Provider<String?>(
+  (ref) => ref.watch(authNotifierProvider.select((s) => s.user?.uid)),
 );

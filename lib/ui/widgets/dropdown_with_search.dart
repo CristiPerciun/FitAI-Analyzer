@@ -76,15 +76,11 @@ class _DropdownSearchSheet extends StatefulWidget {
 
 class _DropdownSearchSheetState extends State<_DropdownSearchSheet> {
   late final TextEditingController _controller;
-  String _query = '';
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController();
-    _controller.addListener(() {
-      setState(() => _query = _controller.text);
-    });
   }
 
   @override
@@ -96,13 +92,6 @@ class _DropdownSearchSheetState extends State<_DropdownSearchSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final filtered = _query.isEmpty
-        ? widget.options
-        : widget.options
-            .where(
-              (e) => e.toLowerCase().contains(_query.toLowerCase()),
-            )
-            .toList();
 
     return DraggableScrollableSheet(
       expand: false,
@@ -147,17 +136,32 @@ class _DropdownSearchSheetState extends State<_DropdownSearchSheet> {
             ),
             const SizedBox(height: 8),
             Expanded(
-              child: ListView.builder(
-                controller: scrollController,
-                itemCount: filtered.length,
-                itemBuilder: (_, i) {
-                  final o = filtered[i];
-                  return ListTile(
-                    title: Text(o),
-                    trailing: widget.selected == o
-                        ? Icon(Icons.check, color: theme.colorScheme.primary)
-                        : null,
-                    onTap: () => Navigator.pop(context, o),
+              child: ValueListenableBuilder<TextEditingValue>(
+                valueListenable: _controller,
+                builder: (context, value, _) {
+                  final query = value.text;
+                  final filtered = query.isEmpty
+                      ? widget.options
+                      : widget.options
+                          .where(
+                            (e) =>
+                                e.toLowerCase().contains(query.toLowerCase()),
+                          )
+                          .toList();
+                  return ListView.builder(
+                    controller: scrollController,
+                    itemCount: filtered.length,
+                    itemBuilder: (_, i) {
+                      final o = filtered[i];
+                      return ListTile(
+                        title: Text(o),
+                        trailing: widget.selected == o
+                            ? Icon(Icons.check,
+                                color: theme.colorScheme.primary)
+                            : null,
+                        onTap: () => Navigator.pop(context, o),
+                      );
+                    },
                   );
                 },
               ),

@@ -1,5 +1,6 @@
-import 'package:fitai_analyzer/models/user_profile.dart';
+import 'package:fitai_analyzer/providers/async_action_notifier.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
+import 'package:fitai_analyzer/providers/nutrition_goal_form_provider.dart';
 import 'package:fitai_analyzer/providers/providers.dart'
     show nutritionMealPlanServiceProvider;
 import 'package:fitai_analyzer/providers/user_profile_notifier.dart';
@@ -18,20 +19,9 @@ enum NutritionGoalPresentation {
   singleScrollColumn,
 }
 
-/// Mappa i 4 [UserProfile.mainGoal] → pre-selezione [NutritionGoal.nutritionObjective].
-String mapAppMainToNutritionObjective(String mainGoal) {
-  switch (mainGoal) {
-    case 'weight_loss':
-      return 'perdita_grasso';
-    case 'muscle_gain':
-      return 'ipertrofia';
-    case 'strength':
-      return 'performance';
-    case 'longevity':
-    default:
-      return 'mantenimento';
-  }
-}
+/// Indice pagina del wizard "Obiettivo mangiare" (0–3). AutoDispose: si azzera
+/// all'uscita dalla schermata.
+final nutritionGoalPageProvider = StateProvider.autoDispose<int>((ref) => 0);
 
 const _nutritionObjectiveOptions = <(String key, String label)>[
   ('perdita_grasso', 'Perdita grasso / definizione'),
@@ -52,6 +42,8 @@ const _stylePairs = <(String key, String label)>[
 
 /// Sub-onboarding «Obiettivo Mangiare» (10 domande in 4 sezioni).
 ///
+/// Lo stato del form vive in [nutritionGoalFormProvider]; qui restano il
+/// `PageController` del wizard e il `TextEditingController` delle note.
 /// Se [onSuccess] è valorizzato (es. apertura da Alimentazione), viene chiamato
 /// al posto di [context.go] così resti sulla schermata corrente.
 class NutritionGoalScreen extends ConsumerStatefulWidget {
@@ -76,37 +68,15 @@ class NutritionGoalScreen extends ConsumerStatefulWidget {
   final NutritionGoalPresentation presentation;
 
   @override
-  NutritionGoalScreenState createState() => NutritionGoalScreenState();
+  ConsumerState<NutritionGoalScreen> createState() =>
+      _NutritionGoalScreenState();
 }
 
-class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
+class _NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
   PageController? _pageController;
-  int _pageIndex = 0;
   static const _totalPages = 4;
   bool _seeded = false;
-  /// Copre salvataggio profilo, aggregazione e generazione piano pasti IA.
-  bool _flowBusy = false;
 
-  // Sezione 1 — abitudini (1–3)
-  double _mealsPerDay = 3;
-  bool _timingImportante = false;
-  final Set<String> _fuoriCasa = {};
-
-  // Sezione 2 — preferenze (4–5)
-  final Set<String> _allergie = {};
-  final Set<String> _esclusioni = {};
-
-  // Sezione 3 — obiettivo (6–8)
-  String _nutritionObjective = 'mantenimento';
-  String _speed = 'media';
-  String _styleKey = 'mediterraneo';
-
-  // Sezione 4 — extra (9–12): scelte semplici (niente calcoli g/kg o %)
-  /// `leggero` | `standard` | `allenamento` | `massa`
-  String _proteinLevel = 'standard';
-  /// `equilibrato` | `piu_carb` | `meno_carb`
-  String _carbStyle = 'equilibrato';
-  bool _useSupplements = false;
   final _extraNotesController = TextEditingController();
 
   static final _fuoriOptions = [
@@ -148,96 +118,8 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
     super.dispose();
   }
 
-  void _seedFromProfile(UserProfile? p) {
-    if (p == null || _seeded) return;
-    _seeded = true;
-    final existing = p.nutritionGoal;
-    if (existing != null) {
-      _nutritionObjective = existing.nutritionObjective;
-      _speed = existing.speed;
-      _styleKey = existing.style;
-      _mealsPerDay = existing.mealsPerDay.toDouble();
-      _timingImportante = existing.timingImportante;
-      _seedProteinLevelFromGrams(existing.proteinGramsPerKg);
-      _seedCarbStyleFromPercent(existing.carbsPercentage);
-      _useSupplements = existing.useSupplements;
-      _extraNotesController.text = existing.extraNotes;
-      _fuoriCasa
-        ..clear()
-        ..addAll(
-          existing.preferences
-              .where((e) => e.startsWith('fuori:'))
-              .map((e) => e.split(':').last),
-        );
-      _allergie
-        ..clear()
-        ..addAll(
-          existing.preferences
-              .where((e) => e.startsWith('allergia:'))
-              .map((e) => e.split(':').last),
-        );
-      _esclusioni
-        ..clear()
-        ..addAll(
-          existing.preferences
-              .where((e) => e.startsWith('escludi:'))
-              .map((e) => e.split(':').last),
-        );
-    } else {
-      _nutritionObjective = mapAppMainToNutritionObjective(p.mainGoal);
-    }
-  }
-
-  void _seedProteinLevelFromGrams(double g) {
-    const tiers = [1.6, 1.8, 2.0, 2.2];
-    const keys = ['leggero', 'standard', 'allenamento', 'massa'];
-    var best = 0;
-    for (var i = 1; i < 4; i++) {
-      if ((g - tiers[i]).abs() < (g - tiers[best]).abs()) best = i;
-    }
-    _proteinLevel = keys[best];
-  }
-
-  void _seedCarbStyleFromPercent(int carbs) {
-    if (carbs >= 48) {
-      _carbStyle = 'piu_carb';
-    } else if (carbs <= 40) {
-      _carbStyle = 'meno_carb';
-    } else {
-      _carbStyle = 'equilibrato';
-    }
-  }
-
-  /// Decimi g/kg (16–22) da livello scelto.
-  int get _proteinDeciFromLevel {
-    switch (_proteinLevel) {
-      case 'leggero':
-        return 16;
-      case 'allenamento':
-        return 20;
-      case 'massa':
-        return 22;
-      case 'standard':
-      default:
-        return 18;
-    }
-  }
-
-  /// (carbs %, fat %) indicativi per AI / modello.
-  (int carbs, int fat) get _macroSplitFromCarbStyle {
-    switch (_carbStyle) {
-      case 'piu_carb':
-        return (50, 28);
-      case 'meno_carb':
-        return (38, 37);
-      case 'equilibrato':
-      default:
-        return (45, 32);
-    }
-  }
-
-  String get _sectionTitle {
-    switch (_pageIndex) {
+  String _sectionTitleFor(int pageIndex) {
+    switch (pageIndex) {
       case 0:
         return 'Abitudini attuali';
       case 1:
@@ -249,69 +131,32 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
     }
   }
 
-  /// Costruisce il modello senza salvare (es. salvataggio combinato da Impostazioni).
-  NutritionGoal buildNutritionGoalModel() {
-    final prefs = <String>[
-      ..._fuoriCasa.map((e) => 'fuori:$e'),
-      ..._allergie.map((e) => 'allergia:$e'),
-      ..._esclusioni.map((e) => 'escludi:$e'),
-    ];
-    final proteinDeci = _proteinDeciFromLevel;
-    final macro = _macroSplitFromCarbStyle;
-    return NutritionGoal(
-      nutritionObjective: _nutritionObjective,
-      calorieTarget: 0,
-      proteinGPerKg: proteinDeci,
-      carbsPercentage: macro.$1,
-      fatPercentage: macro.$2,
-      speed: _speed,
-      mealsPerDay: _mealsPerDay.round().clamp(2, 6),
-      timingImportante: _timingImportante,
-      style: _styleKey,
-      preferences: prefs,
-      useSupplements: _useSupplements,
-      extraNotes: _extraNotesController.text.trim(),
-    );
-  }
-
-  /// Validazione obiettivo nutrizionale (chiamata prima del salvataggio esterno).
-  bool validateNutritionObjectiveSelection() {
-    if (!_nutritionObjectiveOptions.any((e) => e.$1 == _nutritionObjective)) {
-      showErrorDialog(context, 'Seleziona un obiettivo nutrizionale');
-      return false;
-    }
-    return true;
-  }
-
   Future<void> _submit() async {
-    final goal = buildNutritionGoalModel();
-
-    setState(() => _flowBusy = true);
-    try {
-      await ref.read(userProfileNotifierProvider.notifier).updateNutritionGoal(goal);
-      if (!mounted) return;
-      final uid = ref.read(authNotifierProvider).user?.uid;
+    final ok =
+        await ref.read(nutritionGoalFlowActionProvider.notifier).run(() async {
+      final goal = ref.read(nutritionGoalFormProvider.notifier).buildModel();
+      await ref
+          .read(userProfileNotifierProvider.notifier)
+          .updateNutritionGoal(goal);
+      final uid = ref.read(currentUidProvider);
       if (uid != null) {
         await ref.read(nutritionMealPlanServiceProvider).generateAndSave(uid);
       }
-      if (!mounted) return;
-      final cb = widget.onSuccess;
-      if (cb != null) {
-        cb();
-      } else {
-        context.go('/');
-      }
-    } catch (e) {
-      if (mounted) showErrorDialog(context, e.toString());
-    } finally {
-      if (mounted) setState(() => _flowBusy = false);
+    });
+    if (!mounted || !ok) return;
+    final cb = widget.onSuccess;
+    if (cb != null) {
+      cb();
+    } else {
+      context.go('/');
     }
   }
 
   void _nextPage() {
     final pc = _pageController;
     if (pc == null) return;
-    if (_pageIndex < _totalPages - 1) {
+    final i = ref.read(nutritionGoalPageProvider);
+    if (i < _totalPages - 1) {
       pc.nextPage(
         duration: const Duration(milliseconds: 280),
         curve: Curves.easeOutCubic,
@@ -323,7 +168,8 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
 
   void _prevPage() {
     final pc = _pageController;
-    if (_pageIndex > 0 && pc != null) {
+    final i = ref.read(nutritionGoalPageProvider);
+    if (i > 0 && pc != null) {
       pc.previousPage(
         duration: const Duration(milliseconds: 280),
         curve: Curves.easeOutCubic,
@@ -339,8 +185,11 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
   }
 
   bool _validatePage() {
-    if (_pageIndex == 2) {
-      return validateNutritionObjectiveSelection();
+    final i = ref.read(nutritionGoalPageProvider);
+    if (i == 2) {
+      final ok = ref.read(nutritionGoalFormProvider.notifier).validateObjective();
+      if (!ok) showErrorDialog(context, 'Seleziona un obiettivo nutrizionale');
+      return ok;
     }
     return true;
   }
@@ -393,7 +242,17 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
   Widget build(BuildContext context) {
     final profile = ref.watch(userProfileNotifierProvider).profile;
     final loading = ref.watch(userProfileNotifierProvider).isLoading;
-    _seedFromProfile(profile);
+
+    // Seed una sola volta dal profilo caricato.
+    if (profile != null && !_seeded) {
+      _seeded = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ref.read(nutritionGoalFormProvider.notifier).seedFrom(profile);
+        _extraNotesController.text =
+            ref.read(nutritionGoalFormProvider).extraNotesText;
+      });
+    }
 
     ref.listen(userProfileNotifierProvider, (prev, next) {
       if (next.error != null &&
@@ -401,6 +260,12 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
           next.error != prev?.error &&
           context.mounted) {
         showErrorDialog(context, next.error!);
+      }
+    });
+
+    ref.listen(nutritionGoalFlowActionProvider, (prev, next) {
+      if (next.hasError && context.mounted) {
+        showErrorDialog(context, next.error.toString());
       }
     });
 
@@ -428,7 +293,9 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
       return _buildSingleScrollColumn(styleLabels, keyForStyleLabel);
     }
 
-    final busy = loading || _flowBusy;
+    final pageIndex = ref.watch(nutritionGoalPageProvider);
+    final flowBusy = ref.watch(nutritionGoalFlowActionProvider).isLoading;
+    final busy = loading || flowBusy;
 
     return Stack(
       children: [
@@ -436,7 +303,7 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
           appBar: widget.hideAppBar
               ? null
               : AppBar(
-                  title: Text(_sectionTitle),
+                  title: Text(_sectionTitleFor(pageIndex)),
                   leading: IconButton(
                     icon: const Icon(Icons.arrow_back),
                     onPressed: busy ? null : _prevPage,
@@ -444,7 +311,7 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
                   bottom: PreferredSize(
                     preferredSize: const Size.fromHeight(4),
                     child: LinearProgressIndicator(
-                      value: (_pageIndex + 1) / _totalPages,
+                      value: (pageIndex + 1) / _totalPages,
                       backgroundColor:
                           Theme.of(context).colorScheme.surfaceContainerHighest,
                     ),
@@ -456,14 +323,14 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
                   child: Text(
-                    _sectionTitle,
+                    _sectionTitleFor(pageIndex),
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w600,
                         ),
                   ),
                 ),
                 LinearProgressIndicator(
-                  value: (_pageIndex + 1) / _totalPages,
+                  value: (pageIndex + 1) / _totalPages,
                   backgroundColor:
                       Theme.of(context).colorScheme.surfaceContainerHighest,
                 ),
@@ -472,7 +339,8 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
               Expanded(
                 child: PageView(
                   controller: _pageController!,
-                  onPageChanged: (i) => setState(() => _pageIndex = i),
+                  onPageChanged: (i) =>
+                      ref.read(nutritionGoalPageProvider.notifier).state = i,
                   children: [
                     _buildSection1(),
                     _buildSection2(),
@@ -485,7 +353,7 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
                 padding: const EdgeInsets.all(24),
                 child: Row(
                   children: [
-                    if (_pageIndex > 0)
+                    if (pageIndex > 0)
                       TextButton(
                         onPressed: busy ? null : _prevPage,
                         child: const Text('Indietro'),
@@ -513,7 +381,7 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
                               ),
                             )
                           : Text(
-                              _pageIndex == _totalPages - 1
+                              pageIndex == _totalPages - 1
                                   ? 'Salva obiettivo'
                                   : 'Continua',
                             ),
@@ -524,7 +392,7 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
             ],
           ),
         ),
-        if (_flowBusy) ...[
+        if (flowBusy) ...[
           const ModalBarrier(dismissible: false, color: Color(0x66000000)),
           Center(
             child: Material(
@@ -566,6 +434,8 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
   }
 
   Widget _columnSection1() {
+    final form = ref.watch(nutritionGoalFormProvider);
+    final notifier = ref.read(nutritionGoalFormProvider.notifier);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -576,12 +446,12 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
         const SizedBox(height: 8),
         CustomSlider(
           label: 'Pasti / giorno',
-          value: _mealsPerDay,
+          value: form.mealsPerDay,
           min: 2,
           max: 6,
           divisions: 4,
           valueLabel: (v) => '${v.round()}',
-          onChanged: (v) => setState(() => _mealsPerDay = v),
+          onChanged: notifier.setMealsPerDay,
         ),
         const SizedBox(height: 24),
         Text(
@@ -591,42 +461,38 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
         const SizedBox(height: 8),
         SwitchListTile(
           title: const Text('Timing dei pasti importante'),
-          value: _timingImportante,
-          onChanged: (v) => setState(() => _timingImportante = v),
+          value: form.timingImportante,
+          onChanged: notifier.setTimingImportante,
         ),
         const SizedBox(height: 16),
         MultiSelectChipGroup(
           title: '3. Con che frequenza mangi fuori casa o ordini delivery?',
           options: _fuoriOptions,
-          selected: _fuoriCasa,
-          onChanged: (s) => setState(() => _fuoriCasa
-            ..clear()
-            ..addAll(s)),
+          selected: form.fuoriCasa,
+          onChanged: notifier.setFuoriCasa,
         ),
       ],
     );
   }
 
   Widget _columnSection2() {
+    final form = ref.watch(nutritionGoalFormProvider);
+    final notifier = ref.read(nutritionGoalFormProvider.notifier);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         MultiSelectChipGroup(
           title: '4. Allergie o intolleranze da considerare',
           options: _allergieOptions,
-          selected: _allergie,
-          onChanged: (s) => setState(() => _allergie
-            ..clear()
-            ..addAll(s)),
+          selected: form.allergie,
+          onChanged: notifier.setAllergie,
         ),
         const SizedBox(height: 24),
         MultiSelectChipGroup(
           title: '5. Preferenze o alimenti da escludere',
           options: _esclusioniOptions,
-          selected: _esclusioni,
-          onChanged: (s) => setState(() => _esclusioni
-            ..clear()
-            ..addAll(s)),
+          selected: form.esclusioni,
+          onChanged: notifier.setEsclusioni,
         ),
       ],
     );
@@ -636,6 +502,8 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
     List<String> styleLabels,
     Map<String, String> keyForStyleLabel,
   ) {
+    final form = ref.watch(nutritionGoalFormProvider);
+    final notifier = ref.read(nutritionGoalFormProvider.notifier);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -657,8 +525,8 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
           children: _nutritionObjectiveOptions.map((e) {
             return ChoiceChip(
               label: Text(e.$2),
-              selected: _nutritionObjective == e.$1,
-              onSelected: (_) => setState(() => _nutritionObjective = e.$1),
+              selected: form.nutritionObjective == e.$1,
+              onSelected: (_) => notifier.setNutritionObjective(e.$1),
             );
           }).toList(),
         ),
@@ -678,8 +546,8 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
           ].map((e) {
             return ChoiceChip(
               label: Text(e.$2),
-              selected: _speed == e.$1,
-              onSelected: (_) => setState(() => _speed = e.$1),
+              selected: form.speed == e.$1,
+              onSelected: (_) => notifier.setSpeed(e.$1),
             );
           }).toList(),
         ),
@@ -693,12 +561,13 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
           label: 'Stile',
           options: styleLabels,
           value: _stylePairs
-              .firstWhere((e) => e.$1 == _styleKey, orElse: () => _stylePairs.first)
+              .firstWhere((e) => e.$1 == form.styleKey,
+                  orElse: () => _stylePairs.first)
               .$2,
           hint: 'Cerca o scegli…',
           onChanged: (label) {
             if (label != null) {
-              setState(() => _styleKey = keyForStyleLabel[label] ?? _styleKey);
+              notifier.setStyleKey(keyForStyleLabel[label] ?? form.styleKey);
             }
           },
         ),
@@ -707,6 +576,8 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
   }
 
   Widget _columnSection4() {
+    final form = ref.watch(nutritionGoalFormProvider);
+    final notifier = ref.read(nutritionGoalFormProvider.notifier);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -732,8 +603,8 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
             padding: const EdgeInsets.only(bottom: 8),
             child: ChoiceChip(
               label: Text(e.$2),
-              selected: _proteinLevel == e.$1,
-              onSelected: (_) => setState(() => _proteinLevel = e.$1),
+              selected: form.proteinLevel == e.$1,
+              onSelected: (_) => notifier.setProteinLevel(e.$1),
             ),
           );
         }),
@@ -760,8 +631,8 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
           ].map((e) {
             return ChoiceChip(
               label: Text(e.$2),
-              selected: _carbStyle == e.$1,
-              onSelected: (_) => setState(() => _carbStyle = e.$1),
+              selected: form.carbStyle == e.$1,
+              onSelected: (_) => notifier.setCarbStyle(e.$1),
             );
           }).toList(),
         ),
@@ -780,8 +651,8 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Sì, includi integratori dove ha senso evidenza-based'),
-          value: _useSupplements,
-          onChanged: (v) => setState(() => _useSupplements = v),
+          value: form.useSupplements,
+          onChanged: notifier.setUseSupplements,
         ),
         const SizedBox(height: 16),
         Text(
@@ -799,6 +670,7 @@ class NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
           ),
           maxLines: 4,
           textCapitalization: TextCapitalization.sentences,
+          onChanged: notifier.setExtraNotesText,
         ),
       ],
     );

@@ -25,6 +25,7 @@ import 'package:fitai_analyzer/services/nutrition_meal_plan_service.dart';
 import 'package:fitai_analyzer/services/nutrition_service.dart';
 import 'package:fitai_analyzer/services/strava_service.dart';
 import 'package:fitai_analyzer/ui/home/widgets/pillar_grid.dart';
+import 'package:fitai_analyzer/utils/date_utils.dart';
 import 'package:fitai_analyzer/utils/platform_firestore_fix.dart';
 import 'package:fitai_analyzer/utils/prompt_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -124,7 +125,7 @@ final homeLongevityPlanDayStreamProvider =
       .collection('ai_current')
       .doc('home_longevity_plan');
   await for (final snap in documentSnapshotStream(docRef)) {
-    final today = localCalendarDateKey();
+    final today = dateKey();
     if (!snap.exists || snap.data() == null) {
       yield null;
       continue;
@@ -148,7 +149,7 @@ final aiCurrentAllenamentiStreamProvider =
       .collection('ai_current')
       .doc('allenamenti');
   await for (final snap in documentSnapshotStream(docRef)) {
-    final today = localCalendarDateKey();
+    final today = dateKey();
     if (!snap.exists || snap.data() == null) {
       yield null;
       continue;
@@ -182,7 +183,7 @@ final homeLongevityPlanOptimisticProvider =
 
 /// Piano da mostrare in Home: stream giornaliero + override locale post-generazione.
 final homeLongevityPlanForUiProvider = Provider<HomeLongevityPlanDay?>((ref) {
-  final today = localCalendarDateKey();
+  final today = dateKey();
   final optimistic = ref.watch(homeLongevityPlanOptimisticProvider);
   final asyncSnap = ref.watch(homeLongevityPlanDayStreamProvider);
   final fromStream = asyncSnap.asData?.value;
@@ -217,7 +218,7 @@ final todayDailyLogStreamProvider =
     yield null;
     return;
   }
-  final dateStr = localCalendarDateKey();
+  final dateStr = dateKey();
   final docRef = FirebaseFirestore.instance
       .collection('users')
       .doc(uid)

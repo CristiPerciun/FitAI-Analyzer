@@ -133,6 +133,9 @@ class _LaunchScreenState extends State<LaunchScreen>
                           'assets/branding/app_icon.png',
                           width: _logoSize,
                           height: _logoSize,
+                          cacheWidth:
+                              (_logoSize * MediaQuery.devicePixelRatioOf(context))
+                                  .round(),
                           fit: BoxFit.cover,
                           gaplessPlayback: true,
                           errorBuilder: (_, _, _) => Icon(

@@ -1,4 +1,5 @@
 import 'package:fitai_analyzer/models/feedback_message_model.dart';
+import 'package:fitai_analyzer/providers/async_action_notifier.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
 import 'package:fitai_analyzer/services/feedback_service.dart';
@@ -17,7 +18,6 @@ class FeedbackScreen extends ConsumerStatefulWidget {
 class _FeedbackScreenState extends ConsumerState<FeedbackScreen> {
   final _textController = TextEditingController();
   final _scrollController = ScrollController();
-  bool _sending = false;
 
   @override
   void dispose() {
@@ -39,27 +39,19 @@ class _FeedbackScreenState extends ConsumerState<FeedbackScreen> {
   }
 
   Future<void> _send() async {
-    final uid = ref.read(authNotifierProvider).user?.uid;
+    final uid = ref.read(currentUidProvider);
     if (uid == null) return;
 
     final text = _textController.text.trim();
-    if (text.isEmpty || _sending) return;
+    if (text.isEmpty || ref.read(feedbackSendActionProvider).isLoading) return;
 
-    setState(() => _sending = true);
-    try {
-      await ref.read(feedbackServiceProvider).sendUserMessage(uid, text);
-      if (mounted) {
-        _textController.clear();
-        _scrollToBottom();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Invio non riuscito: $e')),
+    final ok = await ref.read(feedbackSendActionProvider.notifier).run(
+          () => ref.read(feedbackServiceProvider).sendUserMessage(uid, text),
         );
-      }
-    } finally {
-      if (mounted) setState(() => _sending = false);
+    if (!mounted) return;
+    if (ok) {
+      _textController.clear();
+      _scrollToBottom();
     }
   }
 
@@ -74,8 +66,15 @@ class _FeedbackScreenState extends ConsumerState<FeedbackScreen> {
       if (nextCount > prevCount) _scrollToBottom();
     });
 
-    final canSend =
-        !_sending && _textController.text.trim().isNotEmpty;
+    ref.listen(feedbackSendActionProvider, (prev, next) {
+      if (next.hasError) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Invio non riuscito: ${next.error}')),
+        );
+      }
+    });
+
+    final sending = ref.watch(feedbackSendActionProvider).isLoading;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Feedback')),
@@ -130,46 +129,51 @@ class _FeedbackScreenState extends ConsumerState<FeedbackScreen> {
               top: false,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _textController,
-                        maxLines: 4,
-                        minLines: 1,
-                        maxLength: FeedbackMessage.maxTextLength,
-                        textCapitalization: TextCapitalization.sentences,
-                        decoration: const InputDecoration(
-                          hintText: 'Scrivi un messaggio…',
-                          border: OutlineInputBorder(),
-                          counterText: '',
-                        ),
-                        onChanged: (_) => setState(() {}),
-                        onSubmitted: canSend ? (_) => _send() : null,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    IconButton(
-                      onPressed: canSend ? _send : null,
-                      icon: _sending
-                          ? SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: theme.colorScheme.primary,
-                              ),
-                            )
-                          : Icon(
-                              Icons.send,
-                              color: canSend
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.onSurfaceVariant
-                                      .withValues(alpha: 0.38),
+                child: ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: _textController,
+                  builder: (context, value, _) {
+                    final canSend = !sending && value.text.trim().isNotEmpty;
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _textController,
+                            maxLines: 4,
+                            minLines: 1,
+                            maxLength: FeedbackMessage.maxTextLength,
+                            textCapitalization: TextCapitalization.sentences,
+                            decoration: const InputDecoration(
+                              hintText: 'Scrivi un messaggio…',
+                              border: OutlineInputBorder(),
+                              counterText: '',
                             ),
-                    ),
-                  ],
+                            onSubmitted: canSend ? (_) => _send() : null,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          onPressed: canSend ? _send : null,
+                          icon: sending
+                              ? SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                )
+                              : Icon(
+                                  Icons.send,
+                                  color: canSend
+                                      ? theme.colorScheme.primary
+                                      : theme.colorScheme.onSurfaceVariant
+                                          .withValues(alpha: 0.38),
+                                ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
             ),

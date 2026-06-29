@@ -1,14 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-/// Data locale `YYYY-MM-DD` (non UTC da `toIso8601String`).
-String localCalendarDateKey([DateTime? d]) {
-  final n = d ?? DateTime.now();
-  final y = n.year.toString().padLeft(4, '0');
-  final m = n.month.toString().padLeft(2, '0');
-  final day = n.day.toString().padLeft(2, '0');
-  return '$y-$m-$day';
-}
-
 /// Piano longevità Home generato dal prompt unificato giornaliero.
 /// Salvato in `users/{uid}/ai_current/home_longevity_plan`.
 class HomeLongevityPlanDay {

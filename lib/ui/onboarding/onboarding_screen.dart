@@ -1,4 +1,4 @@
-import 'package:fitai_analyzer/models/user_profile.dart';
+import 'package:fitai_analyzer/providers/main_profile_form_provider.dart';
 import 'package:fitai_analyzer/providers/user_profile_notifier.dart';
 import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:fitai_analyzer/ui/onboarding/nutrition_goal_screen.dart';
@@ -31,6 +31,9 @@ const _equipmentOptions = [
   ('full_gym', 'Palestra completa'),
 ];
 
+/// Pagina corrente del wizard onboarding (0–3). AutoDispose: si azzera all'uscita.
+final onboardingPageIndexProvider = StateProvider.autoDispose<int>((ref) => 0);
+
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -40,38 +43,17 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final _formKey = GlobalKey<FormState>();
-  int _pageIndex = 0;
 
-  // Page 1
-  String? _mainGoal;
-
-  // Page 2
+  // I valori vivono in [mainProfileFormProvider]; qui restano solo i controller.
   final _ageController = TextEditingController();
-  String? _gender;
   final _heightController = TextEditingController();
   final _weightController = TextEditingController();
-
-  // Page 3
-  int? _trainingDaysPerWeek;
-  String? _equipment;
-
-  // Page 4
-  bool _takesMedications = false;
   final _medicationsController = TextEditingController();
   final _healthConditionsController = TextEditingController();
-  double _avgSleepHours = 7.0;
-  int _sleepImportance = 3;
-
-  // Campi specifici per obiettivo (condizionali, vedi onboarding_questions.dart).
-  String? _dailyActivityLevel;
   final _targetWeightController = TextEditingController();
-  String? _trainingExperience;
-  String? _trainingFocus;
   final _zone2Controller = TextEditingController();
-  final Set<String> _longevityPriorities = {};
 
   // Non chiamare loadProfile in initState: _LoggedInGate l'ha già fatto.
-  // Richiamarlo metterebbe isLoading=true e causerebbe flickering.
 
   @override
   void dispose() {
@@ -83,48 +65,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     _targetWeightController.dispose();
     _zone2Controller.dispose();
     super.dispose();
-  }
-
-  double get _progress => (_pageIndex + 1) / 4;
-
-  UserProfile _buildProfileWithDefaults() {
-    final vis = visibilityForGoal(_mainGoal);
-    return UserProfile(
-      mainGoal: _mainGoal ?? 'longevity',
-      age: int.tryParse(_ageController.text.trim()) ?? 30,
-      gender: _gender ?? 'male',
-      heightCm: double.tryParse(_heightController.text.trim()) ?? 170,
-      weightKg: double.tryParse(_weightController.text.trim()) ?? 70,
-      trainingDaysPerWeek: _trainingDaysPerWeek ?? 4,
-      equipment: _equipment ?? 'full_gym',
-      takesMedications: _takesMedications,
-      medicationsList: _medicationsController.text.trim(),
-      healthConditions: _healthConditionsController.text.trim(),
-      avgSleepHours: _avgSleepHours,
-      sleepImportance: _sleepImportance,
-      // Campi specifici: valorizzati SOLO se pertinenti all'obiettivo scelto.
-      dailyActivityLevel: _dailyActivityLevel,
-      targetWeightKg: vis.showTargetWeight
-          ? double.tryParse(_targetWeightController.text.trim())
-          : null,
-      trainingExperience: vis.showTrainingExperience ? _trainingExperience : null,
-      trainingFocus: vis.showTrainingExperience ? _trainingFocus : null,
-      zone2MinutesTarget: vis.showLongevityPriorities
-          ? int.tryParse(_zone2Controller.text.trim())
-          : null,
-      longevityPriorities: vis.showLongevityPriorities
-          ? _longevityPriorities.toList()
-          : const [],
-    );
-  }
-
-  /// Preserva nutrition_goal e training_goal già salvati (modifica profilo da Impostazioni).
-  UserProfile _mergedProfileForSave() {
-    final cur = ref.read(userProfileNotifierProvider).profile;
-    return _buildProfileWithDefaults().copyWith(
-      nutritionGoal: cur?.nutritionGoal,
-      trainingGoal: cur?.trainingGoal,
-    );
   }
 
   String? _validateAge(String? v) {
@@ -149,45 +89,49 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   void _onContinue() {
-    if (_pageIndex == 0) {
-      if (_mainGoal == null) return;
-      setState(() => _pageIndex = 1);
+    final form = ref.read(mainProfileFormProvider);
+    final pageIndex = ref.read(onboardingPageIndexProvider);
+    final pageNotifier = ref.read(onboardingPageIndexProvider.notifier);
+    if (pageIndex == 0) {
+      if (form.mainGoal == null) return;
+      pageNotifier.state = 1;
       return;
     }
-    if (_pageIndex == 1) {
+    if (pageIndex == 1) {
       if (!_formKey.currentState!.validate()) return;
-      if (_gender == null) {
+      if (form.gender == null) {
         showErrorDialog(context, 'Seleziona il sesso biologico');
         return;
       }
-      setState(() => _pageIndex = 2);
+      pageNotifier.state = 2;
       return;
     }
-    if (_pageIndex == 2) {
-      if (_trainingDaysPerWeek == null) {
+    if (pageIndex == 2) {
+      if (form.trainingDaysPerWeek == null) {
         showErrorDialog(context, 'Seleziona i giorni di allenamento');
         return;
       }
-      if (_equipment == null) {
+      if (form.equipment == null) {
         showErrorDialog(context, 'Seleziona l\'attrezzatura');
         return;
       }
-      setState(() => _pageIndex = 3);
+      pageNotifier.state = 3;
       return;
     }
     _saveAndNavigate();
   }
 
   void _onSkip() {
-    if (_pageIndex < 3) {
-      setState(() => _pageIndex++);
+    final pageIndex = ref.read(onboardingPageIndexProvider);
+    if (pageIndex < 3) {
+      ref.read(onboardingPageIndexProvider.notifier).state = pageIndex + 1;
     } else {
       _saveAndNavigate();
     }
   }
 
   Future<void> _saveAndNavigate() async {
-    final profile = _mergedProfileForSave();
+    final profile = ref.read(mainProfileFormProvider.notifier).buildMergedProfile();
     try {
       await ref.read(userProfileNotifierProvider.notifier).saveProfile(profile);
       if (!mounted) return;
@@ -205,6 +149,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     final profileState = ref.watch(userProfileNotifierProvider);
+    final pageIndex = ref.watch(onboardingPageIndexProvider);
 
     ref.listen(userProfileNotifierProvider, (prev, next) {
       if (next.error != null &&
@@ -217,11 +162,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_pageTitle),
+        title: Text(_pageTitleFor(pageIndex)),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(4),
           child: LinearProgressIndicator(
-            value: _progress,
+            value: (pageIndex + 1) / 4,
             backgroundColor:
                 Theme.of(context).colorScheme.surfaceContainerHighest,
           ),
@@ -242,9 +187,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _buildPageContent(),
+                        _buildPageContent(pageIndex),
                         const SizedBox(height: 32),
-                        _buildActions(profileState.isLoading),
+                        _buildActions(profileState.isLoading, pageIndex),
                       ],
                     ),
                   ),
@@ -257,8 +202,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     );
   }
 
-  String get _pageTitle {
-    switch (_pageIndex) {
+  String _pageTitleFor(int pageIndex) {
+    switch (pageIndex) {
       case 0:
         return 'Obiettivo principale';
       case 1:
@@ -272,8 +217,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     }
   }
 
-  Widget _buildPageContent() {
-    switch (_pageIndex) {
+  Widget _buildPageContent(int pageIndex) {
+    switch (pageIndex) {
       case 0:
         return _buildPage1();
       case 1:
@@ -288,6 +233,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   Widget _buildPage1() {
+    final form = ref.watch(mainProfileFormProvider);
+    final notifier = ref.read(mainProfileFormProvider.notifier);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -300,8 +247,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         ),
         const SizedBox(height: 24),
         DropdownButtonFormField<String>(
-          key: ValueKey(_mainGoal),
-          initialValue: _mainGoal,
+          key: ValueKey(form.mainGoal),
+          initialValue: form.mainGoal,
           decoration: const InputDecoration(
             labelText: 'Obiettivo principale',
             border: OutlineInputBorder(),
@@ -309,14 +256,16 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           items: mainGoalOptions
               .map((e) => DropdownMenuItem(value: e.$1, child: Text(e.$2)))
               .toList(),
-          onChanged: (v) => setState(() => _mainGoal = v),
+          onChanged: notifier.setMainGoal,
         ),
       ],
     );
   }
 
   Widget _buildPage2() {
-    final vis = visibilityForGoal(_mainGoal);
+    final form = ref.watch(mainProfileFormProvider);
+    final notifier = ref.read(mainProfileFormProvider.notifier);
+    final vis = visibilityForGoal(form.mainGoal);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -341,11 +290,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             LengthLimitingTextInputFormatter(3),
           ],
           validator: _validateAge,
+          onChanged: notifier.setAgeText,
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
-          key: ValueKey(_gender),
-          initialValue: _gender,
+          key: ValueKey(form.gender),
+          initialValue: form.gender,
           decoration: const InputDecoration(
             labelText: 'Sesso biologico',
             border: OutlineInputBorder(),
@@ -353,7 +303,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           items: _genderOptions
               .map((e) => DropdownMenuItem(value: e.$1, child: Text(e.$2)))
               .toList(),
-          onChanged: (v) => setState(() => _gender = v),
+          onChanged: notifier.setGender,
         ),
         const SizedBox(height: 16),
         TextFormField(
@@ -369,6 +319,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             LengthLimitingTextInputFormatter(5),
           ],
           validator: _validateHeight,
+          onChanged: notifier.setHeightText,
         ),
         const SizedBox(height: 16),
         TextFormField(
@@ -384,6 +335,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             LengthLimitingTextInputFormatter(5),
           ],
           validator: _validateWeight,
+          onChanged: notifier.setWeightText,
         ),
         if (vis.showTargetWeight) ...[
           const SizedBox(height: 16),
@@ -399,6 +351,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
               LengthLimitingTextInputFormatter(5),
             ],
+            onChanged: notifier.setTargetWeightText,
           ),
         ],
       ],
@@ -406,7 +359,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   Widget _buildPage3() {
-    final vis = visibilityForGoal(_mainGoal);
+    final form = ref.watch(mainProfileFormProvider);
+    final notifier = ref.read(mainProfileFormProvider.notifier);
+    final vis = visibilityForGoal(form.mainGoal);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -419,8 +374,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         ),
         const SizedBox(height: 24),
         DropdownButtonFormField<int>(
-          key: ValueKey(_trainingDaysPerWeek),
-          initialValue: _trainingDaysPerWeek,
+          key: ValueKey(form.trainingDaysPerWeek),
+          initialValue: form.trainingDaysPerWeek,
           decoration: const InputDecoration(
             labelText: 'Giorni di allenamento a settimana',
             border: OutlineInputBorder(),
@@ -428,12 +383,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           items: _trainingDaysOptions
               .map((e) => DropdownMenuItem(value: e.$1, child: Text(e.$2)))
               .toList(),
-          onChanged: (v) => setState(() => _trainingDaysPerWeek = v),
+          onChanged: notifier.setTrainingDays,
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
-          key: ValueKey(_equipment),
-          initialValue: _equipment,
+          key: ValueKey(form.equipment),
+          initialValue: form.equipment,
           decoration: const InputDecoration(
             labelText: 'Attrezzatura disponibile',
             border: OutlineInputBorder(),
@@ -441,12 +396,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           items: _equipmentOptions
               .map((e) => DropdownMenuItem(value: e.$1, child: Text(e.$2)))
               .toList(),
-          onChanged: (v) => setState(() => _equipment = v),
+          onChanged: notifier.setEquipment,
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
-          key: ValueKey('dailyActivity_$_dailyActivityLevel'),
-          initialValue: _dailyActivityLevel,
+          key: ValueKey('dailyActivity_${form.dailyActivityLevel}'),
+          initialValue: form.dailyActivityLevel,
           isExpanded: true,
           decoration: const InputDecoration(
             labelText: 'Attività quotidiana (fuori allenamento)',
@@ -455,13 +410,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           items: dailyActivityOptions
               .map((e) => DropdownMenuItem(value: e.$1, child: Text(e.$2)))
               .toList(),
-          onChanged: (v) => setState(() => _dailyActivityLevel = v),
+          onChanged: notifier.setDailyActivity,
         ),
         if (vis.showTrainingExperience) ...[
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
-            key: ValueKey('trainingExperience_$_trainingExperience'),
-            initialValue: _trainingExperience,
+            key: ValueKey('trainingExperience_${form.trainingExperience}'),
+            initialValue: form.trainingExperience,
             isExpanded: true,
             decoration: const InputDecoration(
               labelText: 'Esperienza di allenamento',
@@ -470,12 +425,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             items: trainingExperienceOptions
                 .map((e) => DropdownMenuItem(value: e.$1, child: Text(e.$2)))
                 .toList(),
-            onChanged: (v) => setState(() => _trainingExperience = v),
+            onChanged: notifier.setTrainingExperience,
           ),
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
-            key: ValueKey('trainingFocus_$_trainingFocus'),
-            initialValue: _trainingFocus,
+            key: ValueKey('trainingFocus_${form.trainingFocus}'),
+            initialValue: form.trainingFocus,
             isExpanded: true,
             decoration: const InputDecoration(
               labelText: 'Focus allenamento',
@@ -484,7 +439,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             items: trainingFocusOptions
                 .map((e) => DropdownMenuItem(value: e.$1, child: Text(e.$2)))
                 .toList(),
-            onChanged: (v) => setState(() => _trainingFocus = v),
+            onChanged: notifier.setTrainingFocus,
           ),
         ],
         if (vis.showLongevityPriorities) ...[
@@ -494,10 +449,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             options: longevityPriorityOptions
                 .map((e) => MultiSelectOption(id: e.$1, label: e.$2))
                 .toList(),
-            selected: _longevityPriorities,
-            onChanged: (s) => setState(() => _longevityPriorities
-              ..clear()
-              ..addAll(s)),
+            selected: form.longevityPriorities,
+            onChanged: notifier.setLongevityPriorities,
           ),
           const SizedBox(height: 16),
           TextFormField(
@@ -512,6 +465,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               FilteringTextInputFormatter.digitsOnly,
               LengthLimitingTextInputFormatter(3),
             ],
+            onChanged: notifier.setZone2Text,
           ),
         ],
       ],
@@ -519,6 +473,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   Widget _buildPage4() {
+    final form = ref.watch(mainProfileFormProvider);
+    final notifier = ref.read(mainProfileFormProvider.notifier);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -532,10 +488,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         const SizedBox(height: 24),
         SwitchListTile(
           title: const Text('Assumi farmaci regolarmente'),
-          value: _takesMedications,
-          onChanged: (v) => setState(() => _takesMedications = v),
+          value: form.takesMedications,
+          onChanged: notifier.setTakesMedications,
         ),
-        if (_takesMedications) ...[
+        if (form.takesMedications) ...[
           const SizedBox(height: 8),
           TextFormField(
             controller: _medicationsController,
@@ -546,6 +502,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               alignLabelWithHint: true,
             ),
             maxLines: 2,
+            onChanged: notifier.setMedicationsText,
           ),
         ],
         const SizedBox(height: 16),
@@ -558,39 +515,40 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             alignLabelWithHint: true,
           ),
           maxLines: 2,
+          onChanged: notifier.setHealthConditionsText,
         ),
         const SizedBox(height: 24),
         Text(
-          'Ore di sonno medie: ${_avgSleepHours.toStringAsFixed(1)}',
+          'Ore di sonno medie: ${form.avgSleepHours.toStringAsFixed(1)}',
           style: Theme.of(context).textTheme.titleSmall,
         ),
         Slider(
-          value: _avgSleepHours,
+          value: form.avgSleepHours,
           min: 4,
           max: 12,
           divisions: 16,
-          label: _avgSleepHours.toStringAsFixed(1),
-          onChanged: (v) => setState(() => _avgSleepHours = v),
+          label: form.avgSleepHours.toStringAsFixed(1),
+          onChanged: notifier.setAvgSleepHours,
         ),
         const SizedBox(height: 16),
         Text(
-          'Importanza recupero (1-5): $_sleepImportance',
+          'Importanza recupero (1-5): ${form.sleepImportance}',
           style: Theme.of(context).textTheme.titleSmall,
         ),
         Slider(
-          value: _sleepImportance.toDouble(),
+          value: form.sleepImportance.toDouble(),
           min: 1,
           max: 5,
           divisions: 4,
-          label: '$_sleepImportance',
-          onChanged: (v) => setState(() => _sleepImportance = v.round()),
+          label: '${form.sleepImportance}',
+          onChanged: (v) => notifier.setSleepImportance(v.round()),
         ),
       ],
     );
   }
 
-  Widget _buildActions(bool isLoading) {
-    final isLastPage = _pageIndex == 3;
+  Widget _buildActions(bool isLoading, int pageIndex) {
+    final isLastPage = pageIndex == 3;
     return Row(
       children: [
         if (!isLastPage)

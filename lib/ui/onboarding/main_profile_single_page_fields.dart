@@ -1,6 +1,5 @@
-import 'package:fitai_analyzer/models/user_profile.dart';
+import 'package:fitai_analyzer/providers/main_profile_form_provider.dart';
 import 'package:fitai_analyzer/providers/user_profile_notifier.dart';
-import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/multi_select_chip.dart';
 import 'package:fitai_analyzer/utils/goal_options.dart';
 import 'package:fitai_analyzer/utils/onboarding_questions.dart';
@@ -29,37 +28,26 @@ const _equipmentOptions = [
 ];
 
 /// Tutte le domande onboarding principale in un unico blocco (scroll gestito dal genitore).
-/// Usato da [CombinedOnboardingEditScreen] da Impostazioni.
+/// Lo stato vive in [mainProfileFormProvider]; qui restano solo i
+/// `TextEditingController` per il loro ciclo di vita. Usato da
+/// [CombinedOnboardingEditScreen] da Impostazioni.
 class MainProfileSinglePageFields extends ConsumerStatefulWidget {
   const MainProfileSinglePageFields({super.key});
 
   @override
   ConsumerState<MainProfileSinglePageFields> createState() =>
-      MainProfileSinglePageFieldsState();
+      _MainProfileSinglePageFieldsState();
 }
 
-class MainProfileSinglePageFieldsState
+class _MainProfileSinglePageFieldsState
     extends ConsumerState<MainProfileSinglePageFields> {
-  String? _mainGoal;
   final _ageController = TextEditingController();
-  String? _gender;
   final _heightController = TextEditingController();
   final _weightController = TextEditingController();
-  int? _trainingDaysPerWeek;
-  String? _equipment;
-  bool _takesMedications = false;
   final _medicationsController = TextEditingController();
   final _healthConditionsController = TextEditingController();
-  double _avgSleepHours = 7.0;
-  int _sleepImportance = 3;
-
-  // Campi specifici per obiettivo (condizionali).
-  String? _dailyActivityLevel;
   final _targetWeightController = TextEditingController();
-  String? _trainingExperience;
-  String? _trainingFocus;
   final _zone2Controller = TextEditingController();
-  final Set<String> _longevityPriorities = {};
 
   bool _seeded = false;
 
@@ -73,75 +61,6 @@ class MainProfileSinglePageFieldsState
     _targetWeightController.dispose();
     _zone2Controller.dispose();
     super.dispose();
-  }
-
-  void seedFrom(UserProfile p) {
-    if (_seeded) return;
-    _seeded = true;
-    setState(() {
-      _mainGoal = p.mainGoal;
-      _ageController.text = p.age.toString();
-      _gender = p.gender;
-      _heightController.text = p.heightCm.toString();
-      _weightController.text = p.weightKg.toString();
-      _trainingDaysPerWeek = p.trainingDaysPerWeek;
-      _equipment = p.equipment;
-      _takesMedications = p.takesMedications;
-      _medicationsController.text = p.medicationsList;
-      _healthConditionsController.text = p.healthConditions;
-      _avgSleepHours = p.avgSleepHours;
-      _sleepImportance = p.sleepImportance.clamp(1, 5);
-      _dailyActivityLevel = p.dailyActivityLevel;
-      _targetWeightController.text =
-          p.targetWeightKg == null ? '' : p.targetWeightKg.toString();
-      _trainingExperience = p.trainingExperience;
-      _trainingFocus = p.trainingFocus;
-      _zone2Controller.text =
-          p.zone2MinutesTarget == null ? '' : p.zone2MinutesTarget.toString();
-      _longevityPriorities
-        ..clear()
-        ..addAll(p.longevityPriorities);
-    });
-  }
-
-  UserProfile _buildBase() {
-    final vis = visibilityForGoal(_mainGoal);
-    return UserProfile(
-      mainGoal: _mainGoal ?? 'longevity',
-      age: int.tryParse(_ageController.text.trim()) ?? 30,
-      gender: _gender ?? 'male',
-      heightCm: double.tryParse(_heightController.text.trim()) ?? 170,
-      weightKg: double.tryParse(_weightController.text.trim()) ?? 70,
-      trainingDaysPerWeek: _trainingDaysPerWeek ?? 4,
-      equipment: _equipment ?? 'full_gym',
-      takesMedications: _takesMedications,
-      medicationsList: _medicationsController.text.trim(),
-      healthConditions: _healthConditionsController.text.trim(),
-      avgSleepHours: _avgSleepHours,
-      sleepImportance: _sleepImportance,
-      // Campi specifici: valorizzati SOLO se pertinenti all'obiettivo corrente.
-      dailyActivityLevel: _dailyActivityLevel,
-      targetWeightKg: vis.showTargetWeight
-          ? double.tryParse(_targetWeightController.text.trim())
-          : null,
-      trainingExperience: vis.showTrainingExperience ? _trainingExperience : null,
-      trainingFocus: vis.showTrainingExperience ? _trainingFocus : null,
-      zone2MinutesTarget: vis.showLongevityPriorities
-          ? int.tryParse(_zone2Controller.text.trim())
-          : null,
-      longevityPriorities: vis.showLongevityPriorities
-          ? _longevityPriorities.toList()
-          : const [],
-    );
-  }
-
-  /// Profilo principale + conserva ramo nutrizione e training dal profilo corrente in Firestore.
-  UserProfile buildMergedProfile() {
-    final cur = ref.read(userProfileNotifierProvider).profile;
-    return _buildBase().copyWith(
-      nutritionGoal: cur?.nutritionGoal,
-      trainingGoal: cur?.trainingGoal,
-    );
   }
 
   String? _validateAge(String? v) {
@@ -165,37 +84,29 @@ class MainProfileSinglePageFieldsState
     return null;
   }
 
-  /// Valida i campi (richiede [Form] antenato per i TextFormField).
-  bool validateAll() {
-    if (_mainGoal == null) {
-      showErrorDialog(context, 'Seleziona l\'obiettivo principale');
-      return false;
-    }
-    final form = Form.maybeOf(context);
-    if (form != null && !form.validate()) return false;
-    if (_gender == null) {
-      showErrorDialog(context, 'Seleziona il sesso biologico');
-      return false;
-    }
-    if (_trainingDaysPerWeek == null) {
-      showErrorDialog(context, 'Seleziona i giorni di allenamento');
-      return false;
-    }
-    if (_equipment == null) {
-      showErrorDialog(context, 'Seleziona l\'attrezzatura');
-      return false;
-    }
-    return true;
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final vis = visibilityForGoal(_mainGoal);
+    final notifier = ref.read(mainProfileFormProvider.notifier);
+    final form = ref.watch(mainProfileFormProvider);
+    final vis = visibilityForGoal(form.mainGoal);
+
+    // Seed una sola volta dal profilo caricato (i controller dei testi vengono
+    // inizializzati dallo stato risultante; mai assegnati in build successivi).
     final p = ref.watch(userProfileNotifierProvider).profile;
     if (p != null && !_seeded) {
+      _seeded = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) seedFrom(p);
+        if (!mounted) return;
+        notifier.seedFrom(p);
+        final s = ref.read(mainProfileFormProvider);
+        _ageController.text = s.ageText;
+        _heightController.text = s.heightText;
+        _weightController.text = s.weightText;
+        _targetWeightController.text = s.targetWeightText;
+        _zone2Controller.text = s.zone2Text;
+        _medicationsController.text = s.medicationsText;
+        _healthConditionsController.text = s.healthConditionsText;
       });
     }
 
@@ -216,10 +127,10 @@ class MainProfileSinglePageFieldsState
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
-          // Evita ValueKey(null) durante il primo build (quando _mainGoal è null)
+          // Evita ValueKey(null) durante il primo build (quando mainGoal è null)
           // che genera l'errore runtime: "Duplicate keys found".
           key: const ValueKey('mainGoalDropdown'),
-          initialValue: _mainGoal,
+          initialValue: form.mainGoal,
           decoration: const InputDecoration(
             labelText: 'Obiettivo principale',
             border: OutlineInputBorder(),
@@ -227,7 +138,7 @@ class MainProfileSinglePageFieldsState
           items: mainGoalOptions
               .map((e) => DropdownMenuItem(value: e.$1, child: Text(e.$2)))
               .toList(),
-          onChanged: (v) => setState(() => _mainGoal = v),
+          onChanged: notifier.setMainGoal,
         ),
         const SizedBox(height: 28),
         Text(
@@ -256,11 +167,12 @@ class MainProfileSinglePageFieldsState
             LengthLimitingTextInputFormatter(3),
           ],
           validator: _validateAge,
+          onChanged: notifier.setAgeText,
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
           key: const ValueKey('genderDropdown'),
-          initialValue: _gender,
+          initialValue: form.gender,
           decoration: const InputDecoration(
             labelText: 'Sesso biologico',
             border: OutlineInputBorder(),
@@ -268,7 +180,7 @@ class MainProfileSinglePageFieldsState
           items: _genderOptions
               .map((e) => DropdownMenuItem(value: e.$1, child: Text(e.$2)))
               .toList(),
-          onChanged: (v) => setState(() => _gender = v),
+          onChanged: notifier.setGender,
         ),
         const SizedBox(height: 16),
         TextFormField(
@@ -284,6 +196,7 @@ class MainProfileSinglePageFieldsState
             LengthLimitingTextInputFormatter(5),
           ],
           validator: _validateHeight,
+          onChanged: notifier.setHeightText,
         ),
         const SizedBox(height: 16),
         TextFormField(
@@ -299,6 +212,7 @@ class MainProfileSinglePageFieldsState
             LengthLimitingTextInputFormatter(5),
           ],
           validator: _validateWeight,
+          onChanged: notifier.setWeightText,
         ),
         if (vis.showTargetWeight) ...[
           const SizedBox(height: 16),
@@ -314,6 +228,7 @@ class MainProfileSinglePageFieldsState
               FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
               LengthLimitingTextInputFormatter(5),
             ],
+            onChanged: notifier.setTargetWeightText,
           ),
         ],
         const SizedBox(height: 28),
@@ -332,7 +247,7 @@ class MainProfileSinglePageFieldsState
         const SizedBox(height: 16),
         DropdownButtonFormField<int>(
           key: const ValueKey('trainingDaysDropdown'),
-          initialValue: _trainingDaysPerWeek,
+          initialValue: form.trainingDaysPerWeek,
           decoration: const InputDecoration(
             labelText: 'Giorni di allenamento a settimana',
             border: OutlineInputBorder(),
@@ -340,12 +255,12 @@ class MainProfileSinglePageFieldsState
           items: _trainingDaysOptions
               .map((e) => DropdownMenuItem(value: e.$1, child: Text(e.$2)))
               .toList(),
-          onChanged: (v) => setState(() => _trainingDaysPerWeek = v),
+          onChanged: notifier.setTrainingDays,
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
           key: const ValueKey('equipmentDropdown'),
-          initialValue: _equipment,
+          initialValue: form.equipment,
           decoration: const InputDecoration(
             labelText: 'Attrezzatura disponibile',
             border: OutlineInputBorder(),
@@ -353,12 +268,12 @@ class MainProfileSinglePageFieldsState
           items: _equipmentOptions
               .map((e) => DropdownMenuItem(value: e.$1, child: Text(e.$2)))
               .toList(),
-          onChanged: (v) => setState(() => _equipment = v),
+          onChanged: notifier.setEquipment,
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
           key: const ValueKey('dailyActivityDropdown'),
-          initialValue: _dailyActivityLevel,
+          initialValue: form.dailyActivityLevel,
           isExpanded: true,
           decoration: const InputDecoration(
             labelText: 'Attività quotidiana (fuori allenamento)',
@@ -367,13 +282,13 @@ class MainProfileSinglePageFieldsState
           items: dailyActivityOptions
               .map((e) => DropdownMenuItem(value: e.$1, child: Text(e.$2)))
               .toList(),
-          onChanged: (v) => setState(() => _dailyActivityLevel = v),
+          onChanged: notifier.setDailyActivity,
         ),
         if (vis.showTrainingExperience) ...[
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
             key: const ValueKey('trainingExperienceDropdown'),
-            initialValue: _trainingExperience,
+            initialValue: form.trainingExperience,
             isExpanded: true,
             decoration: const InputDecoration(
               labelText: 'Esperienza di allenamento',
@@ -382,12 +297,12 @@ class MainProfileSinglePageFieldsState
             items: trainingExperienceOptions
                 .map((e) => DropdownMenuItem(value: e.$1, child: Text(e.$2)))
                 .toList(),
-            onChanged: (v) => setState(() => _trainingExperience = v),
+            onChanged: notifier.setTrainingExperience,
           ),
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
             key: const ValueKey('trainingFocusDropdown'),
-            initialValue: _trainingFocus,
+            initialValue: form.trainingFocus,
             isExpanded: true,
             decoration: const InputDecoration(
               labelText: 'Focus allenamento',
@@ -396,7 +311,7 @@ class MainProfileSinglePageFieldsState
             items: trainingFocusOptions
                 .map((e) => DropdownMenuItem(value: e.$1, child: Text(e.$2)))
                 .toList(),
-            onChanged: (v) => setState(() => _trainingFocus = v),
+            onChanged: notifier.setTrainingFocus,
           ),
         ],
         if (vis.showLongevityPriorities) ...[
@@ -406,10 +321,8 @@ class MainProfileSinglePageFieldsState
             options: longevityPriorityOptions
                 .map((e) => MultiSelectOption(id: e.$1, label: e.$2))
                 .toList(),
-            selected: _longevityPriorities,
-            onChanged: (s) => setState(() => _longevityPriorities
-              ..clear()
-              ..addAll(s)),
+            selected: form.longevityPriorities,
+            onChanged: notifier.setLongevityPriorities,
           ),
           const SizedBox(height: 16),
           TextFormField(
@@ -424,6 +337,7 @@ class MainProfileSinglePageFieldsState
               FilteringTextInputFormatter.digitsOnly,
               LengthLimitingTextInputFormatter(3),
             ],
+            onChanged: notifier.setZone2Text,
           ),
         ],
         const SizedBox(height: 28),
@@ -442,10 +356,10 @@ class MainProfileSinglePageFieldsState
         const SizedBox(height: 16),
         SwitchListTile(
           title: const Text('Assumi farmaci regolarmente'),
-          value: _takesMedications,
-          onChanged: (v) => setState(() => _takesMedications = v),
+          value: form.takesMedications,
+          onChanged: notifier.setTakesMedications,
         ),
-        if (_takesMedications) ...[
+        if (form.takesMedications) ...[
           const SizedBox(height: 8),
           TextFormField(
             controller: _medicationsController,
@@ -456,6 +370,7 @@ class MainProfileSinglePageFieldsState
               alignLabelWithHint: true,
             ),
             maxLines: 2,
+            onChanged: notifier.setMedicationsText,
           ),
         ],
         const SizedBox(height: 16),
@@ -468,32 +383,33 @@ class MainProfileSinglePageFieldsState
             alignLabelWithHint: true,
           ),
           maxLines: 2,
+          onChanged: notifier.setHealthConditionsText,
         ),
         const SizedBox(height: 24),
         Text(
-          'Ore di sonno medie: ${_avgSleepHours.toStringAsFixed(1)}',
+          'Ore di sonno medie: ${form.avgSleepHours.toStringAsFixed(1)}',
           style: theme.textTheme.titleSmall,
         ),
         Slider(
-          value: _avgSleepHours,
+          value: form.avgSleepHours,
           min: 4,
           max: 12,
           divisions: 16,
-          label: _avgSleepHours.toStringAsFixed(1),
-          onChanged: (v) => setState(() => _avgSleepHours = v),
+          label: form.avgSleepHours.toStringAsFixed(1),
+          onChanged: notifier.setAvgSleepHours,
         ),
         const SizedBox(height: 16),
         Text(
-          'Importanza recupero (1-5): $_sleepImportance',
+          'Importanza recupero (1-5): ${form.sleepImportance}',
           style: theme.textTheme.titleSmall,
         ),
         Slider(
-          value: _sleepImportance.toDouble(),
+          value: form.sleepImportance.toDouble(),
           min: 1,
           max: 5,
           divisions: 4,
-          label: '$_sleepImportance',
-          onChanged: (v) => setState(() => _sleepImportance = v.round()),
+          label: '${form.sleepImportance}',
+          onChanged: (v) => notifier.setSleepImportance(v.round()),
         ),
       ],
     );
