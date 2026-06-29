@@ -1,3 +1,5 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:fitai_analyzer/app.dart';
 import 'package:fitai_analyzer/providers/pending_meal_analysis_provider.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
@@ -7,6 +9,8 @@ import 'package:fitai_analyzer/utils/boot_log.dart';
 import 'package:fitai_analyzer/ui/dashboard/dashboard_screen.dart';
 import 'package:fitai_analyzer/ui/home/home_screen.dart';
 import 'package:fitai_analyzer/ui/impostazioni/impostazioni_screen.dart';
+import 'package:fitai_analyzer/theme/glass_tokens.dart';
+import 'package:fitai_analyzer/ui/widgets/nature_icon.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -20,10 +24,10 @@ class MainShellScreen extends ConsumerStatefulWidget {
 
 class _MainShellScreenState extends ConsumerState<MainShellScreen> {
   static const _tabs = [
-    (icon: Icons.home_outlined, label: 'Home'),
-    (icon: Icons.directions_bike_outlined, label: 'Allenamenti'),
-    (icon: Icons.restaurant_outlined, label: 'Alimentazione'),
-    (icon: Icons.settings_outlined, label: 'Impostazioni'),
+    (asset: NatureIcons.home, label: 'Home'),
+    (asset: NatureIcons.activity, label: 'Allenamenti'),
+    (asset: NatureIcons.nutrition, label: 'Alimentazione'),
+    (asset: NatureIcons.settings, label: 'Impostazioni'),
   ];
 
   @override
@@ -36,33 +40,32 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<List<PendingMealAnalysis>>(
-      pendingMealAnalysisProvider,
-      (prev, next) {
-        if (prev == null) return;
-        for (final p in next) {
-          if (p.errorMessage == null || p.analyzing) continue;
-          final wasAnalyzing =
-              prev.any((x) => x.id == p.id && x.analyzing && x.errorMessage == null);
-          if (!wasAnalyzing) continue;
-          final msg = p.errorMessage!;
-          scaffoldMessengerKey.currentState?.showSnackBar(
-            SnackBar(
-              content: Text(
-                msg.length > 120 ? '${msg.substring(0, 120)}…' : msg,
-              ),
-              backgroundColor: Theme.of(context).colorScheme.error,
-              duration: const Duration(seconds: 10),
-              action: SnackBarAction(
-                label: 'Alimentazione',
-                onPressed: () =>
-                    ref.read(selectedTabIndexProvider.notifier).state = 2,
-              ),
+    ref.listen<List<PendingMealAnalysis>>(pendingMealAnalysisProvider, (
+      prev,
+      next,
+    ) {
+      if (prev == null) return;
+      for (final p in next) {
+        if (p.errorMessage == null || p.analyzing) continue;
+        final wasAnalyzing = prev.any(
+          (x) => x.id == p.id && x.analyzing && x.errorMessage == null,
+        );
+        if (!wasAnalyzing) continue;
+        final msg = p.errorMessage!;
+        scaffoldMessengerKey.currentState?.showSnackBar(
+          SnackBar(
+            content: Text(msg.length > 120 ? '${msg.substring(0, 120)}…' : msg),
+            backgroundColor: Theme.of(context).colorScheme.error,
+            duration: const Duration(seconds: 10),
+            action: SnackBarAction(
+              label: 'Alimentazione',
+              onPressed: () =>
+                  ref.read(selectedTabIndexProvider.notifier).state = 2,
             ),
-          );
-        }
-      },
-    );
+          ),
+        );
+      }
+    });
 
     final index = ref.watch(selectedTabIndexProvider);
     final isNarrow = MediaQuery.of(context).size.width < 600;
@@ -77,7 +80,10 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
             Material(
               color: Theme.of(context).colorScheme.surfaceContainerHighest,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -110,18 +116,23 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          border: Border(
-            top: BorderSide(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.white.withValues(alpha: 0.08)
-                  : Colors.black.withValues(alpha: 0.06),
-              width: 1,
-            ),
-          ),
-        ),
-        child: NavigationBar(
+      bottomNavigationBar: _buildGlassNav(context, index, isNarrow),
+    );
+  }
+
+  /// Bottom nav "in vetro": tint traslucido + blur del gradiente + bordo glass.
+  /// Icone SVG line-art ([NatureIcon]); quella attiva ha il bagliore neon in dark.
+  Widget _buildGlassNav(BuildContext context, int index, bool isNarrow) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final tokens = theme.extension<GlassTokens>()!;
+
+    Widget bar = DecoratedBox(
+      decoration: BoxDecoration(
+        color: tokens.navTint,
+        border: Border(top: BorderSide(color: tokens.borderColor, width: 1)),
+      ),
+      child: NavigationBar(
         selectedIndex: index,
         onDestinationSelected: (i) =>
             ref.read(selectedTabIndexProvider.notifier).state = i,
@@ -131,29 +142,30 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
         destinations: _tabs
             .map(
               (t) => NavigationDestination(
-                icon: Icon(t.icon),
-                selectedIcon: Icon(_selectedIcon(t.icon)),
+                icon: NatureIcon(t.asset, color: cs.onSurfaceVariant),
+                selectedIcon: NatureIcon(
+                  t.asset,
+                  color: cs.primary,
+                  glow: true,
+                ),
                 label: t.label,
               ),
             )
             .toList(),
-        ),
       ),
     );
-  }
 
-  static IconData _selectedIcon(IconData outline) {
-    switch (outline) {
-      case Icons.home_outlined:
-        return Icons.home;
-      case Icons.directions_bike_outlined:
-        return Icons.directions_bike;
-      case Icons.restaurant_outlined:
-        return Icons.restaurant;
-      case Icons.settings_outlined:
-        return Icons.settings;
-      default:
-        return outline;
+    if (tokens.useRealBlur) {
+      bar = ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: tokens.blurSigma,
+            sigmaY: tokens.blurSigma,
+          ),
+          child: bar,
+        ),
+      );
     }
+    return bar;
   }
 }
