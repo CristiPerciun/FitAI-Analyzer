@@ -68,8 +68,8 @@ class AppCardTheme extends ThemeExtension<AppCardTheme> {
   );
 
   static AppCardTheme dark(ColorScheme scheme) => AppCardTheme(
-    // Foresta profonda → arancione profondo (bi-tono del tema scuro).
-    gradientColors: const [Color(0xFF0F3B22), Color(0xFF3A2415)],
+    // Scuro neutro (non più verde): coerente col tema "deep" non-blu.
+    gradientColors: const [Color(0xFF242428), Color(0xFF2B2B2F)],
     contentColor: scheme.onSurface,
     contentColorMuted: scheme.onSurfaceVariant,
     shadowColor: const Color(0x80000000), // black @0.5

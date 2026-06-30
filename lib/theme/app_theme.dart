@@ -13,7 +13,8 @@ abstract final class AppColors {
   // LIGHT — crema + pastello, testo foresta.
   static const Color cream = Color(0xFFFDF5E6); // sfondo / onPrimary light
   static const Color forestText = Color(0xFF3A5F3A); // testo primario light
-  static const Color forestTextMuted = Color(0xFF5D8B5D); // testo secondario
+  // Testo secondario: scurito a #4F7A4F per contrasto AA (~5:1) su card frosted.
+  static const Color forestTextMuted = Color(0xFF4F7A4F);
   static const Color accentGreen = Color(
     0xFF95D595,
   ); // accent attivo (secondary)
@@ -106,17 +107,20 @@ abstract final class AppText {
 
 // ============================== LIGHT ===================================
 final _lightColorScheme = const ColorScheme.light(
-  primary: AppColors.forestText, // testo/azioni — alto contrasto su crema
+  // Accento TEAL profondo (non verde): alto contrasto su crema, coerente col
+  // cyan del tema scuro. Il verde su chiaro era poco gradevole/contrastato.
+  primary: Color(0xFF1C7A8C),
   onPrimary: AppColors.cream,
-  secondary: AppColors.accentGreen, // accent attivo
-  onSecondary: Color(0xFF1E3A1E),
-  tertiary: AppColors.forestTextMuted,
+  secondary: Color(0xFF5FB6C9), // teal laguna (accent secondario)
+  onSecondary: Color(0xFF062E36),
+  tertiary: Color(0xFF1C7A8C),
   onTertiary: AppColors.cream,
   surface: AppColors.cream, // solido: modali/dialog/snackbar leggibili
-  onSurface: AppColors.forestText,
-  surfaceContainerHighest: AppColors.natureContainerLight,
-  onSurfaceVariant: AppColors.forestTextMuted,
-  outline: AppColors.forestText,
+  // FONT NERO: il testo (onSurface) è quasi-nero, non più verde.
+  onSurface: Color(0xFF1A1A1A),
+  surfaceContainerHighest: Color(0xFFEDE7DC), // beige neutro (non più verdino)
+  onSurfaceVariant: Color(0xFF5A5A5A), // testo secondario grigio neutro
+  outline: Color(0xFFA8A096), // bordo grigio caldo neutro (non più verde)
   error: AppColors.error,
   onError: AppColors.white,
 );
@@ -130,7 +134,7 @@ final appLightTheme = ThemeData(
   scaffoldBackgroundColor: Colors.transparent,
   appBarTheme: const AppBarTheme(
     backgroundColor: Colors.transparent,
-    foregroundColor: AppColors.forestText,
+    foregroundColor: Color(0xFF1A1A1A), // titoli neri
     surfaceTintColor: Colors.transparent,
     elevation: 0,
     centerTitle: true,
@@ -144,13 +148,14 @@ final appLightTheme = ThemeData(
   navigationBarTheme: NavigationBarThemeData(
     backgroundColor: Colors.transparent,
     surfaceTintColor: Colors.transparent,
-    indicatorColor: AppColors.accentGreen.withValues(alpha: 0.30),
+    indicatorColor: const Color(0xFF5FB6C9).withValues(alpha: 0.30),
     elevation: 0,
     height: 64,
+    // Font nav nero/grigio (l'accento teal resta su icona attiva + indicatore).
     iconTheme: WidgetStateProperty.resolveWith(
       (states) => states.contains(WidgetState.selected)
-          ? const IconThemeData(color: AppColors.forestText)
-          : const IconThemeData(color: AppColors.forestTextMuted),
+          ? const IconThemeData(color: Color(0xFF1C7A8C))
+          : const IconThemeData(color: Color(0xFF5A5A5A)),
     ),
     labelTextStyle: WidgetStateProperty.resolveWith(
       (states) => TextStyle(
@@ -160,8 +165,8 @@ final appLightTheme = ThemeData(
             ? FontWeight.w600
             : FontWeight.w500,
         color: states.contains(WidgetState.selected)
-            ? AppColors.forestText
-            : AppColors.forestTextMuted,
+            ? const Color(0xFF1A1A1A)
+            : const Color(0xFF5A5A5A),
       ),
     ),
   ),
@@ -172,20 +177,22 @@ final appLightTheme = ThemeData(
 );
 
 // ============================== DARK ====================================
+// Tema scuro "deep": superfici quasi-nere NEUTRE (non blu), accenti cyan/rosa
+// solo come bagliore (play of light). Font bianco.
 final _darkColorScheme = const ColorScheme.dark(
-  primary: AppColors.biolumGreen, // neon: alto contrasto su foresta
-  onPrimary: AppColors.deepForest,
-  secondary: AppColors.deepOrange,
-  onSecondary: Color(0xFF2A1206),
-  tertiary: AppColors.paleGreenText,
-  onTertiary: AppColors.deepForest,
-  surface: AppColors.deepForest, // solido per modali
-  onSurface: AppColors.creamText,
-  surfaceContainerHighest: AppColors.deepForestContainer,
-  onSurfaceVariant: AppColors.paleGreenText,
-  outline: Color(0xFF3E6B52), // teal smorzato (i widget applicano alpha)
-  error: Color(0xFFFF6B6B), // più leggibile su foresta
-  onError: AppColors.deepForest,
+  primary: Color(0xFF9FE6FF), // cyan soffuso (accenti/icone attive)
+  onPrimary: Color(0xFF12162A),
+  secondary: Color(0xFFFFB3D9), // rosa iridescente
+  onSecondary: Color(0xFF3A1228),
+  tertiary: Color(0xFFE2E2E6),
+  onTertiary: Color(0xFF17171A),
+  surface: Color(0xFF1C1C1F), // grigio molto scuro neutro (modali/dialog)
+  onSurface: Color(0xFFFDFDFD), // FONT BIANCO
+  surfaceContainerHighest: Color(0xFF26262A),
+  onSurfaceVariant: Color(0xFFD2D2D6), // grigio chiaro neutro (testo secondario)
+  outline: Color(0xFF3A3A3F),
+  error: Color(0xFFFF6B6B),
+  onError: Color(0xFF2A0E12),
 );
 
 final appDarkTheme = ThemeData(
@@ -210,13 +217,14 @@ final appDarkTheme = ThemeData(
   navigationBarTheme: NavigationBarThemeData(
     backgroundColor: Colors.transparent,
     surfaceTintColor: Colors.transparent,
-    indicatorColor: AppColors.biolumGreen.withValues(alpha: 0.20),
+    indicatorColor: const Color(0xFF9FE6FF).withValues(alpha: 0.18),
     elevation: 0,
     height: 64,
+    // Font nav bianco/grigio (l'accento cyan resta su icona attiva + indicatore).
     iconTheme: WidgetStateProperty.resolveWith(
       (states) => states.contains(WidgetState.selected)
-          ? const IconThemeData(color: AppColors.biolumGreen)
-          : const IconThemeData(color: AppColors.paleGreenText),
+          ? const IconThemeData(color: Color(0xFF9FE6FF))
+          : const IconThemeData(color: Color(0xFFD2D2D6)),
     ),
     labelTextStyle: WidgetStateProperty.resolveWith(
       (states) => TextStyle(
@@ -226,8 +234,8 @@ final appDarkTheme = ThemeData(
             ? FontWeight.w600
             : FontWeight.w500,
         color: states.contains(WidgetState.selected)
-            ? AppColors.biolumGreen
-            : AppColors.paleGreenText,
+            ? const Color(0xFFFDFDFD)
+            : const Color(0xFFD2D2D6),
       ),
     ),
   ),

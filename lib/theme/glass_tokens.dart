@@ -1,16 +1,12 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
-/// Token del glassmorphism del redesign "NaturaVita / Magical Natural UI".
+/// Token del glassmorphism del redesign "NaturaVita / hand-drawn UI".
 ///
-/// Separati da [AppCardTheme] (che resta per i content-color hero): qui vivono
-/// solo decorazione di vetro (blur, tint traslucido, bordo, bagliore) e il
-/// gradiente di sfondo globale. Consumati da `FitSoftCard`, `FitHeroCard`,
-/// dalla nav bar e da `NatureGradientBackground`.
-///
-/// Vincolo chiave: i tint devono restare TRASLUCIDI (alpha < ~0.65) altrimenti
-/// il [BackdropFilter] dietro non si vede. In light il glow è assente (luce
-/// diffusa); in dark è bioluminescente (verde #5DFFD4 / arancione #FF7A3D).
+/// Stile di riferimento (CREATIVE HUB): sfondo a gradiente IRIDESCENTE/aurora,
+/// card frosted NEUTRE che lasciano trasparire il gradiente colorato, bagliore
+/// soffuso (cyan/rosa) in dark. I tint card restano traslucidi (alpha < ~0.65)
+/// e poco saturi, così l'aurora dietro resta visibile attraverso il vetro.
 @immutable
 class GlassTokens extends ThemeExtension<GlassTokens> {
   const GlassTokens({
@@ -24,6 +20,7 @@ class GlassTokens extends ThemeExtension<GlassTokens> {
     required this.softShadow,
     required this.heroGlow,
     required this.backgroundGradient,
+    required this.auroraColors,
     required this.navTint,
   });
 
@@ -31,22 +28,22 @@ class GlassTokens extends ThemeExtension<GlassTokens> {
   final double blurSigma;
 
   /// Se false (es. web/PWA) salta il [BackdropFilter] e usa solo il tint
-  /// traslucido sopra il gradiente: ~80% dell'effetto a una frazione del costo.
+  /// traslucido sopra il gradiente.
   final bool useRealBlur;
 
-  /// Tint traslucido (gradiente) delle card normali.
+  /// Tint traslucido (gradiente) delle card normali — NEUTRO/frosted.
   final List<Color> tintColors;
 
-  /// Tint traslucido (gradiente) delle card hero — più ricco.
+  /// Tint traslucido (gradiente) delle card hero — frosted, un filo più denso.
   final List<Color> heroTintColors;
 
-  /// Bordo "vetro" 1px (rim highlight in light, edge neon in dark).
+  /// Bordo "vetro" 1px (rim frosted in light, edge cyan in dark).
   final Color borderColor;
 
   /// Colore del bagliore principale (trasparente in light).
   final Color glowColor;
 
-  /// Secondo colore di bagliore per il look bi-tono (trasparente in light).
+  /// Secondo colore di bagliore per l'iridescenza (trasparente in light).
   final Color secondaryGlowColor;
 
   /// Ombra morbida neutra per le card normali.
@@ -55,87 +52,78 @@ class GlassTokens extends ThemeExtension<GlassTokens> {
   /// Bagliore retroilluminato per le card hero (vuoto in light).
   final List<BoxShadow> heroGlow;
 
-  /// Gradiente di sfondo globale dietro a tutte le schermate.
+  /// Stop base del gradiente di sfondo globale (diagonale).
   final List<Color> backgroundGradient;
+
+  /// Due tinte per i "wash" radiali sovrapposti (effetto aurora/iridescente).
+  final List<Color> auroraColors;
 
   /// Tint traslucido della bottom nav bar in vetro.
   final Color navTint;
 
-  /// Tema chiaro: crema/pastello, luce diffusa, nessun glow.
+  /// Tema chiaro: crema → pastello iridescente, card frosted bianche, no glow.
   static const GlassTokens light = GlassTokens(
     blurSigma: 9.0,
     useRealBlur: !kIsWeb,
-    // #DFF3EC@0.55 → #FBEBDD@0.55 (verde acqua pallido → pesca pallido)
-    tintColors: [Color(0x8CDFF3EC), Color(0x8CFBEBDD)],
-    // #CDEBDD@0.62 → #F7DFC8@0.62 (più saturo per le hero)
-    heroTintColors: [Color(0x9ECDEBDD), Color(0x9EF7DFC8)],
-    borderColor: Color(0x73FFFFFF), // rim bianco @0.45 (effetto vetro)
+    // Card frosted bianche/calde: il pastello dietro traspare.
+    tintColors: [Color(0x8CFFFFFF), Color(0x80FFF6EC)],
+    heroTintColors: [Color(0x9EFFFFFF), Color(0x99FCF4EA)],
+    borderColor: Color(0x99FFFFFF), // rim bianco @0.6 (effetto vetro)
     glowColor: Color(0x00000000),
     secondaryGlowColor: Color(0x00000000),
     softShadow: [
-      BoxShadow(color: Color(0x0F000000), blurRadius: 20, offset: Offset(0, 6)),
+      BoxShadow(color: Color(0x14000000), blurRadius: 18, offset: Offset(0, 6)),
     ],
     heroGlow: [],
-    // crema → sabbia calda (NON verde; le card pastello risaltano)
+    // pesca → rosa → acqua → lavanda (pastello soffuso)
     backgroundGradient: [
-      Color(0xFFFDF5E6),
-      Color(0xFFFAEFE0),
-      Color(0xFFF4E7D6),
+      Color(0xFFFCEFE2),
+      Color(0xFFF7E8EE),
+      Color(0xFFE9EFF3),
+      Color(0xFFEFEAF5),
     ],
-    navTint: Color(0x99FDF8EE), // crema @0.6
+    auroraColors: [Color(0x8CF8C9A8), Color(0x80C7DCEA)],
+    navTint: Color(0x8CFFFFFF), // bianco @0.55
   );
 
-  /// Tema scuro: foresta profonda, bagliore bioluminescente forte.
+  /// Tema scuro "deep glass": sfondo scuro NEUTRO (non blu) con bagliori di
+  /// luce dietro le card; card TRASLUCIDE scure-neutre (charcoal) così il vetro
+  /// smerigliato resta visibile (il blur cattura i wash cyan/rosa).
   static const GlassTokens dark = GlassTokens(
-    blurSigma: 14.0,
+    blurSigma: 16.0,
     useRealBlur: !kIsWeb,
-    // #0F3B22@0.50 → #3A2415@0.45 (foresta profonda → arancione profondo)
-    tintColors: [Color(0x800F3B22), Color(0x733A2415)],
-    heroTintColors: [Color(0x99103A24), Color(0x8C3A2415)],
-    borderColor: Color(0x2E5DFFD4), // edge neon @0.18
-    glowColor: Color(0xFF5DFFD4),
-    secondaryGlowColor: Color(0xFFFF7A3D),
+    // Charcoal NEUTRO traslucido (~0.55): il fondo smerigliato traspare = vetro.
+    tintColors: [Color(0x8C1C1C1F), Color(0x82222226)],
+    heroTintColors: [Color(0xA0262629), Color(0x962C2C30)],
+    borderColor: Color(0x33FFFFFF), // rim bianco frosted @0.20 (edge del vetro)
+    glowColor: Color(0xFFA9E8FF), // cyan soffuso
+    secondaryGlowColor: Color(0xFFFFB3D9), // rosa iridescente
     softShadow: [
-      BoxShadow(color: Color(0x59000000), blurRadius: 24, offset: Offset(0, 8)),
+      BoxShadow(color: Color(0x80000000), blurRadius: 26, offset: Offset(0, 10)),
     ],
-    // core neon stretto + profondità
     heroGlow: [
       BoxShadow(
-        color: Color(0x595DFFD4),
-        blurRadius: 32,
-        spreadRadius: 2,
+        color: Color(0x4DA9E8FF),
+        blurRadius: 30,
+        spreadRadius: 1,
         offset: Offset.zero,
       ),
-      BoxShadow(color: Color(0x8C0A2F1A), blurRadius: 24, offset: Offset(0, 8)),
+      BoxShadow(color: Color(0x99000000), blurRadius: 26, offset: Offset(0, 10)),
     ],
-    // carbone neutro (NON verde; le card foresta/neon risaltano sopra)
+    // grigio scuro neutro con un filo di variazione (dà "materia" al frost)
     backgroundGradient: [
-      Color(0xFF1A1B1E),
-      Color(0xFF141519),
-      Color(0xFF0E0F12),
+      Color(0xFF202023),
+      Color(0xFF27272B),
+      Color(0xFF1A1A1D),
+      Color(0xFF242428),
     ],
-    navTint: Color(0x99181A1D), // carbone neutro @0.6
+    // wash radiali di luce dietro le card (bagliore cyan/rosa) — fanno il vetro
+    auroraColors: [Color(0x4DA9E8FF), Color(0x3DFFB3D9)],
+    navTint: Color(0x99191A1D), // charcoal traslucido @0.60 (nav in vetro)
   );
 
-  /// Set di [BoxShadow] per il bagliore attorno a un box (solo dark).
-  /// In light ritorna lista vuota (nessun glow).
-  List<BoxShadow> get iconGlow => glowColor.a == 0
-      ? const []
-      : [
-          BoxShadow(
-            color: glowColor.withValues(alpha: 0.65),
-            blurRadius: 12,
-            spreadRadius: 1,
-          ),
-          BoxShadow(
-            color: glowColor.withValues(alpha: 0.30),
-            blurRadius: 24,
-            spreadRadius: 4,
-          ),
-        ];
-
-  /// [Shadow] applicabili al glifo di un'icona (`Icon.shadows`) per il bagliore
-  /// neon che segue la forma. Vuoto in light.
+  /// [Shadow] applicabili al glifo di un'icona (`Icon.shadows`/SVG) per il
+  /// bagliore che segue la forma. Vuoto in light.
   List<Shadow> get iconGlowShadows => glowColor.a == 0
       ? const []
       : [
@@ -155,6 +143,7 @@ class GlassTokens extends ThemeExtension<GlassTokens> {
     List<BoxShadow>? softShadow,
     List<BoxShadow>? heroGlow,
     List<Color>? backgroundGradient,
+    List<Color>? auroraColors,
     Color? navTint,
   }) => GlassTokens(
     blurSigma: blurSigma ?? this.blurSigma,
@@ -167,6 +156,7 @@ class GlassTokens extends ThemeExtension<GlassTokens> {
     softShadow: softShadow ?? this.softShadow,
     heroGlow: heroGlow ?? this.heroGlow,
     backgroundGradient: backgroundGradient ?? this.backgroundGradient,
+    auroraColors: auroraColors ?? this.auroraColors,
     navTint: navTint ?? this.navTint,
   );
 
@@ -197,6 +187,7 @@ class GlassTokens extends ThemeExtension<GlassTokens> {
         other.backgroundGradient,
         t,
       ),
+      auroraColors: _lerpColors(auroraColors, other.auroraColors, t),
       navTint: Color.lerp(navTint, other.navTint, t)!,
     );
   }
