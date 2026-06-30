@@ -156,6 +156,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 const SizedBox(height: 10),
                                 HomeActionCard(
                                   onTap: () => _onAddMealFromHome(context),
+                                  asset: NatureIcons.plus,
                                   label: 'Aggiungi pasto',
                                   semanticLabel: 'Aggiungi pasto',
                                 ),

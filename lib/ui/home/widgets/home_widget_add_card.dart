@@ -1,4 +1,5 @@
 import 'package:fitai_analyzer/ui/home/widgets/home_action_card.dart';
+import 'package:fitai_analyzer/ui/widgets/nature_icon.dart';
 import 'package:flutter/material.dart';
 
 /// Card a tutta larghezza: "+" per scegliere/cambiare widget; "×" per rimuoverlo.
@@ -53,7 +54,7 @@ class HomeWidgetAddCard extends StatelessWidget {
 
     return HomeActionCard(
       onTap: onTap,
-      icon: hasSelection ? Icons.swap_horiz : Icons.add,
+      asset: hasSelection ? NatureIcons.swap : NatureIcons.plus,
       semanticLabel: hasSelection
           ? 'Cambia widget Home'
           : 'Aggiungi widget Home',

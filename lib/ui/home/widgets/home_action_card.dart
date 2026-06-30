@@ -1,12 +1,14 @@
-import 'package:fitai_analyzer/theme/app_card_theme.dart';
+import 'package:fitai_analyzer/ui/widgets/nature_icon.dart';
 import 'package:flutter/material.dart';
 
-/// Card azione Home: stile soft del redesign (fill card, ombra morbida,
-/// niente bordo colorato), altezza fissa, accento primary su icona/testo.
+/// Card azione Home in stile hand-drawn: "pill" con accento di tema (fill +
+/// bordo tenui), icona disegnata ([NatureIcon]) con bagliore in dark, testo
+/// accentato. Accetta un asset SVG ([asset]); in fallback usa [icon] Material.
 class HomeActionCard extends StatelessWidget {
   const HomeActionCard({
     super.key,
     required this.onTap,
+    this.asset,
     this.icon = Icons.add,
     this.label,
     this.semanticLabel,
@@ -14,6 +16,9 @@ class HomeActionCard extends StatelessWidget {
   });
 
   final VoidCallback onTap;
+
+  /// Asset SVG line-art (preferito). Se null usa [icon].
+  final String? asset;
   final IconData icon;
   final String? label;
   final String? semanticLabel;
@@ -27,15 +32,22 @@ class HomeActionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final primary = theme.colorScheme.primary;
-    final fill = theme.cardTheme.color ?? theme.colorScheme.surface;
-    final softShadow = theme.extension<AppCardTheme>()?.softShadow;
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final accent = cs.primary;
+
+    final iconWidget = asset != null
+        ? NatureIcon(asset!, color: accent, size: 26, glow: true)
+        : Icon(icon, color: accent, size: 26);
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: fill,
+        color: accent.withValues(alpha: isDark ? 0.16 : 0.10),
         borderRadius: BorderRadius.circular(borderRadius),
-        boxShadow: softShadow,
+        border: Border.all(
+          color: accent.withValues(alpha: isDark ? 0.45 : 0.35),
+          width: 1.2,
+        ),
       ),
       child: SizedBox(
         height: height,
@@ -53,17 +65,17 @@ class HomeActionCard extends StatelessWidget {
                     label: semanticLabel ?? label,
                     child: Center(
                       child: label == null
-                          ? Icon(icon, color: primary, size: 28)
+                          ? iconWidget
                           : Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(icon, color: primary, size: 28),
+                                iconWidget,
                                 const SizedBox(width: 10),
                                 Text(
                                   label!,
                                   style: theme.textTheme.titleSmall?.copyWith(
-                                    color: primary,
-                                    fontWeight: FontWeight.w600,
+                                    color: accent,
+                                    fontWeight: FontWeight.w700,
                                   ),
                                 ),
                               ],
