@@ -24,6 +24,8 @@ class WeeklyMacroStackedBarChartCard extends ConsumerWidget {
     final weekOffset = ref.watch(nutritionDiaryWeekOffsetProvider);
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final trackColor = cs.onSurface.withValues(alpha: isDark ? 0.06 : 0.05);
 
     Widget shell(Widget child) =>
         FitSoftCard(padding: EdgeInsets.zero, child: child);
@@ -73,11 +75,16 @@ class WeeklyMacroStackedBarChartCard extends ConsumerWidget {
             barRods: [
               BarChartRodData(
                 toY: total <= 0 ? 0.0 : total,
-                width: 14,
+                width: 15,
                 color: Colors.transparent,
                 borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(7),
-                  bottom: Radius.circular(3),
+                  top: Radius.circular(8),
+                  bottom: Radius.circular(4),
+                ),
+                backDrawRodData: BackgroundBarChartRodData(
+                  show: true,
+                  toY: chartMax,
+                  color: trackColor,
                 ),
                 rodStackItems: total <= 0
                     ? []

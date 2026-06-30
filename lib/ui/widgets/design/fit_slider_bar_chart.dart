@@ -92,12 +92,19 @@ class FitSliderBarChart extends StatelessWidget {
                                     ),
                                   ),
                                 ),
-                                // porzione piena
+                                // porzione piena (gradiente verticale soffuso)
                                 Container(
                                   width: trackWidth,
                                   height: fillH,
                                   decoration: BoxDecoration(
-                                    color: fill,
+                                    gradient: LinearGradient(
+                                      begin: Alignment.bottomCenter,
+                                      end: Alignment.topCenter,
+                                      colors: [
+                                        fill,
+                                        fill.withValues(alpha: 0.7),
+                                      ],
+                                    ),
                                     borderRadius: BorderRadius.circular(
                                       trackWidth / 2,
                                     ),

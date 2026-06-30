@@ -229,7 +229,7 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
                   Icons.restaurant,
                   'Food',
                   '${food.toInt()}',
-                  Colors.blueAccent,
+                  const Color(0xFF6FB36F), // leaf green (natura)
                   onCard,
                 ),
                 const SizedBox(height: 16),
@@ -237,7 +237,7 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
                   Icons.local_fire_department,
                   'Exercise',
                   '${ex.toInt()}',
-                  Colors.orangeAccent,
+                  const Color(0xFFC9A227), // amber (calorie bruciate)
                   onCard,
                 ),
               ],

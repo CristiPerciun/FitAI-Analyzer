@@ -1,5 +1,4 @@
 import 'package:fitai_analyzer/providers/nutrition_meal_edit_provider.dart';
-import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -109,7 +108,7 @@ class _NutritionMealAnalysisScreenState
             ),
           IconButton(
             tooltip: 'Salva',
-            icon: Icon(Icons.save_outlined, color: AppColors.greenSave),
+            icon: Icon(Icons.save_outlined, color: cs.primary),
             onPressed: _saveAndPop,
           ),
         ],

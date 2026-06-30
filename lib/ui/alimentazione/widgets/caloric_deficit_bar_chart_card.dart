@@ -452,16 +452,16 @@ class _ChartBody extends ConsumerWidget {
         barRods: [
           BarChartRodData(
             toY: rodToY,
-            width: 14,
+            width: 15,
             color: Colors.transparent,
             borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(7),
-              bottom: Radius.circular(3),
+              top: Radius.circular(8),
+              bottom: Radius.circular(4),
             ),
             backDrawRodData: BackgroundBarChartRodData(
               show: threshold > 0,
               toY: threshold,
-              color: AppColors.caloricDeficitGoalBar.withValues(alpha: 0.85),
+              color: AppColors.caloricDeficitGoalBar.withValues(alpha: 0.55),
             ),
             rodStackItems: stackItems,
           ),
