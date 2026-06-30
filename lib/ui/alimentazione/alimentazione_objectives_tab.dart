@@ -2,13 +2,20 @@ import 'package:fitai_analyzer/models/nutrition_meal_plan_ai.dart';
 import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
+import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:fitai_analyzer/ui/widgets/design/design.dart';
+import 'package:fitai_analyzer/ui/widgets/nature_icon.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Primo tab Alimentazione: obiettivi giornalieri da `ai_current/meal` (prompt unificato Home).
 class AlimentazioneObjectivesTab extends ConsumerWidget {
   const AlimentazioneObjectivesTab({super.key});
+
+  // Accenti per pasto (mattina calda → giorno verde → sera viola).
+  static const Color _cColazione = Color(0xFFE0A23E); // honey/amber
+  static const Color _cPranzo = Color(0xFF6FB36F); // leaf green
+  static const Color _cCena = Color(0xFF8E7CC9); // soft violet
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -17,6 +24,7 @@ class AlimentazioneObjectivesTab extends ConsumerWidget {
     final planAsync = ref.watch(nutritionMealPlanAiStreamProvider);
     final plan = planAsync.valueOrNull;
     final uid = ref.watch(authNotifierProvider).user?.uid;
+    final hasMeals = plan != null && plan.hasAnyObjective;
 
     return RefreshIndicator(
       onRefresh: () =>
@@ -40,9 +48,58 @@ class AlimentazioneObjectivesTab extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
           _DailyMacroObjectiveCard(plan: plan),
-          const SizedBox(height: 16),
-          _MealObjectivesSummaryCard(plan: plan),
           const SizedBox(height: 20),
+          Text(
+            'OBIETTIVI PER PASTO',
+            style: AppText.sectionTitle(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (!hasMeals)
+            FitSoftCard(
+              child: Row(
+                children: [
+                  NatureIconBadge(
+                    NatureIcons.lunch,
+                    tint: theme.colorScheme.onSurfaceVariant,
+                    boxSize: 48,
+                    iconSize: 28,
+                    glow: false,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      'Nessun obiettivo pasto da AI. Premi "Analisi" in Home per generarlo.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else ...[
+            _MealObjectiveCard(
+              title: 'Colazione',
+              asset: NatureIcons.breakfast,
+              tint: _cColazione,
+              items: plan.obiettiviColazione,
+            ),
+            _MealObjectiveCard(
+              title: 'Pranzo',
+              asset: NatureIcons.lunch,
+              tint: _cPranzo,
+              items: plan.obiettiviPranzo,
+            ),
+            _MealObjectiveCard(
+              title: 'Cena',
+              asset: NatureIcons.dinner,
+              tint: _cCena,
+              items: plan.obiettiviCena,
+            ),
+          ],
+          const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -96,6 +153,7 @@ class _DailyMacroObjectiveCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    const accent = Color(0xFF6FB36F); // leaf green (pilastro alimentazione)
     final macro = plan?.macroGiornalieri ?? const <String, dynamic>{};
     final macroLine = macro.isEmpty ? '' : _macroBodyLine(macro);
     final hasMacro = macroLine.isNotEmpty;
@@ -105,30 +163,43 @@ class _DailyMacroObjectiveCard extends StatelessWidget {
     final hasExtras = hasNote || score != null;
     final hasContent = hasMacro || hasExtras;
 
-    return FitSoftCard(
+    return FitHeroCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(
-                Icons.pie_chart_outline,
-                color: theme.colorScheme.primary,
-                size: 20,
+              NatureIconBadge(
+                NatureIcons.nutrition,
+                tint: accent,
+                boxSize: 46,
+                iconSize: 28,
+                radius: 14,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  'Target nutrizionali (oggi)',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.primary,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'TARGET NUTRIZIONALI',
+                      style: AppText.sectionTitle(
+                        fontSize: 11,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                    Text(
+                      'Macro della giornata',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           if (!hasContent)
             Text(
               'Nessun target da AI per oggi. Premi "Analisi" in Home per generarlo.',
@@ -140,10 +211,13 @@ class _DailyMacroObjectiveCard extends StatelessWidget {
             if (hasMacro)
               Text(
                 macroLine,
-                style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  height: 1.4,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             if (score != null) ...[
-              if (hasMacro) const SizedBox(height: 8),
+              if (hasMacro) const SizedBox(height: 10),
               FitBadgePill(
                 label: 'Aderenza stimata: $score/100',
                 variant: FitBadgeVariant.solid,
@@ -166,105 +240,78 @@ class _DailyMacroObjectiveCard extends StatelessWidget {
   }
 }
 
-class _MealObjectivesSummaryCard extends StatelessWidget {
-  const _MealObjectivesSummaryCard({this.plan});
-
-  final NutritionMealPlanAi? plan;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final hasMeals = plan != null && plan!.hasAnyObjective;
-
-    return FitSoftCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.restaurant_menu_outlined,
-                color: theme.colorScheme.primary,
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Obiettivi per pasto',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          if (!hasMeals)
-            Text(
-              'Nessun obiettivo pasto da AI. Premi "Analisi" in Home per generarlo.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            )
-          else ...[
-            _PastoSection(title: 'Colazione', items: plan!.obiettiviColazione),
-            _PastoSection(title: 'Pranzo', items: plan!.obiettiviPranzo),
-            _PastoSection(title: 'Cena', items: plan!.obiettiviCena),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _PastoSection extends StatelessWidget {
-  const _PastoSection({required this.title, required this.items});
+/// Card dedicata a un pasto con illustrazione hand-drawn e i suoi obiettivi.
+class _MealObjectiveCard extends StatelessWidget {
+  const _MealObjectiveCard({
+    required this.title,
+    required this.asset,
+    required this.tint,
+    required this.items,
+  });
 
   final String title;
+  final String asset;
+  final Color tint;
   final List<String> items;
 
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) return const SizedBox.shrink();
     final theme = Theme.of(context);
-    final cs = theme.colorScheme;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: theme.textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: cs.primary,
-            ),
-          ),
-          const SizedBox(height: 6),
-          for (final t in items)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Row(
+      child: FitSoftCard(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            NatureIconBadge(asset, tint: tint, boxSize: 52, iconSize: 30),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '• ',
-                    style: TextStyle(
-                      color: cs.primary,
-                      fontWeight: FontWeight.bold,
+                    title,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: theme.colorScheme.onSurface,
                     ),
                   ),
-                  Expanded(
-                    child: Text(
-                      t,
-                      style: theme.textTheme.bodySmall?.copyWith(height: 1.35),
+                  const SizedBox(height: 8),
+                  for (final t in items)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6, right: 8),
+                            child: Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: tint,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              t,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                height: 1.35,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }

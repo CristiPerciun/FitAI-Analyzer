@@ -4,15 +4,23 @@ import 'package:fitai_analyzer/providers/auth_notifier.dart';
 import 'package:fitai_analyzer/providers/dashboard_activity_providers.dart';
 import 'package:fitai_analyzer/providers/data_sync_notifier.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
+import 'package:fitai_analyzer/theme/app_theme.dart';
 import 'package:fitai_analyzer/ui/widgets/anim_progress_ring.dart';
 import 'package:fitai_analyzer/ui/widgets/design/design.dart';
+import 'package:fitai_analyzer/ui/widgets/nature_icon.dart';
 import 'package:fitai_analyzer/utils/workout_goal_progress.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Secondo tab Allenamenti: riepilogo giornata e spazio per suggerimenti pratici.
+/// Secondo tab Allenamenti: riepilogo giornata e suggerimenti pratici,
+/// resi come card illustrate (stile hand-drawn UI).
 class DashboardSuggestionsTab extends ConsumerWidget {
   const DashboardSuggestionsTab({super.key});
+
+  // Accenti natura coerenti coi pilastri (longevità).
+  static const Color _cIdratazione = Color(0xFF5FB6C9); // lagoon teal
+  static const Color _cRecupero = Color(0xFF8E7CC9); // soft violet
+  static const Color _cConsistenza = Color(0xFFC9A227); // amber-gold
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -51,73 +59,39 @@ class DashboardSuggestionsTab extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 16),
-          FitSoftCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.local_fire_department_outlined,
-                      color: theme.colorScheme.primary,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Oggi in movimento',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  todayActs.isEmpty
-                      ? 'Nessuna attività registrata per oggi. Collega Strava o attendi la sync Garmin.'
-                      : '${todayActs.length} attività · ${kcalToday.toStringAsFixed(0)} kcal bruciate (stima da dispositivo / Strava)',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                if (todayActs.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  ...todayActs.take(4).map((a) => _TodayActivityRow(data: a)),
-                  if (todayActs.length > 4)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        '+ altre ${todayActs.length - 4} nel tab Progressi',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                    ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
           _WorkoutObjectiveCard(
             obiettivo: allenamentiObiettivo,
             todayActivities: todayActs,
           ),
           const SizedBox(height: 16),
-          _SuggestionTile(
-            icon: Icons.water_drop_outlined,
+          _TodayMovementCard(activities: todayActs, kcal: kcalToday),
+          const SizedBox(height: 20),
+          Text(
+            'CONSIGLI DI OGGI',
+            style: AppText.sectionTitle(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _SuggestionCard(
+            asset: NatureIcons.water,
+            tint: _cIdratazione,
             title: 'Idratazione',
             body:
                 'Dopo sessioni con sudorazione, recupera liquidi a piccoli sorsi nel corso della serata.',
           ),
           const SizedBox(height: 12),
-          _SuggestionTile(
-            icon: Icons.nights_stay_outlined,
+          _SuggestionCard(
+            asset: NatureIcons.recovery,
+            tint: _cRecupero,
             title: 'Recupero',
             body:
                 'Se oggi hai spinto forte, preferisci sonno regolare e una seduta leggera domani oppure riposo attivo (camminata).',
           ),
           const SizedBox(height: 12),
-          _SuggestionTile(
-            icon: Icons.coffee_outlined,
+          _SuggestionCard(
+            asset: NatureIcons.repeat,
+            tint: _cConsistenza,
             title: 'Consistenza',
             body:
                 'Due o tre brevi uscite a settimana battono un solo allenamento lungo: mantieni il ritmo che sai sostenere.',
@@ -146,6 +120,66 @@ class DashboardSuggestionsTab extends ConsumerWidget {
   }
 }
 
+/// Card "Oggi in movimento": kcal bruciate + righe attività con icona-tipo.
+class _TodayMovementCard extends StatelessWidget {
+  const _TodayMovementCard({required this.activities, required this.kcal});
+
+  final List<FitnessData> activities;
+  final double kcal;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return FitSoftCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              NatureIcon(
+                NatureIcons.intensity,
+                color: theme.colorScheme.primary,
+                size: 22,
+                glow: true,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Oggi in movimento',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            activities.isEmpty
+                ? 'Nessuna attività registrata per oggi. Collega Strava o attendi la sync Garmin.'
+                : '${activities.length} attività · ${kcal.toStringAsFixed(0)} kcal bruciate (stima da dispositivo / Strava)',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          if (activities.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            ...activities.take(4).map((a) => _TodayActivityRow(data: a)),
+            if (activities.length > 4)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  '+ altre ${activities.length - 4} nel tab Progressi',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _TodayActivityRow extends StatelessWidget {
   const _TodayActivityRow({required this.data});
 
@@ -155,6 +189,9 @@ class _TodayActivityRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final name = data.stravaActivityName ?? data.stravaActivityType;
+    final asset = NatureIcons.forWorkoutType(
+      '${data.stravaActivityType} ${data.stravaActivityName ?? ''}',
+    );
     final dur = data.stravaElapsedMinutes;
     final durStr = dur >= 60
         ? '${(dur / 60).floor()}h ${(dur % 60).round()}m'
@@ -164,12 +201,12 @@ class _TodayActivityRow extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          Icon(
-            Icons.directions_run,
-            size: 18,
-            color: theme.colorScheme.outline,
+          NatureIcon(
+            asset,
+            size: 20,
+            color: theme.colorScheme.onSurfaceVariant,
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               name,
@@ -201,11 +238,10 @@ class _WorkoutObjectiveCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final cs = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
     final hasData = obiettivo != null && obiettivo!.hasContent;
-    final ringTrack = theme.colorScheme.onSurface.withValues(
-      alpha: isDark ? 0.05 : 0.10,
-    );
+    final ringTrack = cs.onSurface.withValues(alpha: isDark ? 0.05 : 0.10);
 
     double? progressDisplay;
     if (hasData) {
@@ -216,34 +252,50 @@ class _WorkoutObjectiveCard extends StatelessWidget {
     }
 
     final ack = obiettivo?.doneTodaySummary.trim() ?? '';
+    final asset = NatureIcons.forWorkoutType(obiettivo?.tipo ?? '');
 
-    return FitSoftCard(
+    return FitHeroCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(
-                Icons.fitness_center_outlined,
-                color: theme.colorScheme.primary,
-                size: 20,
+              NatureIconBadge(
+                asset,
+                tint: cs.primary,
+                boxSize: 46,
+                iconSize: 28,
+                radius: 14,
               ),
-              const SizedBox(width: 8),
-              Text(
-                'Obiettivo allenamento di oggi',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: theme.colorScheme.primary,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'OBIETTIVO DI OGGI',
+                      style: AppText.sectionTitle(
+                        fontSize: 11,
+                        color: cs.primary,
+                      ),
+                    ),
+                    Text(
+                      'Allenamento consigliato',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 14),
           if (!hasData)
             Text(
               'Nessun obiettivo AI per oggi. Premi "Analisi" in Home per generarlo.',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+                color: cs.onSurfaceVariant,
               ),
             )
           else ...[
@@ -257,7 +309,7 @@ class _WorkoutObjectiveCard extends StatelessWidget {
                       progress: progressDisplay ?? 0,
                       size: 100,
                       strokeWidth: 8,
-                      accentColor: theme.colorScheme.primary,
+                      accentColor: cs.primary,
                       trackColor: ringTrack,
                     ),
                     Column(
@@ -272,7 +324,7 @@ class _WorkoutObjectiveCard extends StatelessWidget {
                         Text(
                           '% obiettivo',
                           style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
+                            color: cs.onSurfaceVariant,
                           ),
                         ),
                       ],
@@ -300,38 +352,21 @@ class _WorkoutObjectiveCard extends StatelessWidget {
                       ),
                       if (obiettivo!.durataMins > 0 ||
                           obiettivo!.intensita.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Row(
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 14,
+                          runSpacing: 6,
                           children: [
-                            if (obiettivo!.durataMins > 0) ...[
-                              Icon(
-                                Icons.timer_outlined,
-                                size: 14,
-                                color: theme.colorScheme.onSurfaceVariant,
+                            if (obiettivo!.durataMins > 0)
+                              _MetaChip(
+                                asset: NatureIcons.timer,
+                                label: '${obiettivo!.durataMins} min',
                               ),
-                              const SizedBox(width: 4),
-                              Text(
-                                '${obiettivo!.durataMins} min',
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
+                            if (obiettivo!.intensita.isNotEmpty)
+                              _MetaChip(
+                                asset: NatureIcons.intensity,
+                                label: obiettivo!.intensita,
                               ),
-                              const SizedBox(width: 12),
-                            ],
-                            if (obiettivo!.intensita.isNotEmpty) ...[
-                              Icon(
-                                Icons.speed_outlined,
-                                size: 14,
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                obiettivo!.intensita,
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
                           ],
                         ),
                       ],
@@ -346,9 +381,7 @@ class _WorkoutObjectiveCard extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(
-                    alpha: 0.6,
-                  ),
+                  color: cs.surfaceContainerHighest.withValues(alpha: 0.6),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -357,7 +390,7 @@ class _WorkoutObjectiveCard extends StatelessWidget {
                     Icon(
                       Icons.check_circle_outline,
                       size: 18,
-                      color: theme.colorScheme.primary,
+                      color: cs.primary,
                     ),
                     const SizedBox(width: 8),
                     Expanded(
@@ -379,14 +412,43 @@ class _WorkoutObjectiveCard extends StatelessWidget {
   }
 }
 
-class _SuggestionTile extends StatelessWidget {
-  const _SuggestionTile({
-    required this.icon,
+/// Chip "icona disegnata + valore" (durata, intensità) sotto l'obiettivo.
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({required this.asset, required this.label});
+
+  final String asset;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        NatureIcon(asset, size: 16, color: theme.colorScheme.onSurfaceVariant),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Card consiglio con illustrazione hand-drawn e accento colore dedicato.
+class _SuggestionCard extends StatelessWidget {
+  const _SuggestionCard({
+    required this.asset,
+    required this.tint,
     required this.title,
     required this.body,
   });
 
-  final IconData icon;
+  final String asset;
+  final Color tint;
   final String title;
   final String body;
 
@@ -397,8 +459,8 @@ class _SuggestionTile extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          FitIconBadge(icon: icon),
-          const SizedBox(width: 12),
+          NatureIconBadge(asset, tint: tint, boxSize: 52, iconSize: 30),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
