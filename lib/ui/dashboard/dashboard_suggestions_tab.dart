@@ -43,7 +43,7 @@ class DashboardSuggestionsTab extends ConsumerWidget {
           refreshGarminSync(ref, uid, trigger: 'allenamenti_pull_to_refresh'),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
         children: [
           Text(
             formatDateForDisplay(todayKey),

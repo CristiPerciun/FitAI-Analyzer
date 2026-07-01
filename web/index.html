@@ -23,12 +23,14 @@
   <!-- Safari / iOS PWA: area sopra safe zone (Dynamic Island, notch) -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="color-scheme" content="dark light">
-  <!-- Valore iniziale; lo script in body allinea a tema app (localStorage) + iOS bar -->
-  <meta name="theme-color" content="#F5F3F0">
+  <!-- Valore iniziale (= tinta alta del gradiente app); lo script in body allinea al tema app (localStorage) -->
+  <meta name="theme-color" content="#FCEFE2">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
-  <!-- black-translucent = chiaro; con tema scuro lo script imposta black (barra opaca anche se iOS è “Chiaro”) -->
+  <!-- black-translucent: unico valore che rende il contenuto edge-to-edge SOTTO la
+       Dynamic Island (in entrambi i temi). default/black riservano invece una fascia
+       opaca. iOS lo legge SOLO al lancio (non modificabile a runtime) → sempre fisso. -->
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="fitai_analyzer">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
@@ -47,10 +49,10 @@
       overscroll-behavior: none;
     }
     @media (prefers-color-scheme: dark) {
-      html, body { background-color: #1C1C1E; }
+      html, body { background-color: #202023; }
     }
     @media (prefers-color-scheme: light) {
-      html, body { background-color: #F5F3F0; }
+      html, body { background-color: #FCEFE2; }
     }
     /* Renderer CanvasKit / fallback: niente “buchi” bianchi attorno al canvas */
     flt-scene-host, flt-glass-pane, flutter-view {
@@ -82,8 +84,8 @@
   </script>
   <script>
     (function () {
-      var darkBg = '#1C1C1E';
-      var lightBg = '#F5F3F0';
+      var darkBg = '#202023';
+      var lightBg = '#FCEFE2';
       function effectiveDark() {
         try {
           var raw = localStorage.getItem('flutter.theme_mode');
@@ -105,9 +107,11 @@
       tm.setAttribute('name', 'theme-color');
       tm.setAttribute('content', bg);
       document.head.appendChild(tm);
+      // Sempre black-translucent: unico valore iOS che fa il contenuto edge-to-edge
+      // sotto la Dynamic Island. La leggibilità delle icone (bianche) in tema chiaro
+      // è gestita lato Flutter con un velo scuro dietro la status bar.
       var apple = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
-      var bar = dark ? 'black' : 'black-translucent';
-      if (apple) apple.setAttribute('content', bar);
+      if (apple) apple.setAttribute('content', 'black-translucent');
     })();
   </script>
   <script src="flutter_bootstrap.js" async></script>

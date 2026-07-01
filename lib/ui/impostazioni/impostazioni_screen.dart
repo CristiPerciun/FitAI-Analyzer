@@ -105,7 +105,7 @@ class ImpostazioniScreen extends ConsumerWidget {
       backgroundColor: screenBg,
       appBar: AppBar(title: const Text('Impostazioni')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
         children: [
           IosSectionHeader(label: 'PROFILO', color: headerColor),
           IosGroup(

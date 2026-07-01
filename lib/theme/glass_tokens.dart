@@ -61,18 +61,29 @@ class GlassTokens extends ThemeExtension<GlassTokens> {
   /// Tint traslucido della bottom nav bar in vetro.
   final Color navTint;
 
-  /// Tema chiaro: crema → pastello iridescente, card frosted bianche, no glow.
+  /// Tema chiaro: card frosted bianche con neumorfismo soft — luce in alto-sx,
+  /// ombra morbida in basso-dx (gioco di luce/ombra dell'esempio).
   static const GlassTokens light = GlassTokens(
     blurSigma: 9.0,
     useRealBlur: !kIsWeb,
-    // Card frosted bianche/calde: il pastello dietro traspare.
-    tintColors: [Color(0x8CFFFFFF), Color(0x80FFF6EC)],
-    heroTintColors: [Color(0x9EFFFFFF), Color(0x99FCF4EA)],
-    borderColor: Color(0x99FFFFFF), // rim bianco @0.6 (effetto vetro)
+    // Superficie con luce in alto-sx → ombra calda in basso-dx (estrusione soft).
+    tintColors: [Color(0x99FFFFFF), Color(0x70F3E7D8)],
+    heroTintColors: [Color(0xB3FFFFFF), Color(0x8AF6ECDE)],
+    borderColor: Color(0xCCFFFFFF), // rim bianco @0.8 (edge luminoso del vetro)
     glowColor: Color(0x00000000),
     secondaryGlowColor: Color(0x00000000),
+    // Doppia ombra neumorfica: highlight bianco (alto-sx) + ombra scura (basso-dx).
     softShadow: [
-      BoxShadow(color: Color(0x14000000), blurRadius: 18, offset: Offset(0, 6)),
+      BoxShadow(
+        color: Color(0xCCFFFFFF),
+        blurRadius: 14,
+        offset: Offset(-6, -6),
+      ),
+      BoxShadow(
+        color: Color(0x24000000),
+        blurRadius: 20,
+        offset: Offset(8, 9),
+      ),
     ],
     heroGlow: [],
     // pesca → rosa → acqua → lavanda (pastello soffuso)
@@ -92,23 +103,44 @@ class GlassTokens extends ThemeExtension<GlassTokens> {
   static const GlassTokens dark = GlassTokens(
     blurSigma: 16.0,
     useRealBlur: !kIsWeb,
-    // Charcoal NEUTRO traslucido (~0.55): il fondo smerigliato traspare = vetro.
-    tintColors: [Color(0x8C1C1C1F), Color(0x82222226)],
-    heroTintColors: [Color(0xA0262629), Color(0x962C2C30)],
+    // Charcoal NEUTRO traslucido (~0.55) con luce in alto-sx → ombra in basso-dx:
+    // il fondo smerigliato traspare (vetro) + estrusione soft (neumorfismo).
+    tintColors: [Color(0x8C26262B), Color(0x82161617)],
+    heroTintColors: [Color(0xA02E2E33), Color(0x961A1A1C)],
     borderColor: Color(0x33FFFFFF), // rim bianco frosted @0.20 (edge del vetro)
     glowColor: Color(0xFFA9E8FF), // cyan soffuso
     secondaryGlowColor: Color(0xFFFFB3D9), // rosa iridescente
+    // Doppia ombra neumorfica: highlight tenue (alto-sx) + ombra profonda (basso-dx).
     softShadow: [
-      BoxShadow(color: Color(0x80000000), blurRadius: 26, offset: Offset(0, 10)),
+      BoxShadow(
+        color: Color(0x14FFFFFF),
+        blurRadius: 12,
+        offset: Offset(-5, -5),
+      ),
+      BoxShadow(
+        color: Color(0x99000000),
+        blurRadius: 22,
+        offset: Offset(7, 9),
+      ),
     ],
     heroGlow: [
+      // bagliore cyan retroilluminato + estrusione neumorfica (luce/ombra)
       BoxShadow(
-        color: Color(0x4DA9E8FF),
+        color: Color(0x40A9E8FF),
         blurRadius: 30,
         spreadRadius: 1,
         offset: Offset.zero,
       ),
-      BoxShadow(color: Color(0x99000000), blurRadius: 26, offset: Offset(0, 10)),
+      BoxShadow(
+        color: Color(0x1AFFFFFF),
+        blurRadius: 12,
+        offset: Offset(-5, -5),
+      ),
+      BoxShadow(
+        color: Color(0xA6000000),
+        blurRadius: 24,
+        offset: Offset(7, 10),
+      ),
     ],
     // grigio scuro neutro con un filo di variazione (dà "materia" al frost)
     backgroundGradient: [
@@ -118,7 +150,7 @@ class GlassTokens extends ThemeExtension<GlassTokens> {
       Color(0xFF242428),
     ],
     // wash radiali di luce dietro le card (bagliore cyan/rosa) — fanno il vetro
-    auroraColors: [Color(0x4DA9E8FF), Color(0x3DFFB3D9)],
+    auroraColors: [Color(0x40A9E8FF), Color(0x33FFB3D9)],
     navTint: Color(0x99191A1D), // charcoal traslucido @0.60 (nav in vetro)
   );
 

@@ -132,7 +132,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     slivers: [
                       SliverToBoxAdapter(
                         child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
@@ -171,9 +171,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                       style: AppText.script(
                                         fontSize: 30,
                                         fontWeight: FontWeight.w600,
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.primary,
+                                        // Scuro su chiaro (contrasto); resta
+                                        // l'accento cyan solo in tema scuro.
+                                        color:
+                                            Theme.of(context).brightness ==
+                                                Brightness.dark
+                                            ? Theme.of(context).colorScheme.primary
+                                            : Theme.of(
+                                                context,
+                                              ).colorScheme.onSurface,
                                       ),
                                     ),
                                   ),
@@ -181,10 +187,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                   NatureIcon(
                                     NatureIcons.sun,
                                     size: 22,
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.secondary,
+                                    // sole ambra come "Forza" (era azzurro)
+                                    color: const Color(0xFFC9A227),
                                     glow: true,
+                                    glowColor: const Color(0xFFC9A227),
                                   ),
                                 ],
                               ),

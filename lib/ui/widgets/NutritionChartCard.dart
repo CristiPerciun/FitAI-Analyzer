@@ -2,7 +2,7 @@ import 'dart:ui';
 
 import 'package:fitai_analyzer/models/meal_model.dart';
 import 'package:fitai_analyzer/providers/today_longevity_metrics_provider.dart';
-import 'package:fitai_analyzer/theme/app_card_theme.dart';
+import 'package:fitai_analyzer/theme/glass_tokens.dart';
 import 'package:fitai_analyzer/ui/widgets/anim_progress_ring.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -58,7 +58,7 @@ class _NutritionChartCardState extends ConsumerState<NutritionChartCard> {
     final dotInactive = theme.colorScheme.onSurface.withValues(
       alpha: isDark ? 0.24 : 0.20,
     );
-    final softShadow = theme.extension<AppCardTheme>()?.softShadow;
+    final softShadow = theme.extension<GlassTokens>()!.softShadow;
 
     // ESTRAZIONE DATI REALI DAL PROGETTO
     final calGoal = _getGoalByTitle("Calorie");

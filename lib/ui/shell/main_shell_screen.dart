@@ -73,6 +73,9 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
     final backfill = backfillAsync.valueOrNull;
 
     return Scaffold(
+      // Il corpo si estende DIETRO la bottom bar: la pagina resta visibile
+      // attorno/attraverso la barra in vetro flottante.
+      extendBody: true,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -120,52 +123,150 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
     );
   }
 
-  /// Bottom nav "in vetro": tint traslucido + blur del gradiente + bordo glass.
-  /// Icone SVG line-art ([NatureIcon]); quella attiva ha il bagliore neon in dark.
+  /// Bottom nav: **un'unica barra** in vetro flottante (glassmorphism marcato):
+  /// leggermente trasparente + blur forte → la pagina sottostante resta visibile
+  /// attorno e attraverso la barra. Estrusione soft (ombra neumorfica). La
+  /// selezione ILLUMINA solo l'icona attiva, senza effetto-pulsante sul tab.
   Widget _buildGlassNav(BuildContext context, int index, bool isNarrow) {
     final theme = Theme.of(context);
-    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final tokens = theme.extension<GlassTokens>()!;
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    final radius = BorderRadius.circular(26);
+    // blur marcato (più forte del blur standard delle card)
+    final blurSigma = isDark ? 24.0 : 20.0;
 
-    Widget bar = DecoratedBox(
+    Widget surface = DecoratedBox(
       decoration: BoxDecoration(
-        color: tokens.navTint,
-        border: Border(top: BorderSide(color: tokens.borderColor, width: 1)),
+        borderRadius: radius,
+        // superficie TRANSLUCIDA (leggermente trasparente) con sheen soft:
+        // la pagina dietro traspare, sfumata dal blur.
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: isDark
+              ? const [Color(0x9E2E2E33), Color(0x85202024)]
+              : const [Color(0xB3FFFFFF), Color(0x99FFFFFF)],
+        ),
+        border: Border.all(
+          color: isDark ? const Color(0x33FFFFFF) : const Color(0xB3FFFFFF),
+          width: 1,
+        ),
       ),
-      child: NavigationBar(
-        selectedIndex: index,
-        onDestinationSelected: (i) =>
-            ref.read(selectedTabIndexProvider.notifier).state = i,
-        labelBehavior: isNarrow
-            ? NavigationDestinationLabelBehavior.alwaysHide
-            : NavigationDestinationLabelBehavior.alwaysShow,
-        destinations: _tabs
-            .map(
-              (t) => NavigationDestination(
-                icon: NatureIcon(t.asset, color: cs.onSurfaceVariant),
-                selectedIcon: NatureIcon(
-                  t.asset,
-                  color: cs.primary,
-                  glow: true,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        child: Row(
+          children: [
+            for (var i = 0; i < _tabs.length; i++)
+              Expanded(
+                child: _NavTab(
+                  asset: _tabs[i].asset,
+                  label: _tabs[i].label,
+                  selected: i == index,
+                  showLabel: !isNarrow,
+                  onTap: () =>
+                      ref.read(selectedTabIndexProvider.notifier).state = i,
                 ),
-                label: t.label,
               ),
-            )
-            .toList(),
+          ],
+        ),
       ),
     );
 
-    if (tokens.useRealBlur) {
-      bar = ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(
-            sigmaX: tokens.blurSigma,
-            sigmaY: tokens.blurSigma,
+    // Vetro smerigliato marcato: sfuma ciò che sta dietro la barra.
+    surface = ClipRRect(
+      borderRadius: radius,
+      child: tokens.useRealBlur
+          ? BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+              child: surface,
+            )
+          : surface,
+    );
+
+    // Barra flottante: margini attorno → la pagina si vede intorno alla barra;
+    // l'ombra neumorfica sta fuori dal clip (estrusione soft).
+    return Padding(
+      padding: EdgeInsets.fromLTRB(12, 0, 12, 10 + bottomInset),
+      child: RepaintBoundary(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: radius,
+            boxShadow: tokens.softShadow,
           ),
-          child: bar,
+          child: surface,
         ),
-      );
-    }
-    return bar;
+      ),
+    );
+  }
+}
+
+/// Tab dentro l'unica barra: nessun chrome/effetto-pulsante. Solo l'icona (e
+/// l'etichetta): quando è selezionata si ILLUMINA (accento di tema + glow che
+/// segue il tratto, visibile anche in tema chiaro).
+class _NavTab extends StatelessWidget {
+  const _NavTab({
+    required this.asset,
+    required this.label,
+    required this.selected,
+    required this.showLabel,
+    required this.onTap,
+  });
+
+  final String asset;
+  final String label;
+  final bool selected;
+  final bool showLabel;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final accent = cs.primary;
+    final iconColor = selected ? accent : cs.onSurfaceVariant;
+    final labelColor = selected ? accent : cs.onSurfaceVariant;
+
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            vertical: showLabel ? 6 : 10,
+            horizontal: 4,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              NatureIcon(
+                asset,
+                color: iconColor,
+                size: 24,
+                glow: selected,
+                glowColor: selected ? accent : null,
+              ),
+              if (showLabel) ...[
+                const SizedBox(height: 4),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontSize: 11,
+                    color: labelColor,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

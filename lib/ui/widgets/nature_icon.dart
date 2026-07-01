@@ -107,14 +107,19 @@ class NatureIcon extends StatelessWidget {
     this.size = 24,
     this.color,
     this.glow = false,
+    this.glowColor,
   });
 
   final String asset;
   final double size;
   final Color? color;
 
-  /// Se true applica il bagliore neon (solo dove [GlassTokens.glowColor] è opaco).
+  /// Se true applica il bagliore che segue la forma del tratto.
   final bool glow;
+
+  /// Colore del bagliore. Se null usa [GlassTokens.glowColor] (assente in light);
+  /// forzarlo (es. accento di tema) permette l'illuminazione anche in tema chiaro.
+  final Color? glowColor;
 
   @override
   Widget build(BuildContext context) {
@@ -129,7 +134,8 @@ class NatureIcon extends StatelessWidget {
       colorFilter: ColorFilter.mode(tint, BlendMode.srcIn),
     );
 
-    if (!glow || tokens.glowColor.a == 0) return base;
+    final glowTint = glowColor ?? tokens.glowColor;
+    if (!glow || glowTint.a == 0) return base;
 
     final sigma = (size * 0.12).clamp(4.0, 18.0);
     return Stack(
@@ -141,7 +147,7 @@ class NatureIcon extends StatelessWidget {
             asset,
             width: size,
             height: size,
-            colorFilter: ColorFilter.mode(tokens.glowColor, BlendMode.srcIn),
+            colorFilter: ColorFilter.mode(glowTint, BlendMode.srcIn),
           ),
         ),
         base,
