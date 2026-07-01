@@ -46,6 +46,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         unawaited(_resumeStravaWebOAuthIfNeeded());
         unawaited(_resumeGarminWebOAuthIfNeeded());
         _syncIosPwaChrome();
+        // iOS PWA: aggancia i listener che risvegliano l'hit-test a viewport
+        // assestata (evita il "ruota per far funzionare i tap"). Vedi doc funzione.
+        nudgeIosPwaViewport();
       });
     }
   }
