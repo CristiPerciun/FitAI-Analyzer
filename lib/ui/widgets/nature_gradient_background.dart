@@ -1,5 +1,4 @@
 import 'package:fitai_analyzer/theme/glass_tokens.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 /// Sfondo a gradiente IRIDESCENTE/aurora dietro OGNI schermata (shell, route
@@ -18,25 +17,12 @@ class NatureGradientBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final tokens = theme.extension<GlassTokens>();
+    final tokens = Theme.of(context).extension<GlassTokens>();
     final base =
         tokens?.backgroundGradient ??
         const [Color(0xFFFCEFE2), Color(0xFFE9EFF3), Color(0xFFEFEAF5)];
     final aurora =
         tokens?.auroraColors ?? const [Color(0x8CF8C9A8), Color(0x80C7DCEA)];
-
-    // iOS PWA (web) in tema chiaro: con `black-translucent` iOS forza le icone di
-    // sistema (orologio, batteria) a BIANCO. Sul gradiente chiaro sarebbero
-    // illeggibili, quindi dietro la status bar dipingiamo un velo scuro sottile,
-    // alto quanto la safe area superiore. Solo web + iOS + light: in scuro il
-    // gradiente è già scuro; su native/altre piattaforme la barra è gestita altrove.
-    final topInset = MediaQuery.paddingOf(context).top;
-    final showStatusBarScrim =
-        kIsWeb &&
-        theme.platform == TargetPlatform.iOS &&
-        theme.brightness == Brightness.light &&
-        topInset > 0;
 
     return RepaintBoundary(
       child: Stack(
@@ -74,26 +60,6 @@ class NatureGradientBackground extends StatelessWidget {
           ),
           // 4. Contenuto dell'app.
           child,
-          // 5. Velo scuro dietro la status bar iOS (vedi nota in build): rende
-          //    leggibili le icone di sistema bianche col tema chiaro edge-to-edge.
-          if (showStatusBarScrim)
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              height: topInset,
-              child: const IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Color(0x5E000000), Color(0x00000000)],
-                    ),
-                  ),
-                ),
-              ),
-            ),
         ],
       ),
     );

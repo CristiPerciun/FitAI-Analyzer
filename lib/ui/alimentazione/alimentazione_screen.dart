@@ -190,6 +190,9 @@ class _AlimentazioneScreenState extends ConsumerState<AlimentazioneScreen>
         ),
       ),
       body: SafeArea(
+        // bottom:false → il contenuto passa DIETRO la bottom bar in vetro
+        // (come Home/Impostazioni); il padding delle liste lascia libero l'ultimo item.
+        bottom: false,
         child: Column(
           children: [
             if (isGarminSyncing) const LinearProgressIndicator(minHeight: 2),

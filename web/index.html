@@ -28,10 +28,11 @@
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
-  <!-- black-translucent: unico valore che rende il contenuto edge-to-edge SOTTO la
-       Dynamic Island (in entrambi i temi). default/black riservano invece una fascia
-       opaca. iOS lo legge SOLO al lancio (non modificabile a runtime) → sempre fisso. -->
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Stile status bar: lo script in <body> lo imposta in base al tema persistito
+       (chiaro → "default" con icone SCURE leggibili; scuro → "black-translucent"
+       edge-to-edge sotto la Dynamic Island con icone bianche). iOS lo legge al lancio.
+       Valore iniziale "default" = fallback sicuro (icone mai nascoste). -->
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="fitai_analyzer">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
@@ -107,11 +108,11 @@
       tm.setAttribute('name', 'theme-color');
       tm.setAttribute('content', bg);
       document.head.appendChild(tm);
-      // Sempre black-translucent: unico valore iOS che fa il contenuto edge-to-edge
-      // sotto la Dynamic Island. La leggibilità delle icone (bianche) in tema chiaro
-      // è gestita lato Flutter con un velo scuro dietro la status bar.
+      // Stile status bar in base al tema (iOS lo legge al lancio):
+      //  - scuro  → black-translucent: edge-to-edge sotto la Dynamic Island, icone bianche
+      //  - chiaro → default: barra chiara con icone SCURE leggibili (niente velo)
       var apple = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
-      if (apple) apple.setAttribute('content', 'black-translucent');
+      if (apple) apple.setAttribute('content', dark ? 'black-translucent' : 'default');
     })();
   </script>
   <script src="flutter_bootstrap.js" async></script>

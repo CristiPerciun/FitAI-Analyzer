@@ -9,11 +9,12 @@ import 'package:flutter/material.dart' hide Element;
 /// il colore di sistema. I colori combaciano con la tinta alta del gradiente
 /// (`GlassTokens.backgroundGradient[0]`) per evitare seam col rendering Flutter.
 ///
-/// `apple-mobile-web-app-status-bar-style` resta **sempre** `black-translucent`
-/// (unico valore che rende il contenuto edge-to-edge sotto la status bar); iOS lo
-/// legge una sola volta al lancio, quindi mutarlo a runtime è ininfluente lì, ma lo
-/// teniamo coerente. Le icone di sistema con black-translucent sono bianche: la
-/// leggibilità in tema chiaro è garantita dal velo scuro in [NatureGradientBackground].
+/// `apple-mobile-web-app-status-bar-style` è scelto in base al tema: **scuro** →
+/// `black-translucent` (edge-to-edge sotto la Dynamic Island, icone bianche leggibili
+/// sul gradiente scuro); **chiaro** → `default` (barra chiara con icone scure
+/// leggibili). iOS legge questo valore al lancio, quindi la mutazione a runtime è
+/// best-effort (utile su Android / alcune versioni iOS); il valore corretto al lancio
+/// è garantito dal boot script in `web/index.html`.
 void syncIosPwaDocumentForTheme(Brightness brightness) {
   final isDark = brightness == Brightness.dark;
   const lightBg = '#FCEFE2';
@@ -36,7 +37,7 @@ void syncIosPwaDocumentForTheme(Brightness brightness) {
     ..content = color);
 
   final apple = head.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
-  const style = 'black-translucent';
+  final style = isDark ? 'black-translucent' : 'default';
   if (apple is html.MetaElement) {
     apple.content = style;
   } else {
