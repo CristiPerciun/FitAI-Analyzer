@@ -11,7 +11,6 @@ import 'package:fitai_analyzer/ui/home/home_screen.dart';
 import 'package:fitai_analyzer/ui/impostazioni/impostazioni_screen.dart';
 import 'package:fitai_analyzer/theme/glass_tokens.dart';
 import 'package:fitai_analyzer/ui/widgets/nature_icon.dart';
-import 'package:fitai_analyzer/utils/ios_pwa_chrome.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -37,10 +36,6 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
     bootLog(
       'MainShell: shell montata (IndexedStack; Home è il tab 0 e costruisce subito)',
     );
-    // iOS PWA: la shell (e la bottom bar) monta dopo il login, spesso oltre la
-    // finestra di nudge del boot. Ripetiamo il nudge appena la barra è visibile
-    // così i suoi tap funzionano al lancio senza dover ruotare il device.
-    WidgetsBinding.instance.addPostFrameCallback((_) => nudgeIosPwaViewport());
   }
 
   @override

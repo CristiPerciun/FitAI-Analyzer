@@ -1,6 +1,5 @@
 // ignore_for_file: deprecated_member_use, avoid_web_libraries_in_flutter
 
-import 'dart:async';
 import 'dart:html' as html;
 
 import 'package:flutter/material.dart' hide Element;
@@ -45,56 +44,5 @@ void syncIosPwaDocumentForTheme(Brightness brightness) {
     head.append(html.MetaElement()
       ..name = 'apple-mobile-web-app-status-bar-style'
       ..content = style);
-  }
-}
-
-bool _pageShowHooked = false;
-
-/// **Fix bottom bar non cliccabile al lancio (iOS PWA installata).**
-///
-/// Su iOS Safari come PWA *standalone*, al primo avvio la viewport comunicata al
-/// motore non coincide con l'area realmente visibile finché non arriva un evento
-/// `resize` — è esattamente ciò che accade ruotando il device (`orientationchange`
-/// → `resize`). Fino a quel momento la regione di hit-test di Flutter non copre
-/// la striscia inferiore e i tap sulla bottom bar non vengono recapitati: l'utente
-/// deve ruotare per "sbloccarli". Qui replichiamo quel `resize` in modo sintetico,
-/// così Flutter rimisura e la barra diventa cliccabile al lancio senza ruotare.
-///
-/// - Raffica sui primi ~800 ms (mentre status bar / safe-area di iOS si assestano),
-///   così almeno un `resize` cade dopo l'assestamento della viewport.
-/// - Ripetuto su `pageshow` (rientro dalla bfcache riaprendo la PWA).
-///
-/// No-op fuori dalla modalità standalone: in una scheda Safari il bug non si
-/// verifica e non vogliamo layout extra sul web in scheda/desktop.
-void nudgeIosPwaViewport() {
-  if (!_isStandalonePwa()) return;
-
-  _burstResize(const [0, 100, 250, 500, 800]);
-
-  if (!_pageShowHooked) {
-    _pageShowHooked = true;
-    html.window.addEventListener('pageshow', (_) {
-      _burstResize(const [0, 200, 500]);
-    });
-  }
-}
-
-/// `resize` sintetici sulla schedule (ms da adesso). È lo stesso evento generato
-/// ruotando il device: forza Flutter a rimisurare la viewport / hit-test region.
-void _burstResize(List<int> scheduleMs) {
-  for (final ms in scheduleMs) {
-    Timer(Duration(milliseconds: ms), () {
-      html.window.dispatchEvent(html.Event('resize'));
-    });
-  }
-}
-
-/// PWA installata (aggiunta alla home): `display-mode: standalone` copre iOS 16.4+
-/// e Android. È lo scenario in cui si verifica il bug.
-bool _isStandalonePwa() {
-  try {
-    return html.window.matchMedia('(display-mode: standalone)').matches;
-  } catch (_) {
-    return false;
   }
 }
