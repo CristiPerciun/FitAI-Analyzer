@@ -46,6 +46,8 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         unawaited(_resumeStravaWebOAuthIfNeeded());
         unawaited(_resumeGarminWebOAuthIfNeeded());
         _syncIosPwaChrome();
+        // iOS PWA: sblocca i tap sulla bottom bar al lancio (vedi doc funzione).
+        nudgeIosPwaViewport();
       });
     }
   }
