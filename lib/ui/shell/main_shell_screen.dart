@@ -3,6 +3,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:fitai_analyzer/app.dart';
 import 'package:fitai_analyzer/providers/pending_meal_analysis_provider.dart';
 import 'package:fitai_analyzer/providers/providers.dart';
+import 'package:fitai_analyzer/providers/route_transition_provider.dart';
 import 'package:fitai_analyzer/providers/sync_backfill_status_provider.dart';
 import 'package:fitai_analyzer/ui/alimentazione/alimentazione_screen.dart';
 import 'package:fitai_analyzer/utils/boot_log.dart';
@@ -119,7 +120,12 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: _buildGlassNav(context, index, isNarrow),
+      bottomNavigationBar: _buildGlassNav(
+        context,
+        index,
+        isNarrow,
+        ref.watch(routeTransitionActiveProvider),
+      ),
     );
   }
 
@@ -127,7 +133,12 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
   /// leggermente trasparente + blur forte → la pagina sottostante resta visibile
   /// attorno e attraverso la barra. Estrusione soft (ombra neumorfica). La
   /// selezione ILLUMINA solo l'icona attiva, senza effetto-pulsante sul tab.
-  Widget _buildGlassNav(BuildContext context, int index, bool isNarrow) {
+  Widget _buildGlassNav(
+    BuildContext context,
+    int index,
+    bool isNarrow,
+    bool transitionActive,
+  ) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final tokens = theme.extension<GlassTokens>()!;
@@ -173,10 +184,12 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
       ),
     );
 
-    // Vetro smerigliato marcato: sfuma ciò che sta dietro la barra.
+    // Vetro smerigliato marcato: sfuma ciò che sta dietro la barra. Durante le
+    // transizioni di rotta il blur è disattivato (solo tint) per evitare gli
+    // scatti da ri-raster per-frame del BackdropFilter su desktop.
     surface = ClipRRect(
       borderRadius: radius,
-      child: tokens.useRealBlur
+      child: tokens.useRealBlur && !transitionActive
           ? BackdropFilter(
               filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
               child: surface,

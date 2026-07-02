@@ -92,9 +92,9 @@ class _GarminConnectDialogBodyState
 
   Future<void> _primeGarminBridge() async {
     try {
-      await ref.read(garminServiceProvider).primeGarminWebSsoBridge(
-            uid: widget.uid,
-      );
+      await ref
+          .read(garminServiceProvider)
+          .primeGarminWebSsoBridge(uid: widget.uid);
       if (!mounted) return;
       _state.value = const _GarminBridgeState(ready: true);
     } on Object catch (e) {
@@ -139,9 +139,11 @@ class _GarminConnectDialogBodyState
             httpsPath: '/sso/embed',
           ),
         );
+        // Nativo/desktop: scambio ticket→token e salvataggio lato client
+        // (niente CORS qui), senza passare dal garmin-sync-server.
         result = await ref
             .read(garminServiceProvider)
-            .connect3ExchangeTicket(uid: widget.uid, ticketOrUrl: callbackUrl);
+            .connectClientSide(uid: widget.uid, ticketOrUrl: callbackUrl);
       }
     } on Object catch (e) {
       result = {'success': false, 'message': 'Errore: $e'};
@@ -173,7 +175,8 @@ class _GarminConnectDialogBodyState
       valueListenable: _state,
       builder: (context, s, _) {
         final bridgeLoading = _useWebKitBridge && (s.priming || !s.ready);
-        final canTapConnect = !s.submitting &&
+        final canTapConnect =
+            !s.submitting &&
             (!_useWebKitBridge || (s.ready && s.error == null));
 
         return AlertDialog(
@@ -197,8 +200,8 @@ class _GarminConnectDialogBodyState
                 Text(
                   s.error!,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
+                    color: Theme.of(context).colorScheme.error,
+                  ),
                 ),
               ],
               if (bridgeLoading || s.submitting) ...[
@@ -218,8 +221,9 @@ class _GarminConnectDialogBodyState
           ),
           actions: [
             TextButton(
-              onPressed:
-                  s.submitting ? null : () => Navigator.of(context).pop(null),
+              onPressed: s.submitting
+                  ? null
+                  : () => Navigator.of(context).pop(null),
               child: const Text('Annulla'),
             ),
             FilledButton(

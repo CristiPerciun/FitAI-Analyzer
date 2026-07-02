@@ -1,9 +1,11 @@
 import 'dart:ui' show ImageFilter;
 
+import 'package:fitai_analyzer/providers/route_transition_provider.dart';
 import 'package:fitai_analyzer/theme/app_card_theme.dart';
 import 'package:fitai_analyzer/theme/app_spacing.dart';
 import 'package:fitai_analyzer/theme/glass_tokens.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Card "hero" in vetro del redesign "NaturaVita" (raggio 24).
 /// Replica la card in evidenza del riferimento, con tint più ricco e — in tema
@@ -14,7 +16,7 @@ import 'package:flutter/material.dart';
 /// su vetro foresta in dark).
 ///
 /// Spacing conforme a Material 3 (XL = 24dp).
-class FitHeroCard extends StatelessWidget {
+class FitHeroCard extends ConsumerWidget {
   const FitHeroCard({
     super.key,
     required this.child,
@@ -27,7 +29,7 @@ class FitHeroCard extends StatelessWidget {
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final tokens = theme.extension<GlassTokens>()!;
     final cardTheme = theme.extension<AppCardTheme>()!;
@@ -62,7 +64,9 @@ class FitHeroCard extends StatelessWidget {
       child: inner,
     );
 
-    if (tokens.useRealBlur) {
+    // Blur disattivato durante le transizioni di rotta (solo tint): evita gli
+    // scatti da ri-raster per-frame del BackdropFilter su desktop.
+    if (tokens.useRealBlur && !ref.watch(routeTransitionActiveProvider)) {
       surface = BackdropFilter(
         filter: ImageFilter.blur(
           sigmaX: tokens.blurSigma,

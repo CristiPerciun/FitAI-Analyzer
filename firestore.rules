@@ -1,9 +1,12 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Token Garmin: SOLO server (Admin SDK) puo' leggere/scrivere. Client mai.
+    // Token Garmin: lettura/rinnovo SOLO server (Admin SDK, bypassa le regole).
+    // Il client puo' SCRIVERE solo il proprio token (login lato client su nativo:
+    // GarminService.connectClientSide). Lettura sempre negata al client.
     match /garmin_tokens/{userId} {
-      allow read, write: if false;
+      allow read: if false;
+      allow write: if request.auth != null && request.auth.uid == userId;
     }
     // Token Strava sul server (stesso modello di garmin_tokens).
     match /strava_tokens/{userId} {

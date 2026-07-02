@@ -1,8 +1,10 @@
 import 'dart:ui' show ImageFilter;
 
+import 'package:fitai_analyzer/providers/route_transition_provider.dart';
 import 'package:fitai_analyzer/theme/app_spacing.dart';
 import 'package:fitai_analyzer/theme/glass_tokens.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Card morbida del redesign "NaturaVita": vetro smerigliato (glassmorphism).
 ///
@@ -16,7 +18,7 @@ import 'package:flutter/material.dart';
 ///   resta il tint traslucido sopra il gradiente (~80% dell'effetto, costo minimo).
 ///
 /// Spacing conforme a Material 3 (XL = 24dp).
-class FitSoftCard extends StatelessWidget {
+class FitSoftCard extends ConsumerWidget {
   const FitSoftCard({
     super.key,
     required this.child,
@@ -43,14 +45,19 @@ class FitSoftCard extends StatelessWidget {
   final Color? color;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final tokens = theme.extension<GlassTokens>()!;
     final borderRadius = BorderRadius.circular(radius);
 
     final useTint = glass && color == null;
-    final realBlur = useTint && tokens.useRealBlur;
+    // Durante una transizione di rotta il blur è disattivato (solo tint):
+    // evita il ri-raster per-frame del BackdropFilter che causa scatti.
+    final realBlur =
+        useTint &&
+        tokens.useRealBlur &&
+        !ref.watch(routeTransitionActiveProvider);
 
     final content = Padding(padding: padding, child: child);
     final inner = Material(

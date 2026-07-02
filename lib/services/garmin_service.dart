@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 
 import '../models/fitness_data.dart';
 import '../utils/platform_firestore_fix.dart';
+import 'garmin_oauth1_client.dart';
 import 'garmin_web_oauth_stub.dart'
     if (dart.library.html) 'garmin_web_oauth_web.dart'
     as garmin_web;
@@ -843,6 +844,124 @@ class GarminService {
       },
       logLabel: 'garmin/connect3/exchange-ticket',
     );
+  }
+
+  /// Login Garmin **lato client** (solo piattaforme native/desktop): scambia il
+  /// ticket CAS in token OAuth1/OAuth2 parlando direttamente con
+  /// `connectapi.garmin.com` (niente CORS su nativo) e scrive il token su
+  /// Firestore nel formato `garth`, **senza passare dal garmin-sync-server**.
+  ///
+  /// Il login vero (credenziali + MFA/Authenticator) è già avvenuto sulla pagina
+  /// di Garmin nella WebView: qui resta solo lo scambio ticket→token.
+  ///
+  /// Su **web** non è possibile (CORS su sso/connectapi): usare il flusso server
+  /// ([connectViaGarminSsoWeb]). La lettura/rinnovo del token per le sync resta
+  /// lato server (Admin SDK).
+  Future<Map<String, dynamic>> connectClientSide({
+    required String uid,
+    required String ticketOrUrl,
+    String? email,
+  }) async {
+    if (kIsWeb) {
+      return {
+        'success': false,
+        'message':
+            'Login Garmin lato client non disponibile su web (CORS). Usa il flusso server.',
+      };
+    }
+    final ticket = _extractGarminTicket(ticketOrUrl);
+    if (ticket == null || ticket.isEmpty) {
+      return {
+        'success': false,
+        'message': 'Ticket Garmin non trovato nel callback di login.',
+      };
+    }
+    final loginUrl = _extractGarminLoginServiceUrl(ticketOrUrl);
+    try {
+      final oauthClient = GarminOAuth1Client(httpClient: _http);
+      final oauth1 = await oauthClient.getOAuth1Token(
+        ticket: ticket,
+        loginUrl: loginUrl,
+      );
+      final oauth2 = await oauthClient.exchange(oauth1);
+      final tokenB64 = oauthClient.buildGarthTokenB64(
+        oauth1: oauth1,
+        oauth2Raw: oauth2,
+      );
+
+      final nowIso = DateTime.now().toUtc().toIso8601String();
+      final batch = _firestore.batch();
+      batch.set(_firestore.collection('garmin_tokens').doc(uid), {
+        'token_b64': tokenB64,
+        'updated_at': nowIso,
+      }, SetOptions(merge: true));
+      final userPayload = <String, dynamic>{
+        'garmin_linked': true,
+        'garmin_linked_at': nowIso,
+        'garmin_connect_method': 'client_native',
+        'garmin_sso_rate_limited_until': null,
+        'garmin_sso_rate_limited_reason': null,
+      };
+      final e = email?.trim();
+      if (e != null && e.isNotEmpty) userPayload['garmin_last_email'] = e;
+      batch.set(
+        _firestore.collection('users').doc(uid),
+        userPayload,
+        SetOptions(merge: true),
+      );
+      await batch.commit();
+
+      _garminHttpVerbose(
+        'connectClientSide: token Garmin salvato per uid=$uid',
+      );
+      return {
+        'success': true,
+        'message': 'Garmin collegato. Token salvato dall\'app.',
+      };
+    } on GarminOAuth1Exception catch (e) {
+      _garminHttpDiag('connectClientSide OAuth1 errore: ${e.message}');
+      return {'success': false, 'message': 'Garmin OAuth: ${e.message}'};
+    } on Object catch (e) {
+      _invalidateBaseUrlCacheOnNetworkFailure(e);
+      _garminHttpDiag('connectClientSide errore: $e');
+      return {'success': false, 'message': 'Errore login Garmin: $e'};
+    }
+  }
+
+  /// Estrae il ticket CAS (`ST-…`) da un ticket nudo o da un URL di callback.
+  static String? _extractGarminTicket(String ticketOrUrl) {
+    final raw = ticketOrUrl.trim();
+    if (raw.isEmpty) return null;
+    if (raw.startsWith('ST-')) return raw;
+    final uri = Uri.tryParse(raw);
+    if (uri != null) {
+      final t = extractGarminTicketFromUri(uri);
+      if (t != null && t.isNotEmpty) return t;
+    }
+    return RegExp(r'ST-[A-Za-z0-9._~%-]+').firstMatch(raw)?.group(0);
+  }
+
+  /// `login-url` da passare a `preauthorized`: è il `service` per cui il ticket è
+  /// stato emesso, cioè il callback senza `?ticket=…`. Mirror lato client di
+  /// `_extract_login_url_from_ticket_url` del server. Nel flusso nativo →
+  /// `https://sso.garmin.com/sso/embed`.
+  static String _extractGarminLoginServiceUrl(String ticketOrUrl) {
+    const fallback = 'https://sso.garmin.com/sso/embed';
+    final raw = ticketOrUrl.trim();
+    if (raw.isEmpty || raw.startsWith('ST-')) return fallback;
+    final uri = Uri.tryParse(raw);
+    if (uri == null || !uri.hasScheme) return fallback;
+    final params = Map<String, String>.from(uri.queryParameters)
+      ..remove('ticket');
+    final service = Uri(
+      scheme: uri.scheme,
+      host: uri.host,
+      port: uri.hasPort ? uri.port : null,
+      path: uri.path,
+      queryParameters: params.isEmpty ? null : params,
+    );
+    final s = service.toString();
+    return s.isEmpty ? fallback : s;
   }
 
   /// Registra una sessione OAuth web (state server-side) prima del redirect Garmin CAS.

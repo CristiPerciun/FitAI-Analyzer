@@ -192,7 +192,9 @@ class NutritionGoalFormNotifier
   NutritionGoal buildModel() {
     final s = state;
     final prefs = <String>[
-      ...s.fuoriCasa.map((e) => 'fuori:$e'),
+      // fuoriCasa è a scelta singola: al massimo una voce 'fuori:' (normalizza
+      // eventuali dati legacy multi-valore in un'unica frequenza).
+      if (s.fuoriCasa.isNotEmpty) 'fuori:${s.fuoriCasa.first}',
       ...s.allergie.map((e) => 'allergia:$e'),
       ...s.esclusioni.map((e) => 'escludi:$e'),
     ];

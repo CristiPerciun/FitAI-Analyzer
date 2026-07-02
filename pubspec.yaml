@@ -37,6 +37,7 @@ dependencies:
   riverpod: ^2.5.1
   flutter_riverpod: ^2.5.1
   http: ^1.2.2
+  crypto: ^3.0.3 # HMAC-SHA1 per la firma OAuth1 del login Garmin lato client (nativo)
   flutter_web_auth_2: ^5.0.1
   # Usato solo per intercettare il sottoprocesso WebView2 in main() su desktop
   # (flutter_web_auth_2 lo usa per l'OAuth). Vedi lib/services/webview_subprocess_io.dart.

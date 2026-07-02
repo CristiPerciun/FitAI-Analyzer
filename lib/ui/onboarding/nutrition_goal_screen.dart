@@ -9,15 +9,13 @@ import 'package:fitai_analyzer/ui/widgets/custom_slider.dart';
 import 'package:fitai_analyzer/ui/widgets/dropdown_with_search.dart';
 import 'package:fitai_analyzer/ui/widgets/error_dialog.dart';
 import 'package:fitai_analyzer/ui/widgets/multi_select_chip.dart';
+import 'package:fitai_analyzer/ui/widgets/multi_select_dropdown.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 /// Creazione guidata (4 pagine) vs modifica da Impostazioni (tutto in un blocco scrollabile).
-enum NutritionGoalPresentation {
-  wizard,
-  singleScrollColumn,
-}
+enum NutritionGoalPresentation { wizard, singleScrollColumn }
 
 /// Indice pagina del wizard "Obiettivo mangiare" (0–3). AutoDispose: si azzera
 /// all'uscita dalla schermata.
@@ -38,6 +36,32 @@ const _stylePairs = <(String key, String label)>[
   ('plant_based', 'Plant-based'),
   ('zona', 'Zona / bilanciato'),
   ('flessibile', 'Flessibile (IIFYM-style)'),
+];
+
+const _speedOptions = <(String key, String label)>[
+  ('lenta', 'Lenta'),
+  ('media', 'Media'),
+  ('aggressiva', 'Aggressiva'),
+];
+
+const _proteinLevelOptions = <(String key, String label)>[
+  ('leggero', 'Normale / poco sport'),
+  ('standard', 'Un po’ più di proteine (stile quotidiano sano)'),
+  ('allenamento', 'Mi alleno regolarmente'),
+  ('massa', 'Voglio massa o definizione “da palestra”'),
+];
+
+const _carbStyleOptions = <(String key, String label)>[
+  ('equilibrato', 'Equilibrato'),
+  ('piu_carb', 'Amo pasta, pane, riso'),
+  ('meno_carb', 'Preferisco meno carb, più grassi'),
+];
+
+const _fuoriOptions = <(String key, String label)>[
+  ('mai', 'Quasi mai'),
+  ('1_2_sett', '1–2 volte / sett.'),
+  ('3_5_sett', '3–5 volte / sett.'),
+  ('quotidiano', 'Quasi ogni giorno'),
 ];
 
 /// Sub-onboarding «Obiettivo Mangiare» (10 domande in 4 sezioni).
@@ -79,13 +103,6 @@ class _NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
 
   final _extraNotesController = TextEditingController();
 
-  static final _fuoriOptions = [
-    MultiSelectOption(id: 'mai', label: 'Quasi mai'),
-    MultiSelectOption(id: '1_2_sett', label: '1–2 volte / sett.'),
-    MultiSelectOption(id: '3_5_sett', label: '3–5 volte / sett.'),
-    MultiSelectOption(id: 'quotidiano', label: 'Quasi ogni giorno'),
-  ];
-
   static final _allergieOptions = [
     MultiSelectOption(id: 'lattosio', label: 'Lattosio'),
     MultiSelectOption(id: 'glutine', label: 'Glutine'),
@@ -100,7 +117,10 @@ class _NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
     MultiSelectOption(id: 'vegano', label: 'Vegano'),
     MultiSelectOption(id: 'no_maiale', label: 'No maiale'),
     MultiSelectOption(id: 'no_alcol', label: 'No alcol'),
-    MultiSelectOption(id: 'no_zuccheri_raffinati', label: 'No zuccheri raffinati'),
+    MultiSelectOption(
+      id: 'no_zuccheri_raffinati',
+      label: 'No zuccheri raffinati',
+    ),
   ];
 
   @override
@@ -132,17 +152,18 @@ class _NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
   }
 
   Future<void> _submit() async {
-    final ok =
-        await ref.read(nutritionGoalFlowActionProvider.notifier).run(() async {
-      final goal = ref.read(nutritionGoalFormProvider.notifier).buildModel();
-      await ref
-          .read(userProfileNotifierProvider.notifier)
-          .updateNutritionGoal(goal);
-      final uid = ref.read(currentUidProvider);
-      if (uid != null) {
-        await ref.read(nutritionMealPlanServiceProvider).generateAndSave(uid);
-      }
-    });
+    final ok = await ref.read(nutritionGoalFlowActionProvider.notifier).run(
+      () async {
+        final goal = ref.read(nutritionGoalFormProvider.notifier).buildModel();
+        await ref
+            .read(userProfileNotifierProvider.notifier)
+            .updateNutritionGoal(goal);
+        final uid = ref.read(currentUidProvider);
+        if (uid != null) {
+          await ref.read(nutritionMealPlanServiceProvider).generateAndSave(uid);
+        }
+      },
+    );
     if (!mounted || !ok) return;
     final cb = widget.onSuccess;
     if (cb != null) {
@@ -187,7 +208,9 @@ class _NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
   bool _validatePage() {
     final i = ref.read(nutritionGoalPageProvider);
     if (i == 2) {
-      final ok = ref.read(nutritionGoalFormProvider.notifier).validateObjective();
+      final ok = ref
+          .read(nutritionGoalFormProvider.notifier)
+          .validateObjective();
       if (!ok) showErrorDialog(context, 'Seleziona un obiettivo nutrizionale');
       return ok;
     }
@@ -204,33 +227,43 @@ class _NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
       children: [
         Text(
           'Obiettivo mangiare',
-          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
         ),
         const SizedBox(height: 8),
         Text(
           'Abitudini attuali',
-          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
         ),
         const SizedBox(height: 8),
         _columnSection1(),
         const Divider(height: 40, thickness: 1),
         Text(
           'Preferenze e restrizioni',
-          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
         ),
         const SizedBox(height: 8),
         _columnSection2(),
         const Divider(height: 40, thickness: 1),
         Text(
           'Obiettivo nutrizionale e stile',
-          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
         ),
         const SizedBox(height: 8),
         _columnSection3(styleLabels, keyForStyleLabel),
         const Divider(height: 40, thickness: 1),
         Text(
           'Proteine, carboidrati, integratori, note',
-          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
         ),
         const SizedBox(height: 8),
         _columnSection4(),
@@ -249,8 +282,9 @@ class _NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         ref.read(nutritionGoalFormProvider.notifier).seedFrom(profile);
-        _extraNotesController.text =
-            ref.read(nutritionGoalFormProvider).extraNotesText;
+        _extraNotesController.text = ref
+            .read(nutritionGoalFormProvider)
+            .extraNotesText;
       });
     }
 
@@ -273,7 +307,9 @@ class _NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
       if (widget.presentation == NutritionGoalPresentation.singleScrollColumn) {
         return const Padding(
           padding: EdgeInsets.all(24),
-          child: Text('Carica il profilo principale prima di modificare l’alimentazione.'),
+          child: Text(
+            'Carica il profilo principale prima di modificare l’alimentazione.',
+          ),
         );
       }
       return Scaffold(
@@ -312,8 +348,9 @@ class _NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
                     preferredSize: const Size.fromHeight(4),
                     child: LinearProgressIndicator(
                       value: (pageIndex + 1) / _totalPages,
-                      backgroundColor:
-                          Theme.of(context).colorScheme.surfaceContainerHighest,
+                      backgroundColor: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
                     ),
                   ),
                 ),
@@ -325,14 +362,15 @@ class _NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
                   child: Text(
                     _sectionTitleFor(pageIndex),
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 LinearProgressIndicator(
                   value: (pageIndex + 1) / _totalPages,
-                  backgroundColor:
-                      Theme.of(context).colorScheme.surfaceContainerHighest,
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHighest,
                 ),
                 const SizedBox(height: 8),
               ],
@@ -400,7 +438,10 @@ class _NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
               elevation: 6,
               borderRadius: BorderRadius.circular(16),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 28,
+                  vertical: 24,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -420,8 +461,8 @@ class _NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
                       'L’intelligenza artificiale può richiedere qualche secondo.',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
@@ -430,6 +471,39 @@ class _NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
           ),
         ],
       ],
+    );
+  }
+
+  /// Dropdown a scelta singola coerente col resto dell'onboarding
+  /// (sostituisce i vecchi gruppi di [ChoiceChip]). La [ValueKey] sul valore
+  /// riallinea il campo quando lo stato cambia da fuori (es. seed dal profilo).
+  Widget _choiceDropdown({
+    required String label,
+    required String? value,
+    required List<(String key, String label)> options,
+    required ValueChanged<String> onChanged,
+    String? hint,
+  }) {
+    // Clamp: un valore fuori vocabolario (dati legacy/esterni, es. un vecchio
+    // nutrition_objective salvato come token main_goal) farebbe fallire l'assert
+    // di DropdownButtonFormField (crash in debug, campo vuoto in release). Se non
+    // è tra le opzioni lo trattiamo come "nessuna selezione".
+    final safe = options.any((o) => o.$1 == value) ? value : null;
+    return DropdownButtonFormField<String>(
+      key: ValueKey('$label::$safe'),
+      initialValue: safe,
+      isExpanded: true,
+      hint: hint == null ? null : Text(hint),
+      decoration: InputDecoration(
+        labelText: label,
+        border: const OutlineInputBorder(),
+      ),
+      items: options
+          .map((e) => DropdownMenuItem<String>(value: e.$1, child: Text(e.$2)))
+          .toList(),
+      onChanged: (v) {
+        if (v != null) onChanged(v);
+      },
     );
   }
 
@@ -464,12 +538,18 @@ class _NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
           value: form.timingImportante,
           onChanged: notifier.setTimingImportante,
         ),
-        const SizedBox(height: 16),
-        MultiSelectChipGroup(
-          title: '3. Con che frequenza mangi fuori casa o ordini delivery?',
+        const SizedBox(height: 24),
+        Text(
+          '3. Con che frequenza mangi fuori casa o ordini delivery?',
+          style: Theme.of(context).textTheme.bodyLarge,
+        ),
+        const SizedBox(height: 8),
+        _choiceDropdown(
+          label: 'Frequenza',
+          value: form.fuoriCasa.isEmpty ? null : form.fuoriCasa.first,
+          hint: 'Seleziona…',
           options: _fuoriOptions,
-          selected: form.fuoriCasa,
-          onChanged: notifier.setFuoriCasa,
+          onChanged: (v) => notifier.setFuoriCasa({v}),
         ),
       ],
     );
@@ -481,15 +561,27 @@ class _NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        MultiSelectChipGroup(
-          title: '4. Allergie o intolleranze da considerare',
+        Text(
+          '4. Allergie o intolleranze da considerare',
+          style: Theme.of(context).textTheme.bodyLarge,
+        ),
+        const SizedBox(height: 8),
+        MultiSelectDropdown(
+          label: 'Allergie / intolleranze',
+          hint: 'Nessuna',
           options: _allergieOptions,
           selected: form.allergie,
           onChanged: notifier.setAllergie,
         ),
         const SizedBox(height: 24),
-        MultiSelectChipGroup(
-          title: '5. Preferenze o alimenti da escludere',
+        Text(
+          '5. Preferenze o alimenti da escludere',
+          style: Theme.of(context).textTheme.bodyLarge,
+        ),
+        const SizedBox(height: 8),
+        MultiSelectDropdown(
+          label: 'Preferenze / esclusioni',
+          hint: 'Nessuna',
           options: _esclusioniOptions,
           selected: form.esclusioni,
           onChanged: notifier.setEsclusioni,
@@ -515,20 +607,16 @@ class _NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
         Text(
           'Pre-selezionato in base al tuo main goal; puoi modificarlo.',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
         const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: _nutritionObjectiveOptions.map((e) {
-            return ChoiceChip(
-              label: Text(e.$2),
-              selected: form.nutritionObjective == e.$1,
-              onSelected: (_) => notifier.setNutritionObjective(e.$1),
-            );
-          }).toList(),
+        _choiceDropdown(
+          label: 'Obiettivo',
+          value: form.nutritionObjective,
+          hint: 'Seleziona…',
+          options: _nutritionObjectiveOptions,
+          onChanged: notifier.setNutritionObjective,
         ),
         const SizedBox(height: 20),
         Text(
@@ -536,20 +624,11 @@ class _NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
           style: Theme.of(context).textTheme.bodyLarge,
         ),
         const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            ('lenta', 'Lenta'),
-            ('media', 'Media'),
-            ('aggressiva', 'Aggressiva'),
-          ].map((e) {
-            return ChoiceChip(
-              label: Text(e.$2),
-              selected: form.speed == e.$1,
-              onSelected: (_) => notifier.setSpeed(e.$1),
-            );
-          }).toList(),
+        _choiceDropdown(
+          label: 'Velocità',
+          value: form.speed,
+          options: _speedOptions,
+          onChanged: notifier.setSpeed,
         ),
         const SizedBox(height: 20),
         Text(
@@ -561,8 +640,10 @@ class _NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
           label: 'Stile',
           options: styleLabels,
           value: _stylePairs
-              .firstWhere((e) => e.$1 == form.styleKey,
-                  orElse: () => _stylePairs.first)
+              .firstWhere(
+                (e) => e.$1 == form.styleKey,
+                orElse: () => _stylePairs.first,
+              )
               .$2,
           hint: 'Cerca o scegli…',
           onChanged: (label) {
@@ -589,25 +670,16 @@ class _NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
         Text(
           'Scegli la risposta più vicina a te: l’app tradurrà in un target tecnico per l’AI.',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
         const SizedBox(height: 12),
-        ...[
-          ('leggero', 'Normale / poco sport'),
-          ('standard', 'Un po’ più di proteine (stile quotidiano sano)'),
-          ('allenamento', 'Mi alleno regolarmente'),
-          ('massa', 'Voglio massa o definizione “da palestra”'),
-        ].map((e) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: ChoiceChip(
-              label: Text(e.$2),
-              selected: form.proteinLevel == e.$1,
-              onSelected: (_) => notifier.setProteinLevel(e.$1),
-            ),
-          );
-        }),
+        _choiceDropdown(
+          label: 'Proteine',
+          value: form.proteinLevel,
+          options: _proteinLevelOptions,
+          onChanged: notifier.setProteinLevel,
+        ),
         const SizedBox(height: 20),
         Text(
           '10. Come ti piace mangiare i carboidrati?',
@@ -617,48 +689,35 @@ class _NutritionGoalScreenState extends ConsumerState<NutritionGoalScreen> {
         Text(
           'Niente percentuali: solo la tendenza (pasta/pane vs più proteine e grassi).',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
         const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            ('equilibrato', 'Equilibrato'),
-            ('piu_carb', 'Amo pasta, pane, riso'),
-            ('meno_carb', 'Preferisco meno carb, più grassi'),
-          ].map((e) {
-            return ChoiceChip(
-              label: Text(e.$2),
-              selected: form.carbStyle == e.$1,
-              onSelected: (_) => notifier.setCarbStyle(e.$1),
-            );
-          }).toList(),
+        _choiceDropdown(
+          label: 'Carboidrati',
+          value: form.carbStyle,
+          options: _carbStyleOptions,
+          onChanged: notifier.setCarbStyle,
         ),
         const SizedBox(height: 28),
-        Text(
-          '11. Integratori',
-          style: Theme.of(context).textTheme.bodyLarge,
-        ),
+        Text('11. Integratori', style: Theme.of(context).textTheme.bodyLarge),
         const SizedBox(height: 4),
         Text(
           'Vuoi che i piani considerino integratori (proteine in polvere, creatina, omega-3, ecc.)?',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Sì, includi integratori dove ha senso evidenza-based'),
+          title: const Text(
+            'Sì, includi integratori dove ha senso evidenza-based',
+          ),
           value: form.useSupplements,
           onChanged: notifier.setUseSupplements,
         ),
         const SizedBox(height: 16),
-        Text(
-          '12. Note libere',
-          style: Theme.of(context).textTheme.bodyLarge,
-        ),
+        Text('12. Note libere', style: Theme.of(context).textTheme.bodyLarge),
         const SizedBox(height: 8),
         TextField(
           controller: _extraNotesController,
